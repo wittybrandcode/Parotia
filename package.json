@@ -1,0 +1,47 @@
+{
+  "name": "parotia",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Parotia — clean the stage. keep the story. Editorial web capture extension. Freeze, inspect, clean and capture news pages as broadcast-ready PNGs.",
+  "type": "module",
+  "scripts": {
+    "dev:ui": "vite",
+    "build": "npm run build:content && npm run build:background && npm run build:ui && npm run build:icons && npm run build:manifest",
+    "build:content": "node scripts/build-esm.mjs content",
+    "build:background": "node scripts/build-esm.mjs background",
+    "build:ui": "vite build",
+    "build:icons": "node scripts/generate-icons.mjs",
+    "build:manifest": "node scripts/build-manifest.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint src tests --max-warnings 0",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "lucide-react": "^1.31.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@playwright/test": "^1.49.1",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/chrome": "^0.0.287",
+    "@types/node": "^22.10.5",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "esbuild": "^0.24.2",
+    "eslint": "^9.17.0",
+    "happy-dom": "^15.11.7",
+    "sharp": "^0.35.3",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.19.0",
+    "vite": "^6.0.7",
+    "vitest": "^2.1.8"
+  }
+}
