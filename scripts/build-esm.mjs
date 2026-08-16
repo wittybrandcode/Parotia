@@ -41,7 +41,6 @@ await build({
     "@content": path.join(root, "src/content"),
     "@background": path.join(root, "src/background"),
     "@ui": path.join(root, "src/ui"),
-    "@capture": path.join(root, "src/capture"),
   },
 });
 

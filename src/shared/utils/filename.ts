@@ -19,15 +19,7 @@ export function sanitizeFilenamePart(input: string, maxLength = 80): string {
   return cleaned.slice(0, maxLength) || "article";
 }
 
-/** Deterministic, newsroom-friendly export filename: `news-clean-YYYY-MM-DD-article.png`. */
-export function buildCaptureFilename(date = new Date()): string {
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-  return `news-clean-${yyyy}-${mm}-${dd}-article.png`;
-}
-
-/** Timestamp component `YYYYMMDD-HHmmss` for future source-based filenames. */
+/** Timestamp component `YYYYMMDD-HHmmss` for source-based export filenames. */
 export function timestampPart(date = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return (

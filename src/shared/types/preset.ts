@@ -1,5 +1,5 @@
 import type { CleanupCategory, CleanupRule } from "./cleanup";
-import type { ExtractionResult, ExtractionRole } from "./extraction";
+import type { ExtractionRole } from "./extraction";
 
 export type CaptureMode = "VISIBLE" | "FULL_PAGE" | "ELEMENT";
 
@@ -107,14 +107,6 @@ export interface PresetSessionState {
   preset?: SitePreset;
   validation?: PresetValidationResult;
   applied: boolean;
-}
-
-export interface PresetApplicationResult {
-  status: "APPLIED" | "PARTIAL" | "FAILED";
-  appliedRules: string[];
-  skippedRules: string[];
-  staleRules: string[];
-  extraction?: ExtractionResult;
 }
 
 /** Declarative candidate that keeps CleanupCategory separate from engine concerns. */

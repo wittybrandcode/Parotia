@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCaptureFilename, sanitizeFilenamePart, timestampPart } from "@shared/utils/filename";
+import { sanitizeFilenamePart, timestampPart } from "@shared/utils/filename";
 
 describe("sanitizeFilenamePart", () => {
   it("strips path separators and reserved characters", () => {
@@ -26,12 +26,6 @@ describe("sanitizeFilenamePart", () => {
   it("caps the length and falls back to a default basename", () => {
     expect(sanitizeFilenamePart("x".repeat(500))).toHaveLength(80);
     expect(sanitizeFilenamePart("...")).toBe("article");
-  });
-});
-
-describe("buildCaptureFilename", () => {
-  it("builds a deterministic newsroom filename", () => {
-    expect(buildCaptureFilename(new Date(2026, 0, 5))).toBe("news-clean-2026-01-05-article.png");
   });
 });
 

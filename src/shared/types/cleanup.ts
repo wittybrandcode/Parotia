@@ -1,5 +1,4 @@
 import type { ElementReference, ElementSnapshot } from "./element";
-import type { ConfidenceLevel } from "./extraction";
 
 export type CleanupAction = "DELETE" | "HIDE" | "KEEP";
 
@@ -15,16 +14,6 @@ export type CleanupCategory =
   | "NAVIGATION"
   | "PROMOTION"
   | "OTHER";
-
-/** An editorial intent, expressed before it becomes a mutation. */
-export interface CleanupIntent {
-  id: string;
-  action: CleanupAction;
-  target: ElementReference;
-  source: CleanupSource;
-  confidence?: ConfidenceLevel;
-  reason?: string;
-}
 
 /** Reusable rule. A rule resolves against the CURRENT DOM every time it runs. */
 export interface CleanupRule {

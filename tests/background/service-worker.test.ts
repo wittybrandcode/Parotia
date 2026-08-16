@@ -288,7 +288,7 @@ describe("service-worker", () => {
     );
     const data = res.data as { success?: boolean; filename?: string };
     expect(data.success).toBe(true);
-    expect(data.filename).toMatch(/^parotia-\d{4}-\d{2}-\d{2}T/);
+    expect(data.filename).toMatch(/^parotia-article-\d{8}-\d{6}\.png$/);
   });
 
   it("requests the downloads permission and rejects gracefully when it is denied", async () => {

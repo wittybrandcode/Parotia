@@ -24,8 +24,7 @@
       "@presets/*": ["src/presets/*"],
       "@content/*": ["src/content/*"],
       "@background/*": ["src/background/*"],
-      "@ui/*": ["src/ui/*"],
-      "@capture/*": ["src/capture/*"]
+      "@ui/*": ["src/ui/*"]
     }
   },
   "include": ["src", "tests", "vite.config.ts", "vitest.config.ts"],

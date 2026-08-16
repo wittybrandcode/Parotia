@@ -19,7 +19,6 @@ export default defineConfig({
       "@content": path.join(dir, "src/content"),
       "@background": path.join(dir, "src/background"),
       "@ui": path.join(dir, "src/ui"),
-      "@capture": path.join(dir, "src/capture"),
     },
   },
   build: {

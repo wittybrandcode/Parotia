@@ -301,11 +301,6 @@ export class DefaultMutationEngine implements MutationEngine {
 
   private restoreNode(target: ResolvedTarget): void {
     const { parent, nextSibling } = target;
-    // Re-resolve the stored node: if the reference still resolves, we only
-    // need to re-insert it. Otherwise the caller is responsible for full
-    // re-creation from serialized data (future RestoreElementCommand).
-    const existing = document.querySelector(target.element.tagName);
-    void existing;
     if (parent) {
       if (nextSibling && nextSibling.parentNode === parent) {
         parent.insertBefore(target.element, nextSibling);

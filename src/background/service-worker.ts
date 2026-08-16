@@ -1,5 +1,6 @@
 import type { BackgroundCommand, MessageResponse } from "@shared/types";
 import { isBackgroundCommand } from "@shared/types";
+import { sanitizeFilenamePart, timestampPart } from "@shared/utils/filename";
 import { MAX_CANVAS_DIMENSION, exceedsCanvasLimit, planSlices } from "@content/capture/sliceMath";
 
 /**
@@ -291,6 +292,11 @@ async function showToolbar(tabId: number, sessionId: string): Promise<void> {
   }
 }
 
+/** Sanitized page-title basename — can never contain separators or reserved chars. */
+function titleSlug(tab: chrome.tabs.Tab): string {
+  return sanitizeFilenamePart(tab.title ?? "");
+}
+
 /** Captures the currently visible viewport and downloads it as a PNG. */
 async function captureVisibleArea(tabId: number | undefined, command: CaptureCommand): Promise<unknown> {
   if (tabId === undefined) throw new Error("No tab context for command");
@@ -301,7 +307,7 @@ async function captureVisibleArea(tabId: number | undefined, command: CaptureCom
   try {
     await sleep(PAINT_SETTLE_MS);
     const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
-    const filename = `parotia-${timestamp()}.png`;
+    const filename = `parotia-${titleSlug(tab)}-${timestampPart()}.png`;
     const downloaded = await downloadPng(dataUrl, filename);
     if (!downloaded) return { success: false, error: DOWNLOAD_PERMISSION_MESSAGE };
     return { success: true, filename };
@@ -406,7 +412,7 @@ async function captureFullPage(tabId: number | undefined, command: CaptureComman
     }
     await chrome.storage.local.remove(key);
 
-    const filename = `parotia-fullpage-${timestamp()}.png`;
+    const filename = `parotia-fullpage-${titleSlug(tab)}-${timestampPart()}.png`;
     const downloaded = await downloadPng(dataUrl, filename);
     if (!downloaded) return { success: false, error: DOWNLOAD_PERMISSION_MESSAGE, steps };
     steps.push("downloaded");
@@ -584,7 +590,7 @@ async function captureElement(tabId: number | undefined, command: CaptureCommand
     }
     await chrome.storage.local.remove(key);
 
-    const filename = `parotia-element-${timestamp()}.png`;
+    const filename = `parotia-element-${titleSlug(tab)}-${timestampPart()}.png`;
     const downloaded = await downloadPng(cropped, filename);
     if (!downloaded) return { success: false, error: DOWNLOAD_PERMISSION_MESSAGE, steps };
     steps.push("downloaded");
@@ -626,10 +632,6 @@ async function scrollTab(tabId: number, y: number): Promise<void> {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function timestamp(): string {
-  return new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 }
 
 async function routeToTab(tabId: number | undefined, command: BackgroundCommand) {

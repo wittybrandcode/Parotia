@@ -1,10 +1,3 @@
-/** Namespaced storage keys (avoid generic keys like `settings`, `data`, `config`). */
-export const STORAGE_KEYS = {
-  settings: "newsclean.settings",
-  presets: "newsclean.presets",
-  schemaVersion: "newsclean.schemaVersion",
-} as const;
-
 /** Current persistent schema version. Bump on breaking schema changes. */
 export const SCHEMA_VERSION = 1;
 

@@ -1,6 +1,5 @@
 import { z } from "zod";
-import type { SitePreset, UserSettings } from "@shared/types";
-import { SCHEMA_VERSION } from "@shared/constants";
+import type { SitePreset } from "@shared/types";
 
 /**
  * Runtime schemas for persistent entities. Everything loaded from storage is
@@ -152,51 +151,5 @@ function clean(value: Record<string, unknown>): Record<string, unknown> {
   return result;
 }
 
-export const ToolbarSettingsSchema = z.object({
-  position: z.enum(["TOP_CENTER", "TOP_RIGHT", "TOP_LEFT"]),
-  compact: z.boolean(),
-});
-
-export const CaptureSettingsSchema = z.object({
-  defaultMode: z.enum(["VISIBLE", "FULL_PAGE", "ELEMENT"]).optional(),
-  respectDevicePixelRatio: z.boolean(),
-});
-
-export const BehaviorSettingsSchema = z.object({
-  showPresetSuggestions: z.boolean(),
-  confirmBulkCleanup: z.boolean(),
-  showOnboarding: z.boolean(),
-});
-
-export const UserSettingsSchema = z.object({
-  language: z.enum(["ar", "fr", "en"]),
-  toolbar: ToolbarSettingsSchema,
-  capture: CaptureSettingsSchema,
-  behavior: BehaviorSettingsSchema,
-});
-
-export type UserSettingsDTO = z.infer<typeof UserSettingsSchema>;
-
-/** Domain-shape normalization for validated settings (see normalizePreset). */
-export function normalizeSettings(input: UserSettingsDTO): UserSettings {
-  const out: Record<string, unknown> = { ...clean(input) };
-  if (out.toolbar && typeof out.toolbar === "object") {
-    out.toolbar = clean(out.toolbar as Record<string, unknown>);
-  }
-  if (out.capture && typeof out.capture === "object") {
-    out.capture = clean(out.capture as Record<string, unknown>);
-  }
-  if (out.behavior && typeof out.behavior === "object") {
-    out.behavior = clean(out.behavior as Record<string, unknown>);
-  }
-  return out as unknown as UserSettings;
-}
-
 /** The stored preset map shape under `newsclean.presets`. */
 export const StoredPresetsSchema = z.record(z.string(), SitePresetSchema);
-
-export function requireSchemaVersion(value: unknown): number {
-  if (typeof value !== "object" || value === null) return SCHEMA_VERSION;
-  const v = (value as { schemaVersion?: unknown }).schemaVersion;
-  return typeof v === "number" && Number.isInteger(v) && v > 0 ? v : SCHEMA_VERSION;
-}

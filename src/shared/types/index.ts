@@ -7,7 +7,5 @@ export * from "./freeze";
 export * from "./inspection";
 export * from "./preset";
 export * from "./capture";
-export * from "./settings";
 export * from "./session";
-export * from "./events";
 export * from "./messages";

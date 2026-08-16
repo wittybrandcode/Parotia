@@ -36,11 +36,11 @@
 | 1 | تثبيت الاختبارات | سدّ الفجوات الحرجة (SW/content/UI) | 🟢 | `[8/8] ██████████` |
 | 2 | إصلاحات وظيفية | إصلاح الخلل الوظيفي في الحماية والرسائل | 🟢 | `[6/6] ██████████` |
 | 3 | الأمان والصلاحيات | ترشيد الصلاحيات + توحيد الإصدارات | 🟢 | `[4/4] ██████████` |
-| 4 | إزالة الكود الميت | تنظيف وتبسيط الأسس | 🔴 | `[0/7] ░░░░░░░░░░` |
+| 4 | إزالة الكود الميت | تنظيف وتبسيط الأسس | 🟢 | `[7/7] ██████████` |
 | 5 | الأدوات والبنية | تفعيل E2E/التغطية + تحسينات UX | 🔴 | `[0/3] ░░░░░░░░░░` |
 | 6 | التوثيق والتحكّم | تحديث README/ROADMAP + commit نهائي | 🔴 | `[0/4] ░░░░░░░░░░` |
 | 7 | التقاط الحيّز الحر | تحديد أي مكوّن HTML بمربع الماوس وتصويره مباشرة | 🔴 | `[0/7] ░░░░░░░░░░` |
-| | **الإجمالي** | | 🟢 | `[19/40] ████░░░░░░` |
+| | **الإجمالي** | | 🟢 | `[26/40] █████░░░░░` |
 
 > عند إغلاق أي مهمة يُحدَّث الرقم والرقم العشري والنسبة المئوية في هذه اللوحة.
 
@@ -108,13 +108,13 @@
 
 | # | المهمة | الحالة | الملفات المتأثرة | معايير القبول |
 |---|---|---|---|---|
-| 4.1 | توحيد مساري تطبيق القواعد: استخدام `cleanupEngine.applyPreset` والاستغناء عن `DefaultPresetEngine`/`buildCleanupIntents` | 🔴 | `src/presets/engine.ts` · `src/content/index.ts` | مسار واحد للتطبيق؛ اختبارات القواعد خضراء |
-| 4.2 | حسم مصير `InMemorySessionStore` (توصيله بالـ SW أو حذفه مع اختباره) | 🔴 | `src/storage/sessionStore.ts` · `tests/storage/sessionStore.test.ts` | لا كود ميت في `src` |
-| 4.3 | حسم مصير `UserSettings`/`ChromeStorageSettingsRepository` (بناء شاشة إعدادات أو الحذف) | 🔴 | `src/shared/types/settings.ts` · `src/storage/chromeStorageRepositories.ts` | لا أنواع بلا استهلاك |
-| 4.4 | حسم مصير `EventBus` (تنفيذ بسيط أو إزالة العقد) | 🔴 | `src/shared/types/events.ts` | لا واجهات بلا تنفيذ |
-| 4.5 | حذف الاسم المستعار الميت `@capture` من vite/tsconfig/vitest | 🔴 | `vite.config.ts` · `tsconfig.json` · `vitest.config.ts` | إزالة التوجيه من الملفات الثلاثة |
-| 4.6 | حذف الكود الميت داخل `restoreNode` + `elementId()` غير المستخدمة | 🔴 | `src/content/mutation/mutationEngine.ts` · `src/shared/utils/id.ts` | نظافة صفرية للاستعلامات الميتة |
-| 4.7 | توظيف `buildCaptureFilename`/`sanitizeFilenamePart` في أسماء ملفات الالتقاط (أو حذفهما) | 🔴 | `src/background/service-worker.ts` · `src/shared/utils/filename.ts` | أسماء ملفات منظَّفة/متسقة + اختبارات filename (من 1.7) |
+| 4.1 | توحيد مساري تطبيق القواعد: استخدام `cleanupEngine.applyPreset` والاستغناء عن `DefaultPresetEngine`/`buildCleanupIntents` | 🟢 | `src/presets/engine.ts` (محذوف) · `src/shared/types/cleanup.ts` · `src/shared/types/preset.ts` | مسار واحد للتطبيق؛ حُذف `CleanupIntent` و`PresetApplicationResult`؛ اختبارات القواعد خضراء |
+| 4.2 | حسم مصير `InMemorySessionStore` (توصيله بالـ SW أو حذفه مع اختباره) | 🟢 | `src/storage/sessionStore.ts` (محذوف) · `tests/storage/sessionStore.test.ts` (محذوف) | لا كود ميت في `src` — الـ SW يحتفظ بخريطته `tabSessions` الخاصة |
+| 4.3 | حسم مصير `UserSettings`/`ChromeStorageSettingsRepository` (بناء شاشة إعدادات أو الحذف) | 🟢 | `src/shared/types/settings.ts` (محذوف) · `src/storage/chromeStorageRepositories.ts` · `src/storage/repository.ts` · `src/storage/schema.ts` | لا أنواع بلا استهلاك — حُذف كل عقد الإعدادات والـ schema الميت (`STORAGE_KEYS` أيضاً) |
+| 4.4 | حسم مصير `EventBus` (تنفيذ بسيط أو إزالة العقد) | 🟢 | `src/shared/types/events.ts` (محذوف) | لا واجهات بلا تنفيذ — حُذفت مع re-exports من `types/index.ts` |
+| 4.5 | حذف الاسم المستعار الميت `@capture` من vite/tsconfig/vitest | 🟢 | `vite.config.ts` · `tsconfig.json` · `vitest.config.ts` · `scripts/build-esm.mjs` | إزالة التوجيه من الملفات الأربعة (منها `build-esm.mjs` غير المذكور في الخطة) |
+| 4.6 | حذف الكود الميت داخل `restoreNode` + `elementId()` غير المستخدمة | 🟢 | `src/content/mutation/mutationEngine.ts` · `src/shared/utils/id.ts` · `tests/shared/id.test.ts` | نظافة صفرية للاستعلامات الميتة |
+| 4.7 | توظيف `buildCaptureFilename`/`sanitizeFilenamePart` في أسماء ملفات الالتقاط (أو حذفهما) | 🟢 | `src/background/service-worker.ts` · `src/shared/utils/filename.ts` · `tests/shared/utils/filename.test.ts` | أسماء `parotia-<title>-<YYYYMMDD>-<HHmmss>.png` عبر `titleSlug()` (`sanitizeFilenamePart` + `timestampPart`)؛ حُذف `buildCaptureFilename` و`timestamp()` المحلية؛ regex اختبار الالتقاط مُحدَّث |
 
 ---
 
@@ -171,6 +171,7 @@
 | 2026-08-16 | 2 | إغلاق المرحلة 2 (6/6): 16 اختباراً جديداً (239 إجمالاً) — 2.1/2.2 Keep تاريخي عبر `Command.keptElement` + `peekRedo()` مع تنظيف `reset()` للعلامات؛ 2.3 عازلة `INVALID_PAYLOAD` في SW + content (صحة sessionId/elementId/mode)؛ 2.4 استعادة الجلسة بعد إعادة تشغيل SW عبر إعادة تسجيل START_SESSION وإعادة توجيه الأمر بالمعرّف الطازج؛ 2.5 SW يعكس `message.id`؛ 2.6 إصلاح دلالة `mutationObserverBlocked` (صحيح فقط عند حجب فعل الـ observer) + عدّ `animationCount`/`transitionCount` + حالة degraded عند تعذّر التثبيت. بوابة خضراء كاملة | 🟢 |
 | 2026-08-16 | 0 | إغلاق المرحلة 0 (1/1): أول commit `9e34ca9` (127 ملفاً) بهوية `most.toufik@gmail.com` + remote `origin` = `https://github.com/wittybrandcode/Parotia.git` | 🟢 |
 | 2026-08-16 | 3 | إغلاق المرحلة 3 (4/4): 3 اختبارات جديدة (242 إجمالاً) — 3.1 إزالة `tabs` و`host_permissions` وتضييق WAF إلى `http/https` (الاعتماد على `activeTab` لـ captureVisibleTab/executeScript)؛ 3.2 `downloads` في `optional_permissions` مع `ensureDownloadsPermission` (`permissions.contains`/`request`) ورفض رشيق عند عدم الموافقة في مسارات الالتقاط الثلاثة؛ 3.3 توحيد الإصدار `0.2.0` (يُقرأ من `package.json` في `build-manifest.mjs`) + حذف `public/manifest.json` + تحديث `package-lock.json`؛ 3.4 `targetOrigin` = أصل الامتداد في `broadcastState` + RESIZE نحو أصل الصفحة، ورفض STATE من غير `window.parent` ورفض RESIZE من غير إطار الشريط/أصل الامتداد (اختبارات App + overlay). بوابة خضراء كاملة | 🟢 |
+| 2026-08-16 | 4 | إغلاق المرحلة 4 (7/7): حذف 6 ملفات (engine + sessionStore + settings + events مع اختباراتهما) — 4.1 مسار تطبيق واحد عبر `cleanupEngine.applyPreset` (حذف `src/presets/engine.ts` + `tests/presets/engine.test.ts` مع `CleanupIntent`/`PresetApplicationResult`)؛ 4.2 حذف `InMemorySessionStore` (خريطة `tabSessions` في SW تكفي)؛ 4.3 حذف كامل عقد الإعدادات (`UserSettings`/`SettingsRepository`/`ChromeStorageSettingsRepository` + مخططاتها و`requireSchemaVersion` و`STORAGE_KEYS`)؛ 4.4 حذف `EventBus`؛ 4.5 حذف `@capture` من vite/vitest/tsconfig/build-esm؛ 4.6 إزالة كود `restoreNode` الميت + `elementId()`؛ 4.7 أسماء ملفات الالتقاط = `parotia-<title>-<timestamp>` عبر `sanitizeFilenamePart`+`timestampPart` (حذف `buildCaptureFilename` و`timestamp()` المحلية). البوابة خضراء كاملة (228 اختباراً/25 ملفاً) | 🟢 |
 
 > أضِف سطراً عند إغلاق كل مهمة مع تحديث لوحة المتابعة §2.
 
@@ -179,7 +180,7 @@
 ## 5. ملاحظات على القرارات المعلّقة
 
 - **0.1 / 6.4 (git commit):** قرارك — يُنفَّذ فقط عند الموافقة الصريحة.
-- **4.2 / 4.3 / 4.4 / 5.1:** تبنّي قرار "توصيل أو حذف" عند الوصول إليها (لا يُترك كود ميت).
+- **4.2 / 4.3 / 4.4 (حُسمت):** طُبِّق قرار "حذف" — أُزيل `InMemorySessionStore` (خريطة `tabSessions` في SW هي المصدر)، وكل عقد الإعدادات (`UserSettings`/`SettingsRepository`/`ChromeStorageSettingsRepository`) مع `EventBus`؛ شاشة الإعدادات تُبنى لاحقاً عند الحاجة كأمر جديد وليس ككود ميت.
 - **3.1:** أُزيلت `tabs` و`host_permissions` (استخدامات `chrome.tabs.*` الحالية لا تتطلب `tabs`؛ `captureVisibleTab` و`scripting` تعملان عبر `activeTab` الممنوح عند تفعيل المستخدم، والشريط المضمَّن يعني أن content script موجودة أصلاً). الفحص اليدوي على الصفحات التجريبية (CNN/BBC/Al Jazeera) غير ممكن في بيئة التنفيذ — القرار موثَّق أعلاه والضمانة البوابة الآلية + الاختبارات.
 - **7.x (ميزة جديدة):** المرحلة 7 وظيفية (وليس إصلاحاً) وتُدرج كملحق بعد 6؛ النسخة الأولى تقصّ الحيّز ضمن نطاق الـ viewport (المربع داخل الشاشة المعروضة) — مدّه ليشمل الصفحة كاملة أو العنصر المخفي قابل للإضافة لاحقاً. تعتمد على `captureVisibleTab` كبقية الالتقاطات (تتطلب تجميداً أو إخفاء الواجهة مؤقتاً).
 - **ترتيب التنفيذ المقترح:** 0 → 1 → 2 (فورية) ثم 3 → 4 → 5 ثم 6 → 7 (الميزة الجديدة).

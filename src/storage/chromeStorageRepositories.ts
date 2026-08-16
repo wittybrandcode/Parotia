@@ -1,18 +1,9 @@
-import type { SitePreset, UserSettings } from "@shared/types";
-import type { PresetRepository, SettingsRepository } from "./repository";
-import {
-  SitePresetSchema,
-  StoredPresetsSchema,
-  UserSettingsSchema,
-  normalizePreset,
-  normalizeSettings,
-  requireSchemaVersion,
-} from "./schema";
+import type { SitePreset } from "@shared/types";
+import type { PresetRepository } from "./repository";
+import { SitePresetSchema, StoredPresetsSchema, normalizePreset } from "./schema";
 
 const KEYS = {
-  settings: "newsclean.settings",
   presets: "newsclean.presets",
-  schemaVersion: "newsclean.schemaVersion",
 } as const;
 
 /**
@@ -56,32 +47,4 @@ export class ChromeStoragePresetRepository implements PresetRepository {
     delete current[id];
     await chrome.storage.local.set({ [KEYS.presets]: current });
   }
-}
-
-export class ChromeStorageSettingsRepository implements SettingsRepository {
-  async get(): Promise<UserSettings> {
-    const store = await chrome.storage.local.get(KEYS.settings);
-    const raw = store[KEYS.settings];
-    if (raw === undefined) throw new Error("Settings not initialized");
-    const parsed = UserSettingsSchema.safeParse(raw);
-    if (!parsed.success) throw new Error("Settings validation failed");
-    return normalizeSettings(parsed.data);
-  }
-
-  async save(settings: UserSettings): Promise<void> {
-    const parsed = UserSettingsSchema.safeParse(settings);
-    if (!parsed.success) {
-      throw new Error("Settings validation failed before save");
-    }
-    await chrome.storage.local.set({ [KEYS.settings]: parsed.data });
-  }
-}
-
-export async function getStoredSchemaVersion(): Promise<number> {
-  const store = await chrome.storage.local.get(KEYS.schemaVersion);
-  return requireSchemaVersion(store[KEYS.schemaVersion]);
-}
-
-export async function setStoredSchemaVersion(version: number): Promise<void> {
-  await chrome.storage.local.set({ [KEYS.schemaVersion]: version });
 }
