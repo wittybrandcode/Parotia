@@ -289,6 +289,11 @@ describe("service-worker", () => {
     const data = res.data as { success?: boolean; filename?: string };
     expect(data.success).toBe(true);
     expect(data.filename).toMatch(/^parotia-article-\d{8}-\d{6}\.png$/);
+    // Live progress is pushed to the toolbar during the capture.
+    expect(chromeStub.tabs.sendMessage).toHaveBeenCalledWith(
+      3,
+      expect.objectContaining({ type: "CAPTURE_PROGRESS", payload: expect.objectContaining({ sessionId: "sess-c" }) }),
+    );
   });
 
   it("requests the downloads permission and rejects gracefully when it is denied", async () => {
@@ -352,6 +357,21 @@ describe("service-worker", () => {
       expect.arrayContaining(["measured 1000px", "captured 1 slices", "assembled", "downloaded"]),
     );
     expect(data.filename).toMatch(/^parotia-fullpage-/);
+    // Progress phases are reported through the whole full-page pipeline.
+    expect(chromeStub.tabs.sendMessage).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({
+        type: "CAPTURE_PROGRESS",
+        payload: expect.objectContaining({ progress: expect.objectContaining({ phase: "RENDERING", current: 1, total: 1 }) }),
+      }),
+    );
+    expect(chromeStub.tabs.sendMessage).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({
+        type: "CAPTURE_PROGRESS",
+        payload: expect.objectContaining({ progress: expect.objectContaining({ phase: "STITCHING" }) }),
+      }),
+    );
     expect(chromeStub.storage.local.remove).toHaveBeenCalledWith("capture:sess-f");
   });
 

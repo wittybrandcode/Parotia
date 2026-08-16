@@ -164,6 +164,30 @@ describe("content/index command pipeline", () => {
     expect(response).toBeNull();
   });
 
+  it("relays CAPTURE_PROGRESS notifications to the toolbar iframe", async () => {
+    const sessionId = await startSession();
+    const frame = document
+      .querySelector<HTMLElement>("#__newsclean__")
+      ?.shadowRoot?.querySelector<HTMLIFrameElement>("iframe[data-newsclean-frame]");
+    expect(frame).not.toBeNull();
+    if (!frame?.contentWindow) return;
+
+    const postMessage = vi.spyOn(frame.contentWindow, "postMessage");
+    await invokeOnMessage({
+      type: "CAPTURE_PROGRESS",
+      payload: { sessionId, progress: { current: 1, total: 2, phase: "RENDERING" } },
+    });
+
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "newsclean-content",
+        type: "PROGRESS",
+        progress: { current: 1, total: 2, phase: "RENDERING" },
+      }),
+      expect.any(String),
+    );
+  });
+
   it("answers PING synchronously with the injected flag", async () => {
     stubEmptyStorage();
     const { response } = await invokeOnMessage({ type: "PING", payload: {} });

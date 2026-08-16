@@ -44,6 +44,17 @@ function broadcast(state: ToolbarState) {
   );
 }
 
+/** Mirrors the content-script CAPTURE_PROGRESS relay the toolbar listens for. */
+function broadcastProgress(progress: { current: number; total: number; phase: string }) {
+  window.dispatchEvent(
+    new MessageEvent("message", {
+      data: { source: "newsclean-content", type: "PROGRESS", progress },
+      source: window.parent,
+      origin: "https://page.example",
+    }),
+  );
+}
+
 /** Installs a chrome.runtime.sendMessage handler that calls back synchronously. */
 function installSendMessage(
   handler: (message: { type: string; payload?: unknown }) => unknown,
@@ -140,6 +151,40 @@ describe("ui toolbar App", () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(screen.getByText("UNFROZEN")).toBeInTheDocument();
     expect(screen.queryByText("FROZEN")).not.toBeInTheDocument();
+  });
+
+  it("shows live capture progress and keeps it while STATE broadcasts arrive mid-capture", async () => {
+    installSendMessage(statefulHandler);
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("UNFROZEN")).toBeInTheDocument());
+
+    broadcastProgress({ current: 2, total: 4, phase: "RENDERING" });
+    await waitFor(() => expect(screen.getByText("Capture rendering 2/4 (50%)")).toBeInTheDocument());
+
+    // A STATE arriving mid-capture (e.g. the PREPARE_CAPTURE broadcast) must
+    // not clear the live progress feedback.
+    broadcast(frozenState);
+    await waitFor(() => expect(screen.getByText("FROZEN")).toBeInTheDocument());
+    expect(screen.getByText("Capture rendering 2/4 (50%)")).toBeInTheDocument();
+  });
+
+  it("clears stale capture feedback once a fresh STATE arrives after the capture settles", async () => {
+    installSendMessage(statefulHandler);
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("UNFROZEN")).toBeInTheDocument());
+
+    broadcastProgress({ current: 4, total: 4, phase: "ENCODING" });
+    await waitFor(() => expect(screen.getByText("Capture encoding 4/4 (100%)")).toBeInTheDocument());
+
+    // The capture resolves (feedback "Saved: …", capturing ends).
+    fireEvent.click(screen.getByRole("button", { name: "Capture" }));
+    await waitFor(() => expect(screen.getByText(/Saved: /)).toBeInTheDocument());
+
+    // Any later operation's STATE clears the stale capture message.
+    broadcast(frozenState);
+    await waitFor(() => expect(screen.queryByText(/Saved: /)).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText(/Capture encoding/)).not.toBeInTheDocument());
+    expect(screen.getByText("Removed 3 elements")).toBeInTheDocument();
   });
 
   it("sends CAPTURE in FULL_PAGE mode", async () => {

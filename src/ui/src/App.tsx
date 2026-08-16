@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type {
   ActionLogEntry,
   BackgroundCommand,
+  CaptureProgress,
   CleanupState,
   FreezeState,
 } from "@shared/types";
@@ -45,6 +46,7 @@ interface ContentBroadcast {
   source?: string;
   type?: string;
   state?: ToolbarState;
+  progress?: CaptureProgress;
 }
 
 type StateResponse = { success?: boolean; data?: ToolbarState | null };
@@ -107,6 +109,12 @@ function relativeTime(at: number): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+/** Live capture status, e.g. "Capture rendering 3/5 (60%)". */
+function progressLabel(progress: CaptureProgress): string {
+  const pct = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
+  return `Capture ${progress.phase.toLowerCase()} ${progress.current}/${progress.total} (${pct}%)`;
+}
+
 export function App() {
   const [state, setState] = useState<ToolbarState>({
     sessionId: null,
@@ -121,6 +129,9 @@ export function App() {
   const [inspecting, setInspecting] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
+  // While a capture is in flight, STATE broadcasts must not clear the live
+  // progress feedback; once it ends, the next STATE clears the stale message.
+  const capturingRef = useRef(false);
 
   const applyState = useCallback((next: ToolbarState | null | undefined) => {
     if (!next) return;
@@ -160,6 +171,7 @@ export function App() {
         applyState(stateRes?.data);
         return data;
       } finally {
+        if (command.type === "CAPTURE") capturingRef.current = false;
         setBusy(false);
       }
     },
@@ -173,8 +185,21 @@ export function App() {
       // arriving from an external window is spoofed and ignored.
       if (event.source !== window.parent) return;
       const broadcast = event.data;
-      if (broadcast?.source !== "newsclean-content" || broadcast.type !== "STATE") return;
-      applyState(broadcast.state);
+      if (broadcast?.source !== "newsclean-content") return;
+      if (broadcast.type === "PROGRESS") {
+        if (!broadcast.progress) return;
+        // A capture started: show live progress and keep STATE broadcasts
+        // from clearing it until the capture resolves.
+        capturingRef.current = true;
+        setFeedback({ ok: true, text: progressLabel(broadcast.progress) });
+        return;
+      }
+      if (broadcast.type === "STATE") {
+        // A fresh state means a new operation settled — clear stale feedback
+        // (e.g. the previous capture's "Saved" message) unless still capturing.
+        if (!capturingRef.current) setFeedback(null);
+        applyState(broadcast.state);
+      }
     };
     window.addEventListener("message", onMessage);
 

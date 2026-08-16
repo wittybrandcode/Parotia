@@ -1,4 +1,5 @@
 import type { FreezeStrategy } from "./freeze";
+import type { CaptureProgress } from "./capture";
 
 /**
  * Extension message contracts. Messages are typed discriminated unions with a
@@ -89,6 +90,16 @@ export function isBackgroundCommand(value: unknown): value is BackgroundCommand 
   if (typeof value !== "object" || value === null) return false;
   const v = value as { type?: unknown };
   return typeof v.type === "string" && (BACKGROUND_COMMAND_TYPES as readonly string[]).includes(v.type);
+}
+
+/** Push notifications from the Service Worker to the content script (never commands). */
+export type BackgroundNotification =
+  | { type: "CAPTURE_PROGRESS"; payload: { sessionId: string; progress: CaptureProgress } };
+
+export function isBackgroundNotification(value: unknown): value is BackgroundNotification {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as { type?: unknown };
+  return v.type === "CAPTURE_PROGRESS";
 }
 
 export type CommandErrorCode =

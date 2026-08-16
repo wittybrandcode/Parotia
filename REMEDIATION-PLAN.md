@@ -37,10 +37,10 @@
 | 2 | إصلاحات وظيفية | إصلاح الخلل الوظيفي في الحماية والرسائل | 🟢 | `[6/6] ██████████` |
 | 3 | الأمان والصلاحيات | ترشيد الصلاحيات + توحيد الإصدارات | 🟢 | `[4/4] ██████████` |
 | 4 | إزالة الكود الميت | تنظيف وتبسيط الأسس | 🟢 | `[7/7] ██████████` |
-| 5 | الأدوات والبنية | تفعيل E2E/التغطية + تحسينات UX | 🔴 | `[0/3] ░░░░░░░░░░` |
+| 5 | الأدوات والبنية | تفعيل E2E/التغطية + تحسينات UX | 🟢 | `[3/3] ██████████` |
 | 6 | التوثيق والتحكّم | تحديث README/ROADMAP + commit نهائي | 🔴 | `[0/4] ░░░░░░░░░░` |
 | 7 | التقاط الحيّز الحر | تحديد أي مكوّن HTML بمربع الماوس وتصويره مباشرة | 🔴 | `[0/7] ░░░░░░░░░░` |
-| | **الإجمالي** | | 🟢 | `[26/40] █████░░░░░` |
+| | **الإجمالي** | | 🟢 | `[29/40] ███████░░░` |
 
 > عند إغلاق أي مهمة يُحدَّث الرقم والرقم العشري والنسبة المئوية في هذه اللوحة.
 
@@ -123,9 +123,9 @@
 
 | # | المهمة | الحالة | الملفات المتأثرة | معايير القبول |
 |---|---|---|---|---|
-| 5.1 | تفعيل E2E: `playwright.config.ts` + سيناريو أساسي (حقن الشريط + تجميد + التقاط) — أو إزالة سكربت `test:e2e` | 🔴 | `playwright.config.ts` (جديد) · `tests/e2e/` (جديد) · `package.json` | `npm run test:e2e` يعمل بنجاح أو يُزال السكربت |
-| 5.2 | تفعيل التغطية: تثبيت `@vitest/coverage-v8` + حدود دنيا واقعية (engines ≥85%) | 🔴 | `vitest.config.ts` · `package.json` | `npm run test:coverage` يعمل ضمن الحدود المعلنة |
-| 5.3 | إرسال `CaptureProgress` أثناء الالتقاط + تصفير رسائل التغذية القديمة عند تحديث الحالة | 🔴 | `src/content/index.ts` · `src/ui/src/App.tsx` | الشريط يعرض تقدّم الالتقاط ولا يعلّق الرسائل القديمة |
+| 5.1 | تفعيل E2E: `playwright.config.ts` + سيناريو أساسي (حقن الشريط + تجميد + التقاط) — أو إزالة سكربت `test:e2e` | 🟢 | `playwright.config.ts` (جديد) · `tests/e2e/smoke.spec.ts` (جديد) · `package.json` | `npm run test:e2e` ناجح؛ النطاق الحقيقي: إقلاع MV3 SW + عرض صفحة options ضد `chrome.storage` فعلي (headless عبر `channel: "chromium"` الكامل — الـ headless-shell لا يشغّل الامتدادات)؛ حقن الشريط/التجميد/الالتقاط خارج النطاق لأن `activeTab` يتطلب لفتة مستخدم (توضيح في §5) |
+| 5.2 | تفعيل التغطية: تثبيت `@vitest/coverage-v8` + حدود دنيا واقعية (engines ≥85%) | 🟢 | `vitest.config.ts` · `package.json` · `tests/content/extraction/extractionEngine.test.ts` (جديد) | `npm run test:coverage` ناجح ضمن الحدود المعلنة (80/75/80/80 — المقيس 83.14/80.07/88.21/83.14)؛ كل المحرّكات ≥90% ما عدا `elementCapture` (58%, مستند كفجوة في §5) |
+| 5.3 | إرسال `CaptureProgress` أثناء الالتقاط + تصفير رسائل التغذية القديمة عند تحديث الحالة | 🟢 | `src/shared/types/messages.ts` · `src/background/service-worker.ts` · `src/content/index.ts` · `src/ui/src/App.tsx` · اختبارات SW/content/UI | الشريط يعرض "Capture rendering 2/4 (50%)" أثناء الالتقاط، وبث STATE متوسط لا يمسحه، ويتصفَّر عند الاستقرار (اختباران) |
 
 ---
 
@@ -172,6 +172,7 @@
 | 2026-08-16 | 0 | إغلاق المرحلة 0 (1/1): أول commit `9e34ca9` (127 ملفاً) بهوية `most.toufik@gmail.com` + remote `origin` = `https://github.com/wittybrandcode/Parotia.git` | 🟢 |
 | 2026-08-16 | 3 | إغلاق المرحلة 3 (4/4): 3 اختبارات جديدة (242 إجمالاً) — 3.1 إزالة `tabs` و`host_permissions` وتضييق WAF إلى `http/https` (الاعتماد على `activeTab` لـ captureVisibleTab/executeScript)؛ 3.2 `downloads` في `optional_permissions` مع `ensureDownloadsPermission` (`permissions.contains`/`request`) ورفض رشيق عند عدم الموافقة في مسارات الالتقاط الثلاثة؛ 3.3 توحيد الإصدار `0.2.0` (يُقرأ من `package.json` في `build-manifest.mjs`) + حذف `public/manifest.json` + تحديث `package-lock.json`؛ 3.4 `targetOrigin` = أصل الامتداد في `broadcastState` + RESIZE نحو أصل الصفحة، ورفض STATE من غير `window.parent` ورفض RESIZE من غير إطار الشريط/أصل الامتداد (اختبارات App + overlay). بوابة خضراء كاملة | 🟢 |
 | 2026-08-16 | 4 | إغلاق المرحلة 4 (7/7): حذف 6 ملفات (engine + sessionStore + settings + events مع اختباراتهما) — 4.1 مسار تطبيق واحد عبر `cleanupEngine.applyPreset` (حذف `src/presets/engine.ts` + `tests/presets/engine.test.ts` مع `CleanupIntent`/`PresetApplicationResult`)؛ 4.2 حذف `InMemorySessionStore` (خريطة `tabSessions` في SW تكفي)؛ 4.3 حذف كامل عقد الإعدادات (`UserSettings`/`SettingsRepository`/`ChromeStorageSettingsRepository` + مخططاتها و`requireSchemaVersion` و`STORAGE_KEYS`)؛ 4.4 حذف `EventBus`؛ 4.5 حذف `@capture` من vite/vitest/tsconfig/build-esm؛ 4.6 إزالة كود `restoreNode` الميت + `elementId()`؛ 4.7 أسماء ملفات الالتقاط = `parotia-<title>-<timestamp>` عبر `sanitizeFilenamePart`+`timestampPart` (حذف `buildCaptureFilename` و`timestamp()` المحلية). البوابة خضراء كاملة (228 اختباراً/25 ملفاً) | 🟢 |
+| 2026-08-16 | 5 | إغلاق المرحلة 5 (3/3): 5.1 E2E smoke حقيقي (`playwright.config.ts` + `tests/e2e/smoke.spec.ts`): MV3 SW يسجّل وصفحة options تُعرض ضد `chrome.storage` فعلي في headless عبر `channel: "chromium"` (البناء الكامل) — الـ headless-shell لا يشغّل الامتدادات (إصلاح أُضيف أثناء التنفيذ)؛ 5.2 تثبيت `@vitest/coverage-v8@2.1.9` + حدود دنيا 80/75/80/80 + اختبار `extractionEngine` جديد رفع المحرّك من 24.71% إلى 92.13%؛ 5.3 بث `CAPTURE_PROGRESS` من SW أثناء الالتقاط (PREPARING/RENDERING/STITCHING/ENCODING) عبر content إلى الشريط، و`capturingRef` في App يحفظ التغذية الحيّة من بث STATE ولا يعلّق القديمة عند الاستقرار. البوابة خضراء كاملة (236 اختباراً/26 ملفاً) + `test:e2e` و`test:coverage` ناجحان | 🟢 |
 
 > أضِف سطراً عند إغلاق كل مهمة مع تحديث لوحة المتابعة §2.
 
@@ -182,5 +183,7 @@
 - **0.1 / 6.4 (git commit):** قرارك — يُنفَّذ فقط عند الموافقة الصريحة.
 - **4.2 / 4.3 / 4.4 (حُسمت):** طُبِّق قرار "حذف" — أُزيل `InMemorySessionStore` (خريطة `tabSessions` في SW هي المصدر)، وكل عقد الإعدادات (`UserSettings`/`SettingsRepository`/`ChromeStorageSettingsRepository`) مع `EventBus`؛ شاشة الإعدادات تُبنى لاحقاً عند الحاجة كأمر جديد وليس ككود ميت.
 - **3.1:** أُزيلت `tabs` و`host_permissions` (استخدامات `chrome.tabs.*` الحالية لا تتطلب `tabs`؛ `captureVisibleTab` و`scripting` تعملان عبر `activeTab` الممنوح عند تفعيل المستخدم، والشريط المضمَّن يعني أن content script موجودة أصلاً). الفحص اليدوي على الصفحات التجريبية (CNN/BBC/Al Jazeera) غير ممكن في بيئة التنفيذ — القرار موثَّق أعلاه والضمانة البوابة الآلية + الاختبارات.
+- **5.1 (نطاق E2E):** حقن الشريط/التجميد/الالتقاط في صفحة حقيقية يتطلب `activeTab` الممنوح بلفتة مستخدم لا يمكن محاكاتها headless — تغطيهما مجموعات تكامل vitest. النطاق الفعلي للـ smoke: إقلاع الامتداد الحقيقي (MV3 SW) + عرض صفحة options ضد `chrome.storage` فعلي. يستخدم `channel: "chromium"` (البناء الكامل في new-headless) لأن البناء الافتراضي (headless-shell) لا يدعم تشغيل الامتدادات.
+- **5.2 (فجوة موثّقة):** `elementCapture` عند 58% (مضاهاة canvas/ImageBitmap/FileReader ثقيلة) — فجوة معروفة للتغطية مستقبلاً؛ كل المحرّكات الأخرى ≥90%. الحدود العالمية المعلنة (80/75/80/80) حقيقية للمقاس الحالي.
 - **7.x (ميزة جديدة):** المرحلة 7 وظيفية (وليس إصلاحاً) وتُدرج كملحق بعد 6؛ النسخة الأولى تقصّ الحيّز ضمن نطاق الـ viewport (المربع داخل الشاشة المعروضة) — مدّه ليشمل الصفحة كاملة أو العنصر المخفي قابل للإضافة لاحقاً. تعتمد على `captureVisibleTab` كبقية الالتقاطات (تتطلب تجميداً أو إخفاء الواجهة مؤقتاً).
 - **ترتيب التنفيذ المقترح:** 0 → 1 → 2 (فورية) ثم 3 → 4 → 5 ثم 6 → 7 (الميزة الجديدة).

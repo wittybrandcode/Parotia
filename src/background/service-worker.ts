@@ -1,4 +1,4 @@
-import type { BackgroundCommand, MessageResponse } from "@shared/types";
+import type { BackgroundCommand, BackgroundNotification, CaptureProgress, MessageResponse } from "@shared/types";
 import { isBackgroundCommand } from "@shared/types";
 import { sanitizeFilenamePart, timestampPart } from "@shared/utils/filename";
 import { MAX_CANVAS_DIMENSION, exceedsCanvasLimit, planSlices } from "@content/capture/sliceMath";
@@ -269,6 +269,14 @@ const PAINT_SETTLE_MS = 450;
 
 type CaptureCommand = Extract<BackgroundCommand, { type: "CAPTURE" }>;
 
+/** Pushes live capture progress to the toolbar (SW → content → UI). Best effort. */
+function pushProgress(tabId: number, sessionId: string, progress: CaptureProgress): void {
+  void chrome.tabs.sendMessage(tabId, {
+    type: "CAPTURE_PROGRESS",
+    payload: { sessionId, progress },
+  } satisfies BackgroundNotification);
+}
+
 /** Hides the Parotia toolbar so it never appears in a captured image. */
 async function hideToolbar(tabId: number, sessionId: string): Promise<void> {
   try {
@@ -305,9 +313,12 @@ async function captureVisibleArea(tabId: number | undefined, command: CaptureCom
 
   await hideToolbar(tabId, sessionId);
   try {
+    pushProgress(tabId, sessionId, { current: 0, total: 1, phase: "PREPARING" });
     await sleep(PAINT_SETTLE_MS);
     const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
+    pushProgress(tabId, sessionId, { current: 1, total: 1, phase: "RENDERING" });
     const filename = `parotia-${titleSlug(tab)}-${timestampPart()}.png`;
+    pushProgress(tabId, sessionId, { current: 1, total: 1, phase: "ENCODING" });
     const downloaded = await downloadPng(dataUrl, filename);
     if (!downloaded) return { success: false, error: DOWNLOAD_PERMISSION_MESSAGE };
     return { success: true, filename };
@@ -380,7 +391,8 @@ async function captureFullPage(tabId: number | undefined, command: CaptureComman
 
     const maxScroll = Math.max(0, metrics.pageHeightCss - metrics.viewportHeightCss);
     const scrollYs = planSlices(metrics.pageHeightCss, metrics.viewportHeightCss);
-    for (const y of scrollYs) {
+    pushProgress(tabId, sessionId, { current: 0, total: scrollYs.length, phase: "PREPARING" });
+    for (const [index, y] of scrollYs.entries()) {
       const actualY = await scrollTo(Math.min(y, maxScroll));
       await sleep(PAINT_SETTLE_MS);
       const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
@@ -388,6 +400,7 @@ async function captureFullPage(tabId: number | undefined, command: CaptureComman
         type: "CAPTURE_SLICE",
         payload: { sessionId, dataUrl, scrollYCss: actualY },
       } satisfies BackgroundCommand);
+      pushProgress(tabId, sessionId, { current: index + 1, total: scrollYs.length, phase: "RENDERING" });
     }
     steps.push(`captured ${scrollYs.length} slices`);
 
@@ -403,6 +416,7 @@ async function captureFullPage(tabId: number | undefined, command: CaptureComman
       throw new Error(`Failed to assemble the full-page image${detail ? `: ${detail}` : ""}`);
     }
     steps.push("assembled");
+    pushProgress(tabId, sessionId, { current: scrollYs.length, total: scrollYs.length, phase: "STITCHING" });
 
     const key = `capture:${sessionId}`;
     const stored = await chrome.storage.local.get(key);
@@ -413,6 +427,7 @@ async function captureFullPage(tabId: number | undefined, command: CaptureComman
     await chrome.storage.local.remove(key);
 
     const filename = `parotia-fullpage-${titleSlug(tab)}-${timestampPart()}.png`;
+    pushProgress(tabId, sessionId, { current: scrollYs.length, total: scrollYs.length, phase: "ENCODING" });
     const downloaded = await downloadPng(dataUrl, filename);
     if (!downloaded) return { success: false, error: DOWNLOAD_PERMISSION_MESSAGE, steps };
     steps.push("downloaded");
@@ -558,7 +573,8 @@ async function captureElement(tabId: number | undefined, command: CaptureCommand
     };
 
     const relYs = planSlices(elementHeightCss, viewportHeightCss);
-    for (const rel of relYs) {
+    pushProgress(tabId, sessionId, { current: 0, total: relYs.length, phase: "PREPARING" });
+    for (const [index, rel] of relYs.entries()) {
       const actualY = await scrollTo(elementDocTop + rel);
       await sleep(PAINT_SETTLE_MS);
       const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
@@ -566,6 +582,7 @@ async function captureElement(tabId: number | undefined, command: CaptureCommand
         type: "CAPTURE_ELEMENT_SLICE",
         payload: { sessionId, dataUrl, scrollYCss: actualY },
       } satisfies BackgroundCommand);
+      pushProgress(tabId, sessionId, { current: index + 1, total: relYs.length, phase: "RENDERING" });
     }
     steps.push(`captured ${relYs.length} slice(s)`);
 
@@ -581,6 +598,7 @@ async function captureElement(tabId: number | undefined, command: CaptureCommand
       throw new Error(`Failed to assemble the element image${detail ? `: ${detail}` : ""}`);
     }
     steps.push("assembled");
+    pushProgress(tabId, sessionId, { current: relYs.length, total: relYs.length, phase: "STITCHING" });
 
     const key = `elementcapture:${sessionId}`;
     const stored = await chrome.storage.local.get(key);
@@ -591,6 +609,7 @@ async function captureElement(tabId: number | undefined, command: CaptureCommand
     await chrome.storage.local.remove(key);
 
     const filename = `parotia-element-${titleSlug(tab)}-${timestampPart()}.png`;
+    pushProgress(tabId, sessionId, { current: relYs.length, total: relYs.length, phase: "ENCODING" });
     const downloaded = await downloadPng(cropped, filename);
     if (!downloaded) return { success: false, error: DOWNLOAD_PERMISSION_MESSAGE, steps };
     steps.push("downloaded");

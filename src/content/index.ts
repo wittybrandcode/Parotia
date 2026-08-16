@@ -6,7 +6,7 @@ import type {
   NewsCleanSession,
   SitePreset,
 } from "@shared/types";
-import { isBackgroundCommand } from "@shared/types";
+import { isBackgroundCommand, isBackgroundNotification } from "@shared/types";
 import { SCHEMA_VERSION } from "@shared/constants";
 import { createId } from "@shared/utils/id";
 import { ChromeStoragePresetRepository } from "@storage/chromeStorageRepositories";
@@ -179,6 +179,13 @@ function broadcastState(): void {
   // delivered to the NewsClean toolbar iframe and never to other windows.
   const targetOrigin = new URL(chrome.runtime.getURL("")).origin;
   frame?.contentWindow?.postMessage({ source: "newsclean-content", type: "STATE", state }, targetOrigin);
+}
+
+/** Relays Service Worker progress (capture) to the toolbar iframe. */
+function broadcastProgress(progress: { current: number; total: number; phase: string }): void {
+  const frame = overlay?.shadow.querySelector<HTMLIFrameElement>("iframe[data-newsclean-frame]");
+  const targetOrigin = new URL(chrome.runtime.getURL("")).origin;
+  frame?.contentWindow?.postMessage({ source: "newsclean-content", type: "PROGRESS", progress }, targetOrigin);
 }
 
 function ensureRuntime(): void {
@@ -664,6 +671,14 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
     sendResponse({ id: "", success: true, data: { injected: true } });
     return false;
   }
+  return false;
+});
+
+// Push notifications from the Service Worker (never commands): relay capture
+// progress to the toolbar so it can render live progress instead of a spinner.
+chrome.runtime.onMessage.addListener((message: unknown) => {
+  if (!isBackgroundNotification(message)) return false;
+  broadcastProgress(message.payload.progress);
   return false;
 });
 

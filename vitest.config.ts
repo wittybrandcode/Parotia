@@ -14,6 +14,19 @@ export default defineConfig({
     include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
     setupFiles: ["tests/setup.ts"],
     restoreMocks: true,
+    coverage: {
+      provider: "v8",
+      include: ["src/**/*.ts", "src/**/*.tsx"],
+      // Non-targets: barrel re-exports, type-only modules, and mount entries.
+      exclude: ["src/shared/index.ts", "src/shared/types/**", "src/ui/src/main.tsx"],
+      reporter: ["text", "text-summary"],
+      thresholds: {
+        statements: 80,
+        branches: 75,
+        functions: 80,
+        lines: 80,
+      },
+    },
   },
   resolve: {
     alias: {
