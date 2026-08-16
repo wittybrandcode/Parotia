@@ -35,12 +35,12 @@
 | 0 | التأسيس — نقطة استعادة | أول commit + تنظيم ملفات القرار | 🟢 | `[1/1] ██████████` |
 | 1 | تثبيت الاختبارات | سدّ الفجوات الحرجة (SW/content/UI) | 🟢 | `[8/8] ██████████` |
 | 2 | إصلاحات وظيفية | إصلاح الخلل الوظيفي في الحماية والرسائل | 🟢 | `[6/6] ██████████` |
-| 3 | الأمان والصلاحيات | ترشيد الصلاحيات + توحيد الإصدارات | 🔴 | `[0/4] ░░░░░░░░░░` |
+| 3 | الأمان والصلاحيات | ترشيد الصلاحيات + توحيد الإصدارات | 🟢 | `[4/4] ██████████` |
 | 4 | إزالة الكود الميت | تنظيف وتبسيط الأسس | 🔴 | `[0/7] ░░░░░░░░░░` |
 | 5 | الأدوات والبنية | تفعيل E2E/التغطية + تحسينات UX | 🔴 | `[0/3] ░░░░░░░░░░` |
 | 6 | التوثيق والتحكّم | تحديث README/ROADMAP + commit نهائي | 🔴 | `[0/4] ░░░░░░░░░░` |
 | 7 | التقاط الحيّز الحر | تحديد أي مكوّن HTML بمربع الماوس وتصويره مباشرة | 🔴 | `[0/7] ░░░░░░░░░░` |
-| | **الإجمالي** | | 🟢 | `[15/40] ███░░░░░░░` |
+| | **الإجمالي** | | 🟢 | `[19/40] ████░░░░░░` |
 
 > عند إغلاق أي مهمة يُحدَّث الرقم والرقم العشري والنسبة المئوية في هذه اللوحة.
 
@@ -96,10 +96,10 @@
 
 | # | المهمة | الحالة | الملفات المتأثرة | معايير القبول |
 |---|---|---|---|---|
-| 3.1 | ترشيد الصلاحيات: إزالة `tabs` إن ثبتت عدم الحاجة، ودراسة تقليص `<all_urls>` | 🔴 | `scripts/build-manifest.mjs` | فحص يدوي على كل صفحة تجريبية؛ لا انكسار وظيفي |
-| 3.2 | جعل `downloads` اختيارياً (optional_permissions + طلب عند أول تصدير) | 🔴 | `scripts/build-manifest.mjs` · `src/background/service-worker.ts` | أول تقاط يطلب الإذن ثم يعمل بشكل طبيعي |
-| 3.3 | توحيد الإصدارات + حذف `public/manifest.json` القديم | 🔴 | `package.json` · `scripts/build-manifest.mjs` · `public/manifest.json` · `ROADMAP.md` | إصدار واحد في كل المرجعيات |
-| 3.4 | تشديد `postMessage` بتمرير `targetOrigin` للمصدر (أصل الامتداد) بدل `"*"` | 🔴 | `src/content/index.ts` (broadcastState) · `src/ui/src/App.tsx` | بث STATE لا يُقبل من نوافذ خارجية (اختبار) |
+| 3.1 | ترشيد الصلاحيات: إزالة `tabs` (استخدامات `chrome.tabs.*` لا تتطلبها) + حذف `host_permissions` (الاعتماد على `activeTab`) + تضييق `web_accessible_resources.matches` إلى `http`/`https` | 🟢 | `scripts/build-manifest.mjs` | لا `tabs` ولا `host_permissions` في الـ manifest المولَّد؛ WAF مقصورة على `http/https`؛ البوابة خضراء (الفحص اليدوي على صفحات تجريبية موثَّق تعذّره في البيئة، §5) |
+| 3.2 | جعل `downloads` اختيارياً (optional_permissions + طلب عند أول تصدير) | 🟢 | `scripts/build-manifest.mjs` · `src/background/service-worker.ts` · `tests/background/service-worker.test.ts` | `optional_permissions: ["downloads"]`؛ `downloadPng` تستعلم `chrome.permissions.contains`/`request`؛ عند الرفض يُرجع التقاط `{ success:false, error }` بدل رمي `INTERNAL` (اختبار رفض) |
+| 3.3 | توحيد الإصدارات + حذف `public/manifest.json` القديم | 🟢 | `package.json` · `package-lock.json` · `scripts/build-manifest.mjs` · `public/manifest.json` (محذوف) · `ROADMAP.md` | إصدار واحد `0.2.0` يُقرأ من `package.json` في `build-manifest.mjs`؛ لا `public/manifest.json` |
+| 3.4 | تشديد `postMessage` بتمرير `targetOrigin` للمصدر (أصل الامتداد) بدل `"*"` | 🟢 | `src/content/index.ts` (broadcastState) · `src/ui/src/App.tsx` · `src/content/overlay/overlay.ts` · `src/ui/src/main.tsx` · `tests/ui/app.test.tsx` · `tests/content/overlay/overlay.test.ts` | STATE يُرسل إلى أصل الامتداد فقط ولا يُقبل من نوافذ خارجية (`event.source !== window.parent` → تجاهل، اختبار)؛ RESIZE مقبول فقط من إطار الشريط ومن أصل الامتداد (اختبار) |
 
 ---
 
@@ -170,6 +170,7 @@
 | 2026-08-16 | 1 | إغلاق المرحلة 1 (8/8): 102 اختباراً جديداً (223 إجمالاً)، تثبيت `@testing-library/react` + `@testing-library/jest-dom` + `@vitejs/plugin-react` في vitest، إسكات ضجيج stderr، بوابة خضراء (typecheck/lint/test/build) | 🟢 |
 | 2026-08-16 | 2 | إغلاق المرحلة 2 (6/6): 16 اختباراً جديداً (239 إجمالاً) — 2.1/2.2 Keep تاريخي عبر `Command.keptElement` + `peekRedo()` مع تنظيف `reset()` للعلامات؛ 2.3 عازلة `INVALID_PAYLOAD` في SW + content (صحة sessionId/elementId/mode)؛ 2.4 استعادة الجلسة بعد إعادة تشغيل SW عبر إعادة تسجيل START_SESSION وإعادة توجيه الأمر بالمعرّف الطازج؛ 2.5 SW يعكس `message.id`؛ 2.6 إصلاح دلالة `mutationObserverBlocked` (صحيح فقط عند حجب فعل الـ observer) + عدّ `animationCount`/`transitionCount` + حالة degraded عند تعذّر التثبيت. بوابة خضراء كاملة | 🟢 |
 | 2026-08-16 | 0 | إغلاق المرحلة 0 (1/1): أول commit `9e34ca9` (127 ملفاً) بهوية `most.toufik@gmail.com` + remote `origin` = `https://github.com/wittybrandcode/Parotia.git` | 🟢 |
+| 2026-08-16 | 3 | إغلاق المرحلة 3 (4/4): 3 اختبارات جديدة (242 إجمالاً) — 3.1 إزالة `tabs` و`host_permissions` وتضييق WAF إلى `http/https` (الاعتماد على `activeTab` لـ captureVisibleTab/executeScript)؛ 3.2 `downloads` في `optional_permissions` مع `ensureDownloadsPermission` (`permissions.contains`/`request`) ورفض رشيق عند عدم الموافقة في مسارات الالتقاط الثلاثة؛ 3.3 توحيد الإصدار `0.2.0` (يُقرأ من `package.json` في `build-manifest.mjs`) + حذف `public/manifest.json` + تحديث `package-lock.json`؛ 3.4 `targetOrigin` = أصل الامتداد في `broadcastState` + RESIZE نحو أصل الصفحة، ورفض STATE من غير `window.parent` ورفض RESIZE من غير إطار الشريط/أصل الامتداد (اختبارات App + overlay). بوابة خضراء كاملة | 🟢 |
 
 > أضِف سطراً عند إغلاق كل مهمة مع تحديث لوحة المتابعة §2.
 
@@ -179,6 +180,6 @@
 
 - **0.1 / 6.4 (git commit):** قرارك — يُنفَّذ فقط عند الموافقة الصريحة.
 - **4.2 / 4.3 / 4.4 / 5.1:** تبنّي قرار "توصيل أو حذف" عند الوصول إليها (لا يُترك كود ميت).
-- **3.1:** إزالة `tabs` مشروطة باختبار يدوي على كل الصفحات التجريبية (CNN/BBC/Al Jazeera).
+- **3.1:** أُزيلت `tabs` و`host_permissions` (استخدامات `chrome.tabs.*` الحالية لا تتطلب `tabs`؛ `captureVisibleTab` و`scripting` تعملان عبر `activeTab` الممنوح عند تفعيل المستخدم، والشريط المضمَّن يعني أن content script موجودة أصلاً). الفحص اليدوي على الصفحات التجريبية (CNN/BBC/Al Jazeera) غير ممكن في بيئة التنفيذ — القرار موثَّق أعلاه والضمانة البوابة الآلية + الاختبارات.
 - **7.x (ميزة جديدة):** المرحلة 7 وظيفية (وليس إصلاحاً) وتُدرج كملحق بعد 6؛ النسخة الأولى تقصّ الحيّز ضمن نطاق الـ viewport (المربع داخل الشاشة المعروضة) — مدّه ليشمل الصفحة كاملة أو العنصر المخفي قابل للإضافة لاحقاً. تعتمد على `captureVisibleTab` كبقية الالتقاطات (تتطلب تجميداً أو إخفاء الواجهة مؤقتاً).
 - **ترتيب التنفيذ المقترح:** 0 → 1 → 2 (فورية) ثم 3 → 4 → 5 ثم 6 → 7 (الميزة الجديدة).

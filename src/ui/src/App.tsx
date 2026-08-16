@@ -168,6 +168,10 @@ export function App() {
 
   useEffect(() => {
     const onMessage = (event: MessageEvent<ContentBroadcast>) => {
+      // STATE broadcasts must come from the page that hosts this toolbar
+      // (the content script posts through the page's own window). Anything
+      // arriving from an external window is spoofed and ignored.
+      if (event.source !== window.parent) return;
       const broadcast = event.data;
       if (broadcast?.source !== "newsclean-content" || broadcast.type !== "STATE") return;
       applyState(broadcast.state);

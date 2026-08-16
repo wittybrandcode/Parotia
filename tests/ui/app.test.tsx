@@ -35,7 +35,13 @@ const frozenState: ToolbarState = {
 
 /** Mirrors the content-script STATE broadcast the toolbar listens for. */
 function broadcast(state: ToolbarState) {
-  window.postMessage({ source: "newsclean-content", type: "STATE", state }, "*");
+  window.dispatchEvent(
+    new MessageEvent("message", {
+      data: { source: "newsclean-content", type: "STATE", state },
+      source: window.parent,
+      origin: "https://page.example",
+    }),
+  );
 }
 
 /** Installs a chrome.runtime.sendMessage handler that calls back synchronously. */
@@ -116,6 +122,24 @@ describe("ui toolbar App", () => {
         expect.any(Function),
       ),
     );
+  });
+
+  it("ignores a STATE broadcast that does not come from the hosting page window", async () => {
+    installSendMessage(statefulHandler);
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("UNFROZEN")).toBeInTheDocument());
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "newsclean-content", type: "STATE", state: frozenState },
+        source: null,
+        origin: "https://evil.example",
+      }),
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.getByText("UNFROZEN")).toBeInTheDocument();
+    expect(screen.queryByText("FROZEN")).not.toBeInTheDocument();
   });
 
   it("sends CAPTURE in FULL_PAGE mode", async () => {

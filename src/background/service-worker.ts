@@ -302,7 +302,8 @@ async function captureVisibleArea(tabId: number | undefined, command: CaptureCom
     await sleep(PAINT_SETTLE_MS);
     const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
     const filename = `parotia-${timestamp()}.png`;
-    await chrome.downloads.download({ url: dataUrl, filename, saveAs: false });
+    const downloaded = await downloadPng(dataUrl, filename);
+    if (!downloaded) return { success: false, error: DOWNLOAD_PERMISSION_MESSAGE };
     return { success: true, filename };
   } finally {
     await showToolbar(tabId, sessionId);
@@ -406,7 +407,8 @@ async function captureFullPage(tabId: number | undefined, command: CaptureComman
     await chrome.storage.local.remove(key);
 
     const filename = `parotia-fullpage-${timestamp()}.png`;
-    await downloadPng(dataUrl, filename);
+    const downloaded = await downloadPng(dataUrl, filename);
+    if (!downloaded) return { success: false, error: DOWNLOAD_PERMISSION_MESSAGE, steps };
     steps.push("downloaded");
     return { success: true, filename, steps };
   } catch (error) {
@@ -417,9 +419,32 @@ async function captureFullPage(tabId: number | undefined, command: CaptureComman
   }
 }
 
-/** Downloads a PNG from a data URL directly (blob: URLs are unavailable in MV3 service workers). */
-async function downloadPng(dataUrl: string, filename: string): Promise<void> {
-  await chrome.downloads.download({ url: dataUrl, filename, saveAs: false });
+/**
+ * Downloads a PNG from a data URL (blob: URLs are unavailable in MV3 service
+ * workers). `downloads` is optional, so the permission is requested on first
+ * export; when it cannot be granted the capture still succeeds and the toolbar
+ * shows the message below instead of the exported image.
+ */
+const DOWNLOAD_PERMISSION_MESSAGE =
+  "Export permission unavailable — enable the downloads permission and try again.";
+
+async function ensureDownloadsPermission(): Promise<boolean> {
+  try {
+    if (await chrome.permissions.contains({ permissions: ["downloads"] })) return true;
+    return await chrome.permissions.request({ permissions: ["downloads"] });
+  } catch {
+    return false;
+  }
+}
+
+async function downloadPng(dataUrl: string, filename: string): Promise<boolean> {
+  if (!(await ensureDownloadsPermission())) return false;
+  try {
+    await chrome.downloads.download({ url: dataUrl, filename, saveAs: false });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -560,7 +585,8 @@ async function captureElement(tabId: number | undefined, command: CaptureCommand
     await chrome.storage.local.remove(key);
 
     const filename = `parotia-element-${timestamp()}.png`;
-    await downloadPng(cropped, filename);
+    const downloaded = await downloadPng(cropped, filename);
+    if (!downloaded) return { success: false, error: DOWNLOAD_PERMISSION_MESSAGE, steps };
     steps.push("downloaded");
     return { success: true, filename, steps };
   } catch (error) {

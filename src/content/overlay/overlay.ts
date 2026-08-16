@@ -51,8 +51,12 @@ export function createOverlay(): OverlayInstance {
   // The iframe is cross-origin to the page, so the toolbar reports its own
   // height through postMessage. Without this the iframe would keep its default
   // 150px box and leave a dark gap below the bar that covers the article.
+  const extensionOrigin = new URL(chrome.runtime.getURL("")).origin;
   const onUiResize = (event: MessageEvent<{ source?: string; type?: string; height?: number }>): void => {
+    // Only accept resize reports from the toolbar iframe we host, delivered
+    // straight from the extension's own origin — anything else is ignored.
     if (event.source !== frame.contentWindow) return;
+    if (event.origin !== extensionOrigin) return;
     const data = event.data;
     if (data?.source !== "newsclean-ui" || data.type !== "RESIZE") return;
     const height = typeof data.height === "number" && data.height > 0 ? data.height : 0;

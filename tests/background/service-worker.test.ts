@@ -32,6 +32,10 @@ interface ChromeStub {
   };
   action: { onClicked: { addListener: (fn: ActionListener) => void } };
   scripting: { executeScript: ReturnType<typeof vi.fn> };
+  permissions: {
+    contains: ReturnType<typeof vi.fn>;
+    request: ReturnType<typeof vi.fn>;
+  };
   downloads: { download: ReturnType<typeof vi.fn> };
   storage: {
     local: {
@@ -82,6 +86,10 @@ function makeChromeStub(): ChromeStub {
       },
     },
     scripting: { executeScript: vi.fn() },
+    permissions: {
+      contains: vi.fn().mockResolvedValue(true),
+      request: vi.fn().mockResolvedValue(true),
+    },
     downloads: { download: vi.fn() },
     storage: {
       local: { get: vi.fn(), set: vi.fn(), remove: vi.fn() },
@@ -281,6 +289,30 @@ describe("service-worker", () => {
     const data = res.data as { success?: boolean; filename?: string };
     expect(data.success).toBe(true);
     expect(data.filename).toMatch(/^parotia-\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("requests the downloads permission and rejects gracefully when it is denied", async () => {
+    vi.useFakeTimers();
+    sw.tabSessions.set(3, "sess-d");
+    chromeStub.tabs.get.mockResolvedValue({ id: 3, windowId: 11 });
+    chromeStub.tabs.sendMessage.mockResolvedValue(okResponse({}));
+    chromeStub.tabs.captureVisibleTab.mockResolvedValue("data:image/png;base64,AAAA");
+    chromeStub.permissions.contains.mockResolvedValue(false);
+    chromeStub.permissions.request.mockResolvedValue(false);
+
+    const pending = invokeOnMessage(
+      { type: "CAPTURE", payload: { sessionId: "sess-d", mode: "VISIBLE" } },
+      {},
+    );
+    await vi.advanceTimersByTimeAsync(2000);
+    const res = await pending;
+
+    expect(chromeStub.permissions.contains).toHaveBeenCalledWith({ permissions: ["downloads"] });
+    expect(chromeStub.permissions.request).toHaveBeenCalledWith({ permissions: ["downloads"] });
+    expect(chromeStub.downloads.download).not.toHaveBeenCalled();
+    const data = res.data as { success?: boolean; error?: string };
+    expect(data.success).toBe(false);
+    expect(data.error).toMatch(/permission/i);
   });
 
   it("captures a full page slice-by-slice and assembles it", async () => {

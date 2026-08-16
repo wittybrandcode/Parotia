@@ -175,7 +175,10 @@ function broadcastState(): void {
     history: historyState(),
   };
   const frame = overlay.shadow.querySelector<HTMLIFrameElement>("iframe[data-newsclean-frame]");
-  frame?.contentWindow?.postMessage({ source: "newsclean-content", type: "STATE", state }, "*");
+  // Target the extension origin explicitly instead of "*": STATE is only ever
+  // delivered to the NewsClean toolbar iframe and never to other windows.
+  const targetOrigin = new URL(chrome.runtime.getURL("")).origin;
+  frame?.contentWindow?.postMessage({ source: "newsclean-content", type: "STATE", state }, targetOrigin);
 }
 
 function ensureRuntime(): void {

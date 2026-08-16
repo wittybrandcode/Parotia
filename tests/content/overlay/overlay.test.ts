@@ -31,4 +31,36 @@ describe("createOverlay", () => {
     overlay.destroy();
     expect(document.getElementById("__newsclean__")).toBeNull();
   });
+
+  it("applies RESIZE only when the sender is the hosted toolbar iframe from the extension origin", () => {
+    const frame = overlay.shadow.querySelector("iframe[data-newsclean-frame]") as HTMLIFrameElement | null;
+    expect(frame).not.toBeNull();
+    if (!frame) return;
+    const extensionOrigin = new URL(chrome.runtime.getURL("")).origin;
+
+    const fire = (partial: MessageEventInit): void => {
+      window.dispatchEvent(new MessageEvent("message", partial));
+    };
+
+    fire({
+      data: { source: "newsclean-ui", type: "RESIZE", height: 320 },
+      source: frame.contentWindow,
+      origin: extensionOrigin,
+    });
+    expect(frame.style.height).toBe("320px");
+
+    fire({
+      data: { source: "newsclean-ui", type: "RESIZE", height: 100 },
+      source: frame.contentWindow,
+      origin: "https://evil.example",
+    });
+    expect(frame.style.height).toBe("320px");
+
+    fire({
+      data: { source: "newsclean-ui", type: "RESIZE", height: 100 },
+      source: null,
+      origin: extensionOrigin,
+    });
+    expect(frame.style.height).toBe("320px");
+  });
 });
