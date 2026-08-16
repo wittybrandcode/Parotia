@@ -38,9 +38,9 @@
 | 3 | الأمان والصلاحيات | ترشيد الصلاحيات + توحيد الإصدارات | 🟢 | `[4/4] ██████████` |
 | 4 | إزالة الكود الميت | تنظيف وتبسيط الأسس | 🟢 | `[7/7] ██████████` |
 | 5 | الأدوات والبنية | تفعيل E2E/التغطية + تحسينات UX | 🟢 | `[3/3] ██████████` |
-| 6 | التوثيق والتحكّم | تحديث README/ROADMAP + commit نهائي | 🔴 | `[0/4] ░░░░░░░░░░` |
+| 6 | التوثيق والتحكّم | تحديث README/ROADMAP + commit نهائي | 🟡 | `[3/4] ████████░░` |
 | 7 | التقاط الحيّز الحر | تحديد أي مكوّن HTML بمربع الماوس وتصويره مباشرة | 🔴 | `[0/7] ░░░░░░░░░░` |
-| | **الإجمالي** | | 🟢 | `[29/40] ███████░░░` |
+| | **الإجمالي** | | 🟡 | `[32/40] ████████░░` |
 
 > عند إغلاق أي مهمة يُحدَّث الرقم والرقم العشري والنسبة المئوية في هذه اللوحة.
 
@@ -134,10 +134,10 @@
 
 | # | المهمة | الحالة | الملفات المتأثرة | معايير القبول |
 |---|---|---|---|---|
-| 6.1 | تحديث README (happy-dom، الميزات المنفَّذة، تخطيط `src/content/capture`) | 🔴 | `README.md` | لا ادعاءات متقادمة |
-| 6.2 | تصحيح ROADMAP: جدول الحالة النهائي يعكس علامات 🗑️ + أعداد الاختبارات الحالية | 🔴 | `ROADMAP.md` | اتساق كامل بين الأقسام والجدول |
-| 6.3 | مراجعة نهائية للتقرير والخطة + تحديث أرقام التقدم في §2 | 🔴 | `PAROTIA-REPORT.md` · `REMEDIATION-PLAN.md` | أرقام واقعية |
-| 6.4 | commit ختامي بعد كل المراحل (يتطلب موافقة صريحة) | 🔴 | — | سجل git نظيف بمراحل قابلة للتتبع |
+| 6.1 | تحديث README (happy-dom، الميزات المنفَّذة، تخطيط `src/content/capture`) | 🟢 | `README.md` | لا ادعاءات متقادمة — الحالة = الامتداد المنفَّذ (236/236 اختباراً)، scripts كاملة (`test:coverage`/`test:e2e`)، تخطيط فعلي، سطر عن happy-dom + Playwright |
+| 6.2 | تصحيح ROADMAP: جدول الحالة النهائي يعكس علامات 🗑️ + أعداد الاختبارات الحالية | 🟢 | `ROADMAP.md` | لوحة التحكم: المرحلة 1 = 2🟢+2🗑️، المرحلة 2 = 3🟢+1🗑️؛ جدول الحالة العامة يعكس 🗑️ لـ 1.2/1.4/2.2؛ عدد الاختبارات الحالي (236/26) في الترويسة |
+| 6.3 | مراجعة نهائية للتقرير والخطة + تحديث أرقام التقدم في §2 | 🟢 | `PAROTIA-REPORT.md` · `REMEDIATION-PLAN.md` | §12 جديد في التقرير يوثّق مصير كل بند (§5/§7) بعد المراحل 0–5 بالمرجع؛ لوحة §2 في الخطة = `[32/40]` |
+| 6.4 | commit ختامي بعد كل المراحل (يتطلب موافقة صريحة) | 🟡 | — | سجل git نظيف بمراحل قابلة للتتبع |
 
 ---
 
@@ -173,6 +173,7 @@
 | 2026-08-16 | 3 | إغلاق المرحلة 3 (4/4): 3 اختبارات جديدة (242 إجمالاً) — 3.1 إزالة `tabs` و`host_permissions` وتضييق WAF إلى `http/https` (الاعتماد على `activeTab` لـ captureVisibleTab/executeScript)؛ 3.2 `downloads` في `optional_permissions` مع `ensureDownloadsPermission` (`permissions.contains`/`request`) ورفض رشيق عند عدم الموافقة في مسارات الالتقاط الثلاثة؛ 3.3 توحيد الإصدار `0.2.0` (يُقرأ من `package.json` في `build-manifest.mjs`) + حذف `public/manifest.json` + تحديث `package-lock.json`؛ 3.4 `targetOrigin` = أصل الامتداد في `broadcastState` + RESIZE نحو أصل الصفحة، ورفض STATE من غير `window.parent` ورفض RESIZE من غير إطار الشريط/أصل الامتداد (اختبارات App + overlay). بوابة خضراء كاملة | 🟢 |
 | 2026-08-16 | 4 | إغلاق المرحلة 4 (7/7): حذف 6 ملفات (engine + sessionStore + settings + events مع اختباراتهما) — 4.1 مسار تطبيق واحد عبر `cleanupEngine.applyPreset` (حذف `src/presets/engine.ts` + `tests/presets/engine.test.ts` مع `CleanupIntent`/`PresetApplicationResult`)؛ 4.2 حذف `InMemorySessionStore` (خريطة `tabSessions` في SW تكفي)؛ 4.3 حذف كامل عقد الإعدادات (`UserSettings`/`SettingsRepository`/`ChromeStorageSettingsRepository` + مخططاتها و`requireSchemaVersion` و`STORAGE_KEYS`)؛ 4.4 حذف `EventBus`؛ 4.5 حذف `@capture` من vite/vitest/tsconfig/build-esm؛ 4.6 إزالة كود `restoreNode` الميت + `elementId()`؛ 4.7 أسماء ملفات الالتقاط = `parotia-<title>-<timestamp>` عبر `sanitizeFilenamePart`+`timestampPart` (حذف `buildCaptureFilename` و`timestamp()` المحلية). البوابة خضراء كاملة (228 اختباراً/25 ملفاً) | 🟢 |
 | 2026-08-16 | 5 | إغلاق المرحلة 5 (3/3): 5.1 E2E smoke حقيقي (`playwright.config.ts` + `tests/e2e/smoke.spec.ts`): MV3 SW يسجّل وصفحة options تُعرض ضد `chrome.storage` فعلي في headless عبر `channel: "chromium"` (البناء الكامل) — الـ headless-shell لا يشغّل الامتدادات (إصلاح أُضيف أثناء التنفيذ)؛ 5.2 تثبيت `@vitest/coverage-v8@2.1.9` + حدود دنيا 80/75/80/80 + اختبار `extractionEngine` جديد رفع المحرّك من 24.71% إلى 92.13%؛ 5.3 بث `CAPTURE_PROGRESS` من SW أثناء الالتقاط (PREPARING/RENDERING/STITCHING/ENCODING) عبر content إلى الشريط، و`capturingRef` في App يحفظ التغذية الحيّة من بث STATE ولا يعلّق القديمة عند الاستقرار. البوابة خضراء كاملة (236 اختباراً/26 ملفاً) + `test:e2e` و`test:coverage` ناجحان | 🟢 |
+| 2026-08-16 | 6 | إغلاق 6.1–6.3 (بقي 6.4 بانتظار الموافقة): README أُعيد كتابته (الحالة الفعلية، happy-dom، سكربتات coverage/e2e، تخطيط `src/content/capture`)؛ ROADMAP صحّح لوحتَي الحالة (1.2/1.4/2.2 = 🗑️، الإجمالي 5🟢+3🗑️) + عدد الاختبارات الحالي في الترويسة؛ PAROTIA-REPORT أُضيف له §12 (حالة معالجة كل بند من §5/§7 بعد المراحل 0–5). لوحة §2 = `[32/40]` | 🟢 |
 
 > أضِف سطراً عند إغلاق كل مهمة مع تحديث لوحة المتابعة §2.
 
