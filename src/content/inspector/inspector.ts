@@ -38,6 +38,8 @@ export interface InspectorActionHandlers {
 
 const HIGHLIGHT_Z_INDEX = "2147483645";
 const ACTION_BAR_Z_INDEX = "2147483647";
+/** Approximate toolbar height — the action bar must stay below this. */
+const TOOLBAR_HEIGHT = 60;
 
 function overlayStyle(): Partial<CSSStyleDeclaration> {
   return {
@@ -304,8 +306,8 @@ export class DefaultInspector implements Inspector {
     top = Math.min(top, rect.bottom - barHeight);
     left = Math.max(left, rect.left);
     left = Math.min(left, rect.right - barWidth);
-    // Always stay fully visible in the viewport.
-    top = Math.max(4, Math.min(top, window.innerHeight - barHeight - 4));
+    // Always stay fully visible in the viewport, below the toolbar.
+    top = Math.max(TOOLBAR_HEIGHT, Math.min(top, window.innerHeight - barHeight - 4));
     left = Math.max(4, Math.min(left, window.innerWidth - barWidth - 4));
 
     this.lastBarPosition = { top, left };

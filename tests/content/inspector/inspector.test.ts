@@ -173,7 +173,8 @@ describe("DefaultInspector", () => {
 
     const bar = document.querySelector(".nc-action-bar") as HTMLElement;
     expect(bar.style.display).toBe("flex");
-    expect(bar.style.top).toBe("8px");
+    // Top is clamped below the toolbar (~60px), not at element top.
+    expect(bar.style.top).toBe("60px");
     expect(bar.style.left).toBe("8px");
   });
 
@@ -200,7 +201,8 @@ describe("DefaultInspector", () => {
     );
 
     const bar = document.querySelector(".nc-action-bar") as HTMLElement;
-    expect(bar.style.top).toBe("4px");
+    // Pinned below the toolbar, not at viewport edge.
+    expect(bar.style.top).toBe("60px");
     expect(bar.style.left).toBe("8px");
   });
 

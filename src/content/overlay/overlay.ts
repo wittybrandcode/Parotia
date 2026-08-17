@@ -23,11 +23,12 @@ export function createOverlay(): OverlayInstance {
   const root = document.createElement("div");
   root.id = OVERLAY_ROOT_ID;
   root.setAttribute(OVERLAY_ROOT_MARKER, "true");
-  // Sticky: stays in normal flow (pushes the article down) but remains pinned
-  // to the top of the viewport while the page scrolls. z-index keeps page
-  // content from rendering over it.
-  root.style.position = "sticky";
+  // Fixed: always pinned to the top of the viewport regardless of page layout.
+  // Sticky was unreliable on sites with overflow:hidden ancestors. z-index
+  // keeps page content from rendering over it.
+  root.style.position = "fixed";
   root.style.top = "0px";
+  root.style.left = "0px";
   root.style.zIndex = "2147483646";
   root.style.display = "block";
   root.style.width = "100%";
