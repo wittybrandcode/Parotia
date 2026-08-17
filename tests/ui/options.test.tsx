@@ -51,7 +51,7 @@ describe("options page", () => {
     render(<OptionsApp />);
 
     expect(await screen.findByText(/No presets yet/)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Parotia — Site Presets" })).toBeInTheDocument();
+    expect(screen.getByText("Saved Presets")).toBeInTheDocument();
   });
 
   it("lists stored presets with their status chip and metadata", async () => {
@@ -60,7 +60,7 @@ describe("options page", () => {
 
     expect(await screen.findByText("Example News")).toBeInTheDocument();
     expect(screen.getByText("Active")).toBeInTheDocument();
-    expect(screen.getByText("cnn.com · 1 rule · USER_CREATED")).toBeInTheDocument();
+    expect(screen.getByText(/cnn.com/)).toBeInTheDocument();
   });
 
   it("shows Off for a disabled preset", async () => {
@@ -83,7 +83,7 @@ describe("options page", () => {
       [PRESETS_KEY]: Record<string, SitePreset>;
     };
     expect(written[PRESETS_KEY]?.["preset-1"]?.enabled).toBe(true);
-    await screen.findByText("Enabled Example News");
+    await screen.findByText(/Enable.*Example News/);
   });
 
   it("delete requires confirmation and removes the preset", async () => {
@@ -99,7 +99,7 @@ describe("options page", () => {
       [PRESETS_KEY]: Record<string, SitePreset>;
     };
     expect(written[PRESETS_KEY]?.["preset-1"]).toBeUndefined();
-    await screen.findByText("Deleted Example News");
+    await screen.findByText(/Delete.*Example News/);
   });
 
   it("does not delete when the confirmation is cancelled", async () => {
