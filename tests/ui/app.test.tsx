@@ -87,7 +87,6 @@ describe("ui toolbar App", () => {
     render(<App />);
 
     expect(await screen.findByText("PAROTIA")).toBeInTheDocument();
-    expect(screen.getByText("UNFROZEN")).toBeInTheDocument();
     expect(screen.getByText("Removed 0 elements")).toBeInTheDocument();
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: "START_SESSION" }),
@@ -118,10 +117,9 @@ describe("ui toolbar App", () => {
   it("applies a STATE broadcast and lets the user unfreeze the page", async () => {
     installSendMessage(statefulHandler);
     render(<App />);
-    await waitFor(() => expect(screen.getByText("UNFROZEN")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("PAROTIA")).toBeInTheDocument());
 
     broadcast(frozenState);
-    await waitFor(() => expect(screen.getByText("FROZEN")).toBeInTheDocument());
     await waitFor(() => expect(screen.getByText("Removed 3 elements")).toBeInTheDocument());
     expect(screen.getByRole("button", { name: "Pick" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Delete" })).toBeEnabled();
@@ -138,7 +136,7 @@ describe("ui toolbar App", () => {
   it("ignores a STATE broadcast that does not come from the hosting page window", async () => {
     installSendMessage(statefulHandler);
     render(<App />);
-    await waitFor(() => expect(screen.getByText("UNFROZEN")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Removed 0 elements")).toBeInTheDocument());
 
     window.dispatchEvent(
       new MessageEvent("message", {
@@ -149,14 +147,14 @@ describe("ui toolbar App", () => {
     );
 
     await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(screen.getByText("UNFROZEN")).toBeInTheDocument();
-    expect(screen.queryByText("FROZEN")).not.toBeInTheDocument();
+    expect(screen.getByText("Removed 0 elements")).toBeInTheDocument();
+    expect(screen.queryByText("Removed 3 elements")).not.toBeInTheDocument();
   });
 
   it("shows live capture progress and keeps it while STATE broadcasts arrive mid-capture", async () => {
     installSendMessage(statefulHandler);
     render(<App />);
-    await waitFor(() => expect(screen.getByText("UNFROZEN")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Removed 0 elements")).toBeInTheDocument());
 
     broadcastProgress({ current: 2, total: 4, phase: "RENDERING" });
     await waitFor(() => expect(screen.getByText("Capture rendering 2/4 (50%)")).toBeInTheDocument());
@@ -164,14 +162,13 @@ describe("ui toolbar App", () => {
     // A STATE arriving mid-capture (e.g. the PREPARE_CAPTURE broadcast) must
     // not clear the live progress feedback.
     broadcast(frozenState);
-    await waitFor(() => expect(screen.getByText("FROZEN")).toBeInTheDocument());
     expect(screen.getByText("Capture rendering 2/4 (50%)")).toBeInTheDocument();
   });
 
   it("clears stale capture feedback once a fresh STATE arrives after the capture settles", async () => {
     installSendMessage(statefulHandler);
     render(<App />);
-    await waitFor(() => expect(screen.getByText("UNFROZEN")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Removed 0 elements")).toBeInTheDocument());
 
     broadcastProgress({ current: 4, total: 4, phase: "ENCODING" });
     await waitFor(() => expect(screen.getByText("Capture encoding 4/4 (100%)")).toBeInTheDocument());
@@ -190,10 +187,10 @@ describe("ui toolbar App", () => {
   it("sends CAPTURE in FULL_PAGE mode", async () => {
     installSendMessage(statefulHandler);
     render(<App />);
-    await waitFor(() => expect(screen.getByText("UNFROZEN")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Removed 0 elements")).toBeInTheDocument());
 
     broadcast(frozenState);
-    await waitFor(() => expect(screen.getByText("FROZEN")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Removed 3 elements")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "Capture" }));
     await waitFor(() =>
@@ -207,10 +204,10 @@ describe("ui toolbar App", () => {
   it("sends CAPTURE in REGION mode when Select is clicked", async () => {
     installSendMessage(statefulHandler);
     render(<App />);
-    await waitFor(() => expect(screen.getByText("UNFROZEN")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Removed 0 elements")).toBeInTheDocument());
 
     broadcast(frozenState);
-    await waitFor(() => expect(screen.getByText("FROZEN")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Removed 3 elements")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "Select" }));
     await waitFor(() =>
@@ -231,7 +228,7 @@ describe("ui toolbar App", () => {
   it("opens the action log and can undo a specific entry", async () => {
     installSendMessage(statefulHandler);
     render(<App />);
-    await waitFor(() => expect(screen.getByText("UNFROZEN")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Removed 0 elements")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "History" }));
     expect(screen.getByText("No actions yet — clean an element to start the log.")).toBeInTheDocument();

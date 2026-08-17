@@ -417,10 +417,6 @@ export function App() {
         </div>
 
         <div className="nc-side">
-          <span className="nc-status" data-status={freezeStatus}>
-            <span className="nc-status-dot" aria-hidden="true" />
-            {freezeStatus}
-          </span>
           <div className="nc-feedback" data-feedback-ok={feedback?.ok}>
             {busy && <Loader2 className="nc-spin" size={11} aria-hidden="true" />}
             <span>{feedback ? feedback.text : `Removed ${removed} element${removed === 1 ? "" : "s"}`}</span>
