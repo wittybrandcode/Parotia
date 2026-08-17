@@ -326,4 +326,37 @@ describe("content/index command pipeline", () => {
     expect(data.cleanup.removedCount).toBe(0);
     expect(document.querySelectorAll(".ad")).toHaveLength(1);
   });
+
+  it("FREE_SELECT starts the selection overlay and returns the rect", async () => {
+    const sessionId = await startSession();
+    // startFreeSelect() is async and awaits user interaction. Fire Escape
+    // in a microtask so the overlay gets created first, then the promise resolves.
+    const pending = invokeOnMessage({ type: "FREE_SELECT", payload: { sessionId } });
+    // Let microtasks settle so the overlay DOM is created.
+    await new Promise<void>((r) => setTimeout(r, 50));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    const { response } = await pending;
+    const data = response?.data as { success?: boolean; cancelled?: boolean };
+    expect(data.success).toBe(false);
+    expect(data.cancelled).toBe(true);
+  });
+
+  it("CAPTURE_REGION_CROP handles crop failure gracefully", async () => {
+    const sessionId = await startSession();
+
+    // createImageBitmap is not in happy-dom — let it fail to test error path.
+    const { response } = await invokeOnMessage({
+      type: "CAPTURE_REGION_CROP",
+      payload: {
+        sessionId,
+        dataUrl: "data:image/png;base64,AAAA",
+        rect: { x: 10, y: 20, width: 100, height: 80 },
+        dpr: 2,
+      },
+    });
+
+    const data = response?.data as { success?: boolean; error?: string };
+    expect(data.success).toBe(false);
+    expect(data.error).toBeDefined();
+  });
 });

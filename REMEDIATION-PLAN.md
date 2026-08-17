@@ -39,8 +39,8 @@
 | 4 | إزالة الكود الميت | تنظيف وتبسيط الأسس | 🟢 | `[7/7] ██████████` |
 | 5 | الأدوات والبنية | تفعيل E2E/التغطية + تحسينات UX | 🟢 | `[3/3] ██████████` |
 | 6 | التوثيق والتحكّم | تحديث README/ROADMAP + commit نهائي | 🟢 | `[4/4] ██████████` |
-| 7 | التقاط الحيّز الحر | تحديد أي مكوّن HTML بمربع الماوس وتصويره مباشرة | 🔴 | `[0/7] ░░░░░░░░░░` |
-| | **الإجمالي** | | 🟢 | `[33/40] ████████░░` |
+| 7 | التقاط الحيّز الحر | تحديد أي مكوّن HTML بمربع الماوس وتصويره مباشرة | 🟢 | `[7/7] ██████████` |
+| | **الإجمالي** | | 🟢 | `[40/40] ██████████` |
 
 > عند إغلاق أي مهمة يُحدَّث الرقم والرقم العشري والنسبة المئوية في هذه اللوحة.
 
@@ -151,13 +151,13 @@
 
 | # | المهمة | الحالة | الملفات المتأثرة | معايير القبول |
 |---|---|---|---|---|
-| 7.1 | أنواع جديدة: `CaptureMode "REGION"` + أمر `SELECT_REGION` (يحمل `Rect`) + أمر `FREE_SELECT` (بدء/إيقاف) في `messages.ts` (union + allowlist) + نوع `Rect` في `shared/types` | 🔴 | `src/shared/types/messages.ts` · `src/shared/types/geometry.ts` (جديد) | الأوامر تصل عبر allowlist وترفض payload مشوّهة |
-| 7.2 | وحدة `src/content/selection/freeSelect.ts`: طبقة تعتيم **كاملة الصفحة** (position:fixed/abslute تغطي كل الـ scroll) + مربع تحديد بالسحب (drag) + مقابض تحرير (move/resize) + تطبيع الأبعاد السالبة + إحداثيات `Rect` بترتيب الصفحة | 🔴 | `src/content/selection/freeSelect.ts` (جديد) · `src/content/index.ts` | تعتيم كامل + مربع قابل للتحرير + تطبيع صحيح عند السحب العكسي |
-| 7.3 | زر "تحديد حر" في شريط الأدوات (أيقونة Marquee/Select) + إيقاف بـ `Escape` + متاح فقط عند `FROZEN` + إخفاء الواجهة أثناء التعقيم | 🔴 | `src/ui/src/App.tsx` · `src/ui/src/styles.css` · `src/content/index.ts` | تفعيل الزر يُظلّل الصفحة فوراً؛ Escape يعيد الوضع |
-| 7.4 | مسار التقاط `captureRegion(rect)` في SW: إخفاء الواجهة → `captureVisibleTab` → قصّ الحيّز من الصورة → تنزيل `parotia-region-<ts>.png` (إعادة استخدام أدوات القص الحالية أو توسيعها) | 🔴 | `src/background/service-worker.ts` | PNG خرج يطابق الحيّز المحدد بصرياً |
-| 7.5 | تحويل الإحداثيات page→pixels بدقة (dpr + scroll offset) + ضبط حدود الـ viewport + استعادة التمرير/الواجهة في `finally` | 🔴 | `src/background/service-worker.ts` · `src/content/index.ts` | تطابق حواف المربع ±1px |
-| 7.6 | اختبارات: `freeSelect` (تعتيم/مربع/مقابض/تطبيع) + قصّ REGION + توجيه الأوامر الجديدة + اختبار UI للزر | 🔴 | `tests/content/selection/freeSelect.test.ts` (جديد) · اختبارات SW/UI | 8+ اختبارات جديدة |
-| 7.7 | توثيق: إضافة الميزة لـ ROADMAP + تحديث README واختصارات لوحة المفاتيح إن لزم | 🔴 | `ROADMAP.md` · `README.md` · `KEYBOARD_SHORTCUTS.txt` | توثيق السلوك المطلوب أعلاه حرفياً |
+| 7.1 | أنواع جديدة: `CaptureMode "REGION"` + أمر `SELECT_REGION` (يحمل `Rect`) + أمر `FREE_SELECT` (بدء/إيقاف) في `messages.ts` (union + allowlist) + نوع `Rect` في `shared/types` | 🟢 | `src/shared/types/messages.ts` · `src/shared/types/element.ts` | الأوامر تصل عبر allowlist وترفض payload مشوّهة |
+| 7.2 | وحدة `src/content/selection/freeSelect.ts`: طبقة تعتيم **كاملة الصفحة** (position:fixed/abslute تغطي كل الـ scroll) + مربع تحديد بالسحب (drag) + مقابض تحرير (move/resize) + تطبيع الأبعاد السالبة + إحداثيات `Rect` بترتيب الصفحة | 🟢 | `src/content/selection/freeSelect.ts` (جديد) · `src/content/index.ts` | تعتيم كامل + مربع قابل للتحرير + تطبيع صحيح عند السحب العكسي |
+| 7.3 | زر "تحديد حر" في شريط الأدوات (أيقونة BoxSelect) + إيقاف بـ `Escape` + متاح فقط عند `FROZEN` + إخفاء الواجهة أثناء التعقيم | 🟢 | `src/ui/src/App.tsx` · `src/content/index.ts` | تفعيل الزر يُظلّل الصفحة فوراً؛ Escape يعيد الوضع |
+| 7.4 | مسار التقاط `captureRegion(rect)` في SW: إخفاء الواجهة → `captureVisibleTab` → قصّ الحيّز من الصورة → تنزيل `parotia-region-<ts>.png` | 🟢 | `src/background/service-worker.ts` | PNG خرج يطابق الحيّز المحدد بصرياً |
+| 7.5 | تحويل الإحداثيات page→pixels بدقة (dpr + scroll offset) + ضبط حدود الـ viewport + استعادة التمرير/الواجهة في `finally` | 🟢 | `src/background/service-worker.ts` · `src/content/index.ts` | تطابق حواف المربع ±1px |
+| 7.6 | اختبارات: `freeSelect` (8 اختبارات: تعتيم/مربع/مقابض/تطبيع/إلغاء) + قصّ REGION + توجيه الأوامر الجديدة + اختبار UI للزر (3 اختبارات) | 🟢 | `tests/content/selection/freeSelect.test.ts` (جديد) · اختبارات SW/UI/content | 15 اختباراً جديداً (251 إجمالاً) |
+| 7.7 | توثيق: تحديث ROADMAP + README + KEYBOARD_SHORTCUTS.txt | 🟢 | `ROADMAP.md` · `README.md` · `KEYBOARD_SHORTCUTS.txt` | توثيق السلوك المطلوب + تحديث أعداد الاختبارات |
 
 ---
 
@@ -175,6 +175,7 @@
 | 2026-08-16 | 5 | إغلاق المرحلة 5 (3/3): 5.1 E2E smoke حقيقي (`playwright.config.ts` + `tests/e2e/smoke.spec.ts`): MV3 SW يسجّل وصفحة options تُعرض ضد `chrome.storage` فعلي في headless عبر `channel: "chromium"` (البناء الكامل) — الـ headless-shell لا يشغّل الامتدادات (إصلاح أُضيف أثناء التنفيذ)؛ 5.2 تثبيت `@vitest/coverage-v8@2.1.9` + حدود دنيا 80/75/80/80 + اختبار `extractionEngine` جديد رفع المحرّك من 24.71% إلى 92.13%؛ 5.3 بث `CAPTURE_PROGRESS` من SW أثناء الالتقاط (PREPARING/RENDERING/STITCHING/ENCODING) عبر content إلى الشريط، و`capturingRef` في App يحفظ التغذية الحيّة من بث STATE ولا يعلّق القديمة عند الاستقرار. البوابة خضراء كاملة (236 اختباراً/26 ملفاً) + `test:e2e` و`test:coverage` ناجحان | 🟢 |
 | 2026-08-16 | 6 | إغلاق 6.1–6.3 (بقي 6.4 بانتظار الموافقة): README أُعيد كتابته (الحالة الفعلية، happy-dom، سكربتات coverage/e2e، تخطيط `src/content/capture`)؛ ROADMAP صحّح لوحتَي الحالة (1.2/1.4/2.2 = 🗑️، الإجمالي 5🟢+3🗑️) + عدد الاختبارات الحالي في الترويسة؛ PAROTIA-REPORT أُضيف له §12 (حالة معالجة كل بند من §5/§7 بعد المراحل 0–5). لوحة §2 = `[32/40]` | 🟢 |
 | 2026-08-16 | 6 | **إغلاق المرحلة 6 (4/4):** commit `3ce2901` (توثيق) مدفوع إلى `origin/master` بعد الموافقة؛ لوحة §2 = `[33/40]` | 🟢 |
+| 2026-08-17 | 7 | **إغلاق المرحلة 7 (7/7):** ميزة "التقاط الحيّز الحر" — 7.1 نوع `CaptureMode "REGION"` + أوامر `FREE_SELECT`/`SELECT_REGION`/`CAPTURE_REGION_CROP` (لا حاجة لملف geometry.ts لأن `Rect` موجودة في `element.ts`)؛ 7.2 `freeSelect.ts` (تعتيم overlay + مربع تحديد بالسحب + 8 مقابض + تطبيع + Escape)؛ 7.3 زر `Select` (أيقونة BoxSelect) في الشريط + معالج `doFreeSelect`؛ 7.4 `captureRegion` في SW (إخفاء الشريط → FREE_SELECT → captureVisibleTab → CAPTURE_REGION_CROP → قص → تنزيل)؛ 7.5 تحويل dpr + cropDataUrlToPng في content + `regioncapture:` في chrome.storage.local؛ 7.6 15 اختباراً جديداً (freeSelect: 8، SW: 3، content: 2، UI: 2) = 251/251 خضراء؛ 7.7 تحديث README/ROADMAP/KEYBOARD_SHORTCUTS. لوحة §2 = `[40/40]` | 🟢 |
 
 > أضِف سطراً عند إغلاق كل مهمة مع تحديث لوحة المتابعة §2.
 
@@ -188,4 +189,4 @@
 - **5.1 (نطاق E2E):** حقن الشريط/التجميد/الالتقاط في صفحة حقيقية يتطلب `activeTab` الممنوح بلفتة مستخدم لا يمكن محاكاتها headless — تغطيهما مجموعات تكامل vitest. النطاق الفعلي للـ smoke: إقلاع الامتداد الحقيقي (MV3 SW) + عرض صفحة options ضد `chrome.storage` فعلي. يستخدم `channel: "chromium"` (البناء الكامل في new-headless) لأن البناء الافتراضي (headless-shell) لا يدعم تشغيل الامتدادات.
 - **5.2 (فجوة موثّقة):** `elementCapture` عند 58% (مضاهاة canvas/ImageBitmap/FileReader ثقيلة) — فجوة معروفة للتغطية مستقبلاً؛ كل المحرّكات الأخرى ≥90%. الحدود العالمية المعلنة (80/75/80/80) حقيقية للمقاس الحالي.
 - **7.x (ميزة جديدة):** المرحلة 7 وظيفية (وليس إصلاحاً) وتُدرج كملحق بعد 6؛ النسخة الأولى تقصّ الحيّز ضمن نطاق الـ viewport (المربع داخل الشاشة المعروضة) — مدّه ليشمل الصفحة كاملة أو العنصر المخفي قابل للإضافة لاحقاً. تعتمد على `captureVisibleTab` كبقية الالتقاطات (تتطلب تجميداً أو إخفاء الواجهة مؤقتاً).
-- **ترتيب التنفيذ المقترح:** 0 → 1 → 2 (فورية) ثم 3 → 4 → 5 ثم 6 → 7 (الميزة الجديدة).
+- **ترتيب التنفيذ المقترح:** 0 → 1 → 2 (فورية) ثم 3 → 4 → 5 ثم 6 → 7 (الميزة الجديدة). **اكتملت جميع المراحل.**

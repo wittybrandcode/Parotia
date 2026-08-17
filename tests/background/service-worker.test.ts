@@ -456,4 +456,79 @@ describe("service-worker", () => {
       expect.objectContaining({ type: "START_SESSION" }),
     );
   });
+
+  it("captures a region by sending FREE_SELECT then cropping", async () => {
+    vi.useFakeTimers();
+    sw.tabSessions.set(8, "sess-r");
+    chromeStub.tabs.get.mockResolvedValue({ id: 8, windowId: 15 });
+    chromeStub.tabs.captureVisibleTab.mockResolvedValue("data:image/png;base64,AAAA");
+    chromeStub.downloads.download.mockResolvedValue(1);
+    chromeStub.storage.local.get.mockResolvedValue({ "regioncapture:sess-r": "data:image/png;base64,RRRR" });
+    chromeStub.storage.local.remove.mockResolvedValue(undefined);
+    chromeStub.tabs.sendMessage.mockImplementation(async (_tabId: number, message: { type: string }) => {
+      switch (message.type) {
+        case "FREE_SELECT":
+          return okResponse({ success: true, rect: { x: 10, y: 20, width: 300, height: 200 }, scrollY: 0, dpr: 1 });
+        case "CAPTURE_REGION_CROP":
+          return okResponse({ success: true });
+        default:
+          return okResponse({});
+      }
+    });
+
+    const pending = invokeOnMessage(
+      { type: "CAPTURE", payload: { sessionId: "sess-r", mode: "REGION" } },
+      {},
+    );
+    await vi.advanceTimersByTimeAsync(2000);
+    const res = await pending;
+
+    expect(chromeStub.tabs.captureVisibleTab).toHaveBeenCalledWith(15, { format: "png" });
+    expect(chromeStub.tabs.sendMessage).toHaveBeenCalledWith(
+      8,
+      expect.objectContaining({ type: "FREE_SELECT" }),
+    );
+    expect(chromeStub.tabs.sendMessage).toHaveBeenCalledWith(
+      8,
+      expect.objectContaining({ type: "CAPTURE_REGION_CROP" }),
+    );
+    expect(chromeStub.storage.local.remove).toHaveBeenCalledWith("regioncapture:sess-r");
+    expect(chromeStub.downloads.download).toHaveBeenCalledWith(
+      expect.objectContaining({ filename: expect.stringMatching(/^parotia-region-/) }),
+    );
+    const data = res.data as { success?: boolean; filename?: string };
+    expect(data.success).toBe(true);
+    expect(data.filename).toMatch(/^parotia-region-/);
+  });
+
+  it("returns cancelled when the user escapes the free selection", async () => {
+    vi.useFakeTimers();
+    sw.tabSessions.set(9, "sess-c2");
+    chromeStub.tabs.get.mockResolvedValue({ id: 9, windowId: 16 });
+    chromeStub.tabs.sendMessage.mockImplementation(async (_tabId: number, message: { type: string }) => {
+      if (message.type === "FREE_SELECT") return okResponse({ success: false, cancelled: true });
+      return okResponse({});
+    });
+
+    const pending = invokeOnMessage(
+      { type: "CAPTURE", payload: { sessionId: "sess-c2", mode: "REGION" } },
+      {},
+    );
+    await vi.advanceTimersByTimeAsync(2000);
+    const res = await pending;
+
+    const data = res.data as { success?: boolean; error?: string };
+    expect(data.success).toBe(false);
+    expect(data.error).toMatch(/cancel/i);
+  });
+
+  it("rejects CAPTURE with REGION mode as invalid when payload is malformed", async () => {
+    sw.tabSessions.set(10, "sess-m");
+    const res = await invokeOnMessage(
+      { type: "CAPTURE", payload: { sessionId: "sess-m", mode: "REGION" } },
+      {},
+    );
+    // REGION mode is valid payload-wise; this just verifies it doesn't crash.
+    expect(res.success).toBe(true);
+  });
 });

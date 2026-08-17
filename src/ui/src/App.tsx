@@ -9,6 +9,7 @@ import type {
 import {
   Bookmark,
   BookmarkCheck,
+  BoxSelect,
   Camera,
   Crosshair,
   Eye,
@@ -239,6 +240,11 @@ export function App() {
     setInspecting(false);
   };
 
+  const doFreeSelect = async () => {
+    await run({ type: "CAPTURE", payload: { sessionId, mode: "REGION" } });
+    setInspecting(false);
+  };
+
   const savePreset = async () => {
     const data = await run({ type: "SAVE_PRESET", payload: { sessionId } });
     if (data?.success) {
@@ -365,6 +371,13 @@ export function App() {
               primary
               disabled={busy || !state.sessionId}
               onClick={() => void doCapture()}
+            />
+            <IconButton
+              label="Select"
+              title="Select a region on the page to capture"
+              icon={<BoxSelect size={18} />}
+              disabled={busy || !state.sessionId}
+              onClick={() => void doFreeSelect()}
             />
             <IconButton
               label="History"

@@ -204,6 +204,30 @@ describe("ui toolbar App", () => {
     );
   });
 
+  it("sends CAPTURE in REGION mode when Select is clicked", async () => {
+    installSendMessage(statefulHandler);
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("UNFROZEN")).toBeInTheDocument());
+
+    broadcast(frozenState);
+    await waitFor(() => expect(screen.getByText("FROZEN")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+    await waitFor(() =>
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "CAPTURE", payload: { sessionId: "s0", mode: "REGION" } }),
+        expect.any(Function),
+      ),
+    );
+  });
+
+  it("Select button is disabled when session is not ready", async () => {
+    vi.mocked(chrome.runtime.sendMessage).mockImplementation((() => undefined) as never);
+    render(<App />);
+    expect(await screen.findByText("PAROTIA")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Select" })).toBeDisabled();
+  });
+
   it("opens the action log and can undo a specific entry", async () => {
     installSendMessage(statefulHandler);
     render(<App />);

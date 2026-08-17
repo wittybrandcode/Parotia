@@ -1,7 +1,7 @@
 import type { CleanupCategory, CleanupRule } from "./cleanup";
 import type { ExtractionRole } from "./extraction";
 
-export type CaptureMode = "VISIBLE" | "FULL_PAGE" | "ELEMENT";
+export type CaptureMode = "VISIBLE" | "FULL_PAGE" | "ELEMENT" | "REGION";
 
 export interface PresetSiteIdentity {
   hostname: string;

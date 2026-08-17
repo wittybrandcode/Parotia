@@ -24,6 +24,7 @@ import { ElementCaptureIsolator, cropDataUrlToPng, loadBitmap, sleep, waitForEle
 import { MAX_CANVAS_DIMENSION, exceedsCanvasLimit, planSlices } from "./capture/sliceMath";
 import { FixedHeaderManager } from "./capture/fixedHeaders";
 import { KeyboardShortcuts } from "./keyboard/shortcuts";
+import { startFreeSelect } from "./selection/freeSelect";
 
 /**
  * Content Runtime entry. Wires the session, engines, and overlay together and
@@ -552,6 +553,33 @@ async function handleCommand(command: BackgroundCommand): Promise<unknown> {
       elementCapture.restore();
       return { success: true };
 
+    case "FREE_SELECT": {
+      ensureRuntime();
+      cleanup?.stopInspecting();
+      const regionResult = await startFreeSelect();
+      if (!regionResult) return { success: false, cancelled: true };
+      return { success: true, rect: regionResult.rect, scrollY: regionResult.scrollY, dpr: regionResult.dpr };
+    }
+
+    case "CAPTURE_REGION_CROP": {
+      try {
+        const { dataUrl, rect, dpr } = command.payload;
+        const cropX = Math.max(0, Math.round(rect.x * dpr));
+        const cropY = Math.max(0, Math.round(rect.y * dpr));
+        const cropW = Math.max(1, Math.round(rect.width * dpr));
+        const cropH = Math.max(1, Math.round(rect.height * dpr));
+        const cropped = await cropDataUrlToPng(dataUrl, { x: cropX, y: cropY, width: cropW, height: cropH });
+        try {
+          await chrome.storage.local.set({ [`regioncapture:${command.payload.sessionId}`]: cropped });
+          return { success: true };
+        } catch (error) {
+          return { success: false, error: `Failed to stage region image: ${error instanceof Error ? error.message : String(error)}` };
+        }
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    }
+
     case "CAPTURE_STITCH_START": {
       ensureRuntime();
       const pageHeightCss = Math.max(
@@ -615,6 +643,14 @@ async function handleCommand(command: BackgroundCommand): Promise<unknown> {
 
     case "GET_STATE":
       return getSnapshot();
+
+    case "SELECT_REGION":
+      return { success: false, error: "Handled by Service Worker" };
+
+    default: {
+      const _: never = command;
+      return _;
+    }
   }
 }
 

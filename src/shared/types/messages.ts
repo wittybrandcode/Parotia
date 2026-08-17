@@ -1,5 +1,6 @@
 import type { FreezeStrategy } from "./freeze";
 import type { CaptureProgress } from "./capture";
+import type { Rect } from "./element";
 
 /**
  * Extension message contracts. Messages are typed discriminated unions with a
@@ -39,7 +40,7 @@ export type BackgroundCommand =
   | { type: "APPLY_PRESET"; payload: { sessionId: string; presetId: string } }
   | { type: "SAVE_PRESET"; payload: { sessionId: string; name?: string } }
   | { type: "SET_PRESET_ENABLED"; payload: { sessionId: string; presetId: string; enabled: boolean } }
-  | { type: "CAPTURE"; payload: { sessionId: string; mode: "VISIBLE" | "FULL_PAGE" | "ELEMENT"; elementId?: string } }
+  | { type: "CAPTURE"; payload: { sessionId: string; mode: "VISIBLE" | "FULL_PAGE" | "ELEMENT" | "REGION"; elementId?: string } }
   | { type: "PREPARE_CAPTURE"; payload: { sessionId: string } }
   | { type: "RESTORE_CAPTURE"; payload: { sessionId: string } }
   | { type: "PREPARE_ELEMENT_CAPTURE"; payload: { sessionId: string; elementId: string } }
@@ -51,6 +52,9 @@ export type BackgroundCommand =
   | { type: "CAPTURE_SCROLL"; payload: { sessionId: string; scrollYCss: number } }
   | { type: "CAPTURE_SLICE"; payload: { sessionId: string; dataUrl: string; scrollYCss: number } }
   | { type: "CAPTURE_FINALIZE"; payload: { sessionId: string } }
+  | { type: "FREE_SELECT"; payload: { sessionId: string } }
+  | { type: "SELECT_REGION"; payload: { sessionId: string; rect: Rect; scrollY: number; dpr: number } }
+  | { type: "CAPTURE_REGION_CROP"; payload: { sessionId: string; dataUrl: string; rect: Rect; dpr: number } }
   | { type: "GET_STATE"; payload: { sessionId: string } };
 
 export const BACKGROUND_COMMAND_TYPES = [
@@ -83,6 +87,9 @@ export const BACKGROUND_COMMAND_TYPES = [
   "CAPTURE_SCROLL",
   "CAPTURE_SLICE",
   "CAPTURE_FINALIZE",
+  "FREE_SELECT",
+  "SELECT_REGION",
+  "CAPTURE_REGION_CROP",
   "GET_STATE",
 ] as const;
 

@@ -169,7 +169,7 @@ function validatePayload(command: BackgroundCommand): string | null {
       if (typeof payload.elementId !== "string" || payload.elementId === "") return "Missing or invalid elementId";
       break;
     case "CAPTURE": {
-      if (payload.mode !== "VISIBLE" && payload.mode !== "FULL_PAGE" && payload.mode !== "ELEMENT") {
+      if (payload.mode !== "VISIBLE" && payload.mode !== "FULL_PAGE" && payload.mode !== "ELEMENT" && payload.mode !== "REGION") {
         return "Invalid capture mode";
       }
       if (payload.mode === "ELEMENT" && (typeof payload.elementId !== "string" || payload.elementId === "")) {
@@ -201,6 +201,24 @@ function validatePayload(command: BackgroundCommand): string | null {
         return "Invalid scrollYCss";
       }
       break;
+    case "SELECT_REGION": {
+      const r = payload.rect as Record<string, unknown> | undefined;
+      if (!r || typeof r.x !== "number" || typeof r.y !== "number" || typeof r.width !== "number" || typeof r.height !== "number") {
+        return "Invalid region rect";
+      }
+      if (typeof payload.scrollY !== "number" || !Number.isFinite(payload.scrollY)) return "Invalid scrollY";
+      if (typeof payload.dpr !== "number" || payload.dpr <= 0) return "Invalid dpr";
+      break;
+    }
+    case "CAPTURE_REGION_CROP": {
+      if (typeof payload.dataUrl !== "string" || payload.dataUrl === "") return "Missing or invalid dataUrl";
+      const r = payload.rect as Record<string, unknown> | undefined;
+      if (!r || typeof r.x !== "number" || typeof r.y !== "number" || typeof r.width !== "number" || typeof r.height !== "number") {
+        return "Invalid region rect";
+      }
+      if (typeof payload.dpr !== "number" || payload.dpr <= 0) return "Invalid dpr";
+      break;
+    }
     default:
       break;
   }
@@ -242,6 +260,7 @@ async function handleCommand(command: BackgroundCommand, tabId: number | undefin
       const capture = command as Extract<BackgroundCommand, { type: "CAPTURE" }>;
       if (capture.payload.mode === "FULL_PAGE") return captureFullPage(tabId, capture);
       if (capture.payload.mode === "ELEMENT") return captureElement(tabId, capture);
+      if (capture.payload.mode === "REGION") return captureRegion(tabId, capture);
       return captureVisibleArea(tabId, capture);
     }
     case "PREPARE_CAPTURE":
@@ -255,6 +274,9 @@ async function handleCommand(command: BackgroundCommand, tabId: number | undefin
     case "CAPTURE_SCROLL":
     case "CAPTURE_SLICE":
     case "CAPTURE_FINALIZE":
+    case "FREE_SELECT":
+    case "SELECT_REGION":
+    case "CAPTURE_REGION_CROP":
       return routeToTab(tabId, command);
     default: {
       const exhaustive: never = command;
@@ -634,6 +656,59 @@ async function captureElement(tabId: number | undefined, command: CaptureCommand
         // Ignore — the tab zoom is best-effort to restore.
       }
     }
+    await showToolbar(tabId, sessionId);
+  }
+}
+
+/**
+ * Captures a user-drawn region of the visible viewport. The content script
+ * shows a free-selection overlay, the user draws a rectangle, the worker
+ * captures the viewport, and the content script crops the result to the
+ * selected area.
+ */
+async function captureRegion(tabId: number | undefined, command: CaptureCommand): Promise<unknown> {
+  if (tabId === undefined) throw new Error("No tab context for command");
+  const { sessionId } = command.payload;
+  const tab = await chrome.tabs.get(tabId);
+
+  await hideToolbar(tabId, sessionId);
+  try {
+    pushProgress(tabId, sessionId, { current: 0, total: 1, phase: "PREPARING" });
+
+    const selectRes = (await chrome.tabs.sendMessage(tabId, {
+      type: "FREE_SELECT",
+      payload: { sessionId },
+    } satisfies BackgroundCommand)) as
+      | MessageResponse<{ rect?: { x: number; y: number; width: number; height: number }; scrollY?: number; dpr?: number }>
+      | undefined;
+
+    const region = selectRes?.data;
+    if (!region?.rect || region.rect.width <= 0 || region.rect.height <= 0) {
+      return { success: false, error: "Selection cancelled" };
+    }
+
+    pushProgress(tabId, sessionId, { current: 0, total: 1, phase: "RENDERING" });
+    await sleep(PAINT_SETTLE_MS);
+    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
+    pushProgress(tabId, sessionId, { current: 1, total: 1, phase: "ENCODING" });
+
+    await chrome.tabs.sendMessage(tabId, {
+      type: "CAPTURE_REGION_CROP",
+      payload: { sessionId, dataUrl, rect: region.rect, dpr: region.dpr ?? 1 },
+    } satisfies BackgroundCommand);
+
+    const key = `regioncapture:${sessionId}`;
+    const stored = await chrome.storage.local.get(key);
+    const cropped = stored?.[key];
+    if (typeof cropped !== "string") throw new Error("Region image missing from storage");
+    await chrome.storage.local.remove(key);
+
+    const filename = `parotia-region-${titleSlug(tab)}-${timestampPart()}.png`;
+    pushProgress(tabId, sessionId, { current: 1, total: 1, phase: "ENCODING" });
+    const downloaded = await downloadPng(cropped, filename);
+    if (!downloaded) return { success: false, error: DOWNLOAD_PERMISSION_MESSAGE };
+    return { success: true, filename };
+  } finally {
     await showToolbar(tabId, sessionId);
   }
 }
