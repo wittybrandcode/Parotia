@@ -11,7 +11,6 @@ import {
   CircleX,
   Crosshair,
   ExternalLink,
-  Eye,
   EyeOff,
   History,
   Loader2,
@@ -53,55 +52,38 @@ const t: Record<Lang, Record<TranslationKeys, string>> = {
     guideTitle: "Toolbar Guide",
     guideDesc: "Every button on the Parotia toolbar explained.",
     gBrand: "Freeze / Unfreeze",
-    gBrandD:
-      "Locks the page against live updates (new ads, pop-ups) so you can clean without interruptions. Click again to unfreeze and resume normal browsing.",
+    gBrandD: "Locks the page against live updates (new ads, pop-ups) so you can clean without interruptions. Click again to unfreeze and resume normal browsing.",
     gPick: "Pick",
-    gPickD:
-      "Activate the element picker. Hover over any element on the page to highlight it, then click to select. Press Delete to remove, or use the toolbar actions.",
+    gPickD: "Activate the element picker. Hover over any element on the page to highlight it, then click to select. Press Delete to remove, or use the toolbar actions.",
     gDelete: "Delete",
-    gDeleteD:
-      "Permanently removes the selected element from the page. Deleted elements can be restored with Undo.",
+    gDeleteD: "Permanently removes the selected element from the page. Deleted elements can be restored with Undo.",
     gHide: "Hide / Show",
-    gHideD:
-      "Temporarily hides the selected element using CSS (display: none). Click again to show it. Useful when you're not sure you want to delete something.",
+    gHideD: "Temporarily hides the selected element using CSS (display: none). Click again to show it. Useful when you're not sure you want to delete something.",
     gKeep: "Keep",
-    gKeepD:
-      "Protects the selected element so Parotia will never delete or hide it. Useful for preserving important content.",
+    gKeepD: "Protects the selected element so Parotia will never delete or hide it. Useful for preserving important content.",
     gSave: "Save Preset",
-    gSaveD:
-      "Saves your current cleanup rules as a reusable preset for this website. The preset appears in Settings where you can enable auto-apply.",
+    gSaveD: "Saves your current cleanup rules as a reusable preset for this website. The preset appears in Settings where you can enable auto-apply.",
     gEnable: "Enable Preset",
-    gEnableD:
-      "A saved preset was detected for this site. Click to enable auto-apply — Parotia will clean this site automatically on every visit.",
+    gEnableD: "A saved preset was detected for this site. Click to enable auto-apply — Parotia will clean this site automatically on every visit.",
     gCapture: "Capture",
-    gCaptureD:
-      "Captures the entire article as a clean PNG image — no ads, no sidebars. The image is saved to your Downloads folder.",
+    gCaptureD: "Captures the entire article as a clean PNG image — no ads, no sidebars. The image is saved to your Downloads folder.",
     gRegion: "Select Region",
-    gRegionD:
-      "Draw a rectangle on the page to capture a specific region as a PNG image.",
+    gRegionD: "Draw a rectangle on the page to capture a specific region as a PNG image.",
     gHistory: "History",
-    gHistoryD:
-      "Shows a log of all cleanup actions performed during this session. Each entry can be individually undone.",
+    gHistoryD: "Shows a log of all cleanup actions performed during this session. Each entry can be individually undone.",
     gUndo: "Undo",
-    gUndoD:
-      "Reverses the last cleanup action (delete, hide, or batch cleanup). Restores the element(s) to their original state.",
+    gUndoD: "Reverses the last cleanup action (delete, hide, or batch cleanup). Restores the element(s) to their original state.",
     gRedo: "Redo",
-    gRedoD:
-      "Re-applies the last undone action. Useful if you changed your mind after undoing.",
+    gRedoD: "Re-applies the last undone action. Useful if you changed your mind after undoing.",
     gReset: "Reset",
-    gResetD:
-      "Restores ALL removed and hidden elements on the page. A fresh start without reloading.",
+    gResetD: "Restores ALL removed and hidden elements on the page. A fresh start without reloading.",
     gSettings: "Settings",
-    gSettingsD:
-      "Opens this guide and settings page where you can manage your saved presets.",
+    gSettingsD: "Opens this guide and settings page where you can manage your saved presets.",
     gClose: "Close",
-    gCloseD:
-      "Closes the Parotia toolbar and removes it from the page.",
+    gCloseD: "Closes the Parotia toolbar and removes it from the page.",
     presetTitle: "Saved Presets",
-    presetDesc:
-      "Presets remember how you cleaned a site so Parotia can auto-apply the same cleanup on your next visit.",
-    presetEmpty:
-      "No presets yet. Clean a site, then press Save in the toolbar to create one.",
+    presetDesc: "Presets remember how you cleaned a site so Parotia can auto-apply the same cleanup on your next visit.",
+    presetEmpty: "No presets yet. Clean a site, then press Save in the toolbar to create one.",
     active: "Active",
     off: "Off",
     enable: "Enable",
@@ -130,55 +112,38 @@ const t: Record<Lang, Record<TranslationKeys, string>> = {
     guideTitle: "دليل الأزرار",
     guideDesc: "شرح كل زر في شريط Parotia.",
     gBrand: "تجميد / إلغاء التجميد",
-    gBrandD:
-      "يقفل الصفحة ضد التحديثات المباشرة (إعلانات جديدة، نوافذ منبثقة) حتى تتمكن من التنظيف دون انقطاع. اضغط مرة أخرى لإلغاء التجميد والتصفح الطبيعي.",
+    gBrandD: "يقفل الصفحة ضد التحديثات المباشرة (إعلانات جديدة، نوافذ منبثقة) حتى تتمكن من التنظيف دون انقطاع. اضغط مرة أخرى لإلغاء التجميد والتصفح الطبيعي.",
     gPick: "تحديد",
-    gPickD:
-      "تفعيل أداة تحديد العناصر. مرر الماوس فوق أي عنصر لتحديده، ثم اضغط عليه. اضغط Delete للحذف، أو استخدم أزرار الشريط.",
+    gPickD: "تفعيل أداة تحديد العناصر. مرر الماوس فوق أي عنصر لتحديده، ثم اضغط عليه. اضغط Delete للحذف، أو استخدم أزرار الشريط.",
     gDelete: "حذف",
-    gDeleteD:
-      "يحذف العنصر المحدد نهائياً من الصفحة. يمكن استعادة العناصر المحذوفة باستخدام التراجع.",
+    gDeleteD: "يحذف العنصر المحدد نهائياً من الصفحة. يمكن استعادة العناصر المحذوفة باستخدام التراجع.",
     gHide: "إظهار / إخفاء",
-    gHideD:
-      "يخفي العنصر المحدد مؤقتاً باستخدام CSS. اضغط مرة أخرى لإظهاره. مفيد عندما لا تتأكد إذا كنت تريد حذف شيء ما.",
+    gHideD: "يخفي العنصر المحدد مؤقتاً باستخدام CSS. اضغط مرة أخرى لإظهاره. مفيد عندما لا تتأكد إذا كنت تريد حذف شيء ما.",
     gKeep: "حماية",
-    gKeepD:
-      "يحمي العنصر المحدد حتى لا يحذفه أو يخفيه Parotia. مفيد لحفظ المحتوى المهم.",
+    gKeepD: "يحمي العنصر المحدد حتى لا يحذفه أو يخفيه Parotia. مفيد لحفظ المحتوى المهم.",
     gSave: "حفظ القالب",
-    gSaveD:
-      "يحفظ قواعد التنظيف الحالية كقالب قابل لإعادة الاستخدام لهذا الموقع. يظهر القالب في الإعدادات حيث يمكنك تفعيل التطبيق التلقائي.",
+    gSaveD: "يحفظ قواعد التنظيف الحالية كقالب قابل لإعادة الاستخدام لهذا الموقع. يظهر القالب في الإعدادات حيث يمكنك تفعيل التطبيق التلقائي.",
     gEnable: "تفعيل القالب",
-    gEnableD:
-      "تم اكتشاف قالب محفوظ لهذا الموقع. اضغط لتفعيل التطبيق التلقائي — سيقوم Parotia بتنظيف هذا الموقع تلقائياً في كل زيارة.",
+    gEnableD: "تم اكتشاف قالب محفوظ لهذا الموقع. اضغط لتفعيل التطبيق التلقائي — سيقوم Parotia بتنظيف هذا الموقع تلقائياً في كل زيارة.",
     gCapture: "التقاط",
-    gCaptureD:
-      "يلتقط المقال الكامل كصورة PNG نظيفة — بدون إعلانات أو أعمدة جانبية. تُحفظ الصورة في مجلد التنزيلات.",
+    gCaptureD: "يلتقط المقال الكامل كصورة PNG نظيفة — بدون إعلانات أو أعمدة جانبية. تُحفظ الصورة في مجلد التنزيلات.",
     gRegion: "تحديد منطقة",
-    gRegionD:
-      "ارسم مستطيلاً على الصفحة لالتقاط منطقة معينة كصورة PNG.",
+    gRegionD: "ارسم مستطيلاً على الصفحة لالتقاط منطقة معينة كصورة PNG.",
     gHistory: "السجل",
-    gHistoryD:
-      "يعرض سجلاً بجميع إجراءات التنظيف التي تمت خلال هذه الجلسة. يمكن التراجع عن كل إجراء على حدة.",
+    gHistoryD: "يعرض سجلاً بجميع إجراءات التنظيف التي تمت خلال هذه الجلسة. يمكن التراجع عن كل إجراء على حدة.",
     gUndo: "تراجع",
-    gUndoD:
-      "يعكس آخر إجراء تنظيف (حذف، إخفاء، أو تنظيف جماعي). يستعيد العناصر إلى حالتها الأصلية.",
+    gUndoD: "يعكس آخر إجراء تنظيف (حذف، إخفاء، أو تنظيف جماعي). يستعيد العناصر إلى حالتها الأصلية.",
     gRedo: "إعادة",
-    gRedoD:
-      "يعيد تطبيق آخر إجراء تم التراجع عنه. مفيد إذا غيّرت رأيك بعد التراجع.",
+    gRedoD: "يعيد تطبيق آخر إجراء تم التراجع عنه. مفيد إذا غيّرت رأيك بعد التراجع.",
     gReset: "إعادة تعيين",
-    gResetD:
-      "يستعيد جميع العناصر المحذوفة والمخفية في الصفحة. بداية جديدة بدون إعادة تحميل.",
+    gResetD: "يستعيد جميع العناصر المحذوفة والمخفية في الصفحة. بداية جديدة بدون إعادة تحميل.",
     gSettings: "الإعدادات",
-    gSettingsD:
-      "يفتح صفحة هذا الدليل والإعدادات حيث يمكنك إدارة القوالب المحفوظة.",
+    gSettingsD: "يفتح صفحة هذا الدليل والإعدادات حيث يمكنك إدارة القوالب المحفوظة.",
     gClose: "إغلاق",
-    gCloseD:
-      "يغلق شريط Parotia ويزيله من الصفحة.",
+    gCloseD: "يغلق شريط Parotia ويزيله من الصفحة.",
     presetTitle: "القوالب المحفوظة",
-    presetDesc:
-      "القوالب تتذكر كيف نظفت صفحة حتى يتمكن Parotia من تطبيق نفس التنظيف تلقائياً في زيارتك القادمة.",
-    presetEmpty:
-      "لا توجد قوالب بعد. نظّف صفحة، ثم اضغط حفظ في الشريط لإنشاء قالب.",
+    presetDesc: "القوالب تتذكر كيف نظفت صفحة حتى يتمكن Parotia من تطبيق نفس التنظيف تلقائياً في زيارتك القادمة.",
+    presetEmpty: "لا توجد قوالب بعد. نظّف صفحة، ثم اضغط حفظ في الشريط لإنشاء قالب.",
     active: "مفعّل",
     off: "معطّل",
     enable: "تفعيل",
@@ -198,24 +163,35 @@ const t: Record<Lang, Record<TranslationKeys, string>> = {
   },
 };
 
-/* ───── Feature cards ───── */
-const FEATURES_EN = [
-  { icon: "🧊", title: "Freeze Page", desc: "Lock the page against live updates so ads can't sneak back in." },
-  { icon: "🎯", title: "Pick & Delete", desc: "Select any element and delete it — or similar ones with one click." },
-  { icon: "👁️", title: "Hide / Show", desc: "Temporarily hide elements without permanent deletion." },
-  { icon: "🛡️", title: "Protect Content", desc: "Mark important elements so Parotia never touches them." },
-  { icon: "📸", title: "Clean Capture", desc: "Screenshot the article without ads, nav bars, or sidebars." },
-  { icon: "💾", title: "Smart Presets", desc: "Save your cleanup and auto-apply it next time you visit." },
+/* ───── Feature cards with real icons ───── */
+const FEATURES = [
+  { icon: "brand", titleEn: "Freeze Page", titleAr: "تجميد الصفحة", descEn: "Lock the page against live updates so ads can't sneak back in.", descAr: "اقفل الصفحة ضد التحديثات المباشرة حتى لا تعود الإعلانات.", color: "#c1e899" },
+  { icon: "crosshair", titleEn: "Pick & Delete", titleAr: "تحديد وحذف", descEn: "Select any element and delete it — or similar ones with one click.", descAr: "حدد أي عنصر واحذفه — أو العناصر المتشابهة بنقرة واحدة.", color: "#7cb3ff" },
+  { icon: "eyeOff", titleEn: "Hide / Show", titleAr: "إظهار / إخفاء", descEn: "Temporarily hide elements without permanent deletion.", descAr: "أخفي العناصر مؤقتاً دون حذف دائم.", color: "#fbbf24" },
+  { icon: "shield", titleEn: "Protect Content", titleAr: "حماية المحتوى", descEn: "Mark important elements so Parotia never touches them.", descAr: "حدد العناصر المهمة حتى لا يلمسها Parotia.", color: "#c1e899" },
+  { icon: "camera", titleEn: "Clean Capture", titleAr: "التقاط نظيف", descEn: "Screenshot the article without ads, nav bars, or sidebars.", descAr: "لقطة شاشة للمقال بدون إعلانات أو أعمدة جانبية.", color: "#f97316" },
+  { icon: "bookmark", titleEn: "Smart Presets", titleAr: "قوالب ذكية", descEn: "Save your cleanup and auto-apply it next time you visit.", descAr: "احفظ تنظيفك وطبيقه تلقائياً في المرة القادمة.", color: "#a78bfa" },
 ];
 
-const FEATURES_AR = [
-  { icon: "🧊", title: "تجميد الصفحة", desc: "اقفل الصفحة ضد التحديثات المباشرة حتى لا تعود الإعلانات." },
-  { icon: "🎯", title: "تحديد وحذف", desc: "حدد أي عنصر واحذفه — أو العناصر المتشابهة بنقرة واحدة." },
-  { icon: "👁️", title: "إظهار / إخفاء", desc: "أخفي العناصر مؤقتاً دون حذف دائم." },
-  { icon: "🛡️", title: "حماية المحتوى", desc: "حدد العناصر المهمة حتى لا يلمسها Parotia." },
-  { icon: "📸", title: "التقاط نظيف", desc: "لقطة شاشة للمقال بدون إعلانات أو أعمدة جانبية." },
-  { icon: "💾", title: "قوالب ذكية", desc: "احفظ تنظيفك وطبيقه تلقائياً في المرة القادمة." },
-];
+function FeatureIcon({ name, color }: { name: string; color: string }) {
+  const cls = "opt-feature-lucide";
+  switch (name) {
+    case "brand":
+      return <span className={`opt-feature-logo ${cls}`} style={{ background: color }}><ParotiaLogo /></span>;
+    case "crosshair":
+      return <Crosshair className={cls} size={24} style={{ color }} />;
+    case "eyeOff":
+      return <EyeOff className={cls} size={24} style={{ color }} />;
+    case "shield":
+      return <ShieldCheck className={cls} size={24} style={{ color }} />;
+    case "camera":
+      return <Camera className={cls} size={24} style={{ color }} />;
+    case "bookmark":
+      return <Bookmark className={cls} size={24} style={{ color }} />;
+    default:
+      return null;
+  }
+}
 
 /* ───── Main App ───── */
 export function OptionsApp() {
@@ -226,7 +202,6 @@ export function OptionsApp() {
 
   const tx = t[lang] as Record<TranslationKeys, string>;
   const isRtl = lang === "ar";
-  const features = isRtl ? FEATURES_AR : FEATURES_EN;
 
   const refresh = useCallback(async () => {
     try {
@@ -271,26 +246,12 @@ export function OptionsApp() {
 
   return (
     <div className={`opt ${isRtl ? "opt-rtl" : ""}`}>
-      {/* ── Language Toggle ── */}
       <div className="opt-lang">
-        <button
-          type="button"
-          className={`opt-lang-btn ${lang === "en" ? "opt-lang-active" : ""}`}
-          onClick={() => setLang("en")}
-        >
-          EN
-        </button>
+        <button type="button" className={`opt-lang-btn ${lang === "en" ? "opt-lang-active" : ""}`} onClick={() => setLang("en")}>EN</button>
         <span className="opt-lang-sep">/</span>
-        <button
-          type="button"
-          className={`opt-lang-btn ${lang === "ar" ? "opt-lang-active" : ""}`}
-          onClick={() => setLang("ar")}
-        >
-          عربي
-        </button>
+        <button type="button" className={`opt-lang-btn ${lang === "ar" ? "opt-lang-active" : ""}`} onClick={() => setLang("ar")}>عربي</button>
       </div>
 
-      {/* ── Hero ── */}
       <header className="opt-hero">
         <div className="opt-hero-logo">
           <ParotiaLogo />
@@ -300,30 +261,27 @@ export function OptionsApp() {
         <p className="opt-hero-desc">{tx.heroDesc}</p>
       </header>
 
-      {/* ── How it works ── */}
       <section className="opt-section">
         <h2 className="opt-section-title">{tx.heroHow}</h2>
         <p className="opt-section-desc">{tx.heroHowDesc}</p>
       </section>
 
-      {/* ── Features Grid ── */}
       <section className="opt-features">
-        {features.map((f) => (
-          <div key={f.title} className="opt-feature">
-            <span className="opt-feature-icon">{f.icon}</span>
-            <h3 className="opt-feature-title">{f.title}</h3>
-            <p className="opt-feature-desc">{f.desc}</p>
+        {FEATURES.map((f) => (
+          <div key={f.titleEn} className="opt-feature">
+            <FeatureIcon name={f.icon} color={f.color} />
+            <h3 className="opt-feature-title">{isRtl ? f.titleAr : f.titleEn}</h3>
+            <p className="opt-feature-desc">{isRtl ? f.descAr : f.descEn}</p>
           </div>
         ))}
       </section>
 
-      {/* ── Toolbar Guide ── */}
       <section className="opt-section">
         <h2 className="opt-section-title">{tx.guideTitle}</h2>
         <p className="opt-section-desc">{tx.guideDesc}</p>
 
         <div className="opt-guide">
-          <GuideRow icon={<ParotiaLogo />} color="#c1e899" label={tx.gBrand} desc={tx.gBrandD} />
+          <GuideRow icon={<ParotiaLogo />} color="#c1e899" label={tx.gBrand} desc={tx.gBrandD} isLogo />
           <GuideRow icon={<Crosshair size={18} />} color="#7cb3ff" label={tx.gPick} desc={tx.gPickD} />
           <GuideRow icon={<Trash2 size={18} />} color="#f87171" label={tx.gDelete} desc={tx.gDeleteD} />
           <GuideRow icon={<EyeOff size={18} />} color="#fbbf24" label={tx.gHide} desc={tx.gHideD} />
@@ -341,7 +299,6 @@ export function OptionsApp() {
         </div>
       </section>
 
-      {/* ── Keyboard Shortcuts ── */}
       <section className="opt-section">
         <h2 className="opt-section-title">{tx.kbTitle}</h2>
         <div className="opt-kb">
@@ -352,15 +309,12 @@ export function OptionsApp() {
         </div>
       </section>
 
-      {/* ── Presets ── */}
       <section className="opt-section">
         <h2 className="opt-section-title">{tx.presetTitle}</h2>
         <p className="opt-section-desc">{tx.presetDesc}</p>
 
         {message && (
-          <div className="opt-message" data-ok={message.ok}>
-            {message.text}
-          </div>
+          <div className="opt-message" data-ok={message.ok}>{message.text}</div>
         )}
 
         {presets.length === 0 ? (
@@ -375,24 +329,15 @@ export function OptionsApp() {
                   <div className="opt-card-info">
                     <div className="opt-card-title">
                       {preset.metadata.name}
-                      <span className="opt-chip" data-ok={enabled}>
-                        {enabled ? tx.active : tx.off}
-                      </span>
+                      <span className="opt-chip" data-ok={enabled}>{enabled ? tx.active : tx.off}</span>
                     </div>
-                    <div className="opt-card-meta">
-                      {preset.site.hostname} &middot; {ruleCount} rule{ruleCount === 1 ? "" : "s"}
-                    </div>
+                    <div className="opt-card-meta">{preset.site.hostname} &middot; {ruleCount} rule{ruleCount === 1 ? "" : "s"}</div>
                   </div>
                   <div className="opt-card-actions">
                     <button type="button" className="opt-btn" disabled={busy} onClick={() => void toggleEnabled(preset)}>
                       {enabled ? tx.disable : tx.enable}
                     </button>
-                    <button
-                      type="button"
-                      className="opt-btn opt-btn-danger"
-                      disabled={busy}
-                      onClick={() => void removePreset(preset)}
-                    >
+                    <button type="button" className="opt-btn opt-btn-danger" disabled={busy} onClick={() => void removePreset(preset)}>
                       {tx.delete}
                     </button>
                   </div>
@@ -403,25 +348,19 @@ export function OptionsApp() {
         )}
       </section>
 
-      {/* ── Footer ── */}
       <footer className="opt-footer">
-        <span className="opt-footer-logo">
-          <ParotiaLogo />
-        </span>
+        <span className="opt-footer-logo"><ParotiaLogo /></span>
         <p>{tx.footerText}</p>
-        <a className="opt-footer-link" href="https://github.com/wittybrandcode/Parotia" target="_blank" rel="noopener noreferrer">
-          {tx.footerGH} ↗
-        </a>
+        <a className="opt-footer-link" href="https://github.com/wittybrandcode/Parotia" target="_blank" rel="noopener noreferrer">{tx.footerGH}</a>
       </footer>
     </div>
   );
 }
 
-/* ── GuideRow Component ── */
-function GuideRow({ icon, color, label, desc }: { icon: React.ReactNode; color: string; label: string; desc: string }) {
+function GuideRow({ icon, color, label, desc, isLogo }: { icon: React.ReactNode; color: string; label: string; desc: string; isLogo?: boolean }) {
   return (
     <div className="opt-guide-row">
-      <span className="opt-guide-icon" style={{ color }}>
+      <span className={`opt-guide-icon ${isLogo ? "opt-guide-logo" : ""}`} style={isLogo ? { background: color } : { color }}>
         {icon}
       </span>
       <div className="opt-guide-text">
@@ -432,7 +371,6 @@ function GuideRow({ icon, color, label, desc }: { icon: React.ReactNode; color: 
   );
 }
 
-/* ── KbRow Component ── */
 function KbRow({ keys, desc }: { keys: string; desc: string }) {
   return (
     <div className="opt-kb-row">

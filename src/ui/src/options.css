@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap");
+
 :root {
   color-scheme: dark;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -13,7 +15,6 @@ body {
   color: #e2e8f0;
 }
 
-/* ── Layout ── */
 .opt {
   max-width: 800px;
   margin: 0 auto;
@@ -23,6 +24,7 @@ body {
 .opt-rtl {
   direction: rtl;
   text-align: right;
+  font-family: "Cairo", system-ui, sans-serif;
 }
 
 /* ── Language Toggle ── */
@@ -80,6 +82,7 @@ body {
   background: linear-gradient(135deg, #c1e899, #93d463);
   display: grid;
   place-items: center;
+  color: #0f141a;
   box-shadow:
     0 8px 32px rgba(193, 232, 153, 0.3),
     0 0 80px rgba(193, 232, 153, 0.15);
@@ -94,7 +97,6 @@ body {
 .opt-hero-logo svg {
   width: 52px;
   height: 52px;
-  fill: #0f141a;
 }
 
 .opt-hero-title {
@@ -163,10 +165,23 @@ body {
   border-color: rgba(193, 232, 153, 0.2);
 }
 
-.opt-feature-icon {
-  font-size: 28px;
+.opt-feature-lucide {
   display: block;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
+}
+
+.opt-feature-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: #0f141a;
+}
+
+.opt-feature-logo svg {
+  width: 26px;
+  height: 26px;
 }
 
 .opt-feature-title {
@@ -213,13 +228,22 @@ body {
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.06);
   flex-shrink: 0;
-  font-size: 18px;
 }
 
 .opt-guide-icon svg {
   width: 18px;
   height: 18px;
   fill: currentColor;
+}
+
+.opt-guide-logo {
+  color: #0f141a;
+  padding: 0;
+}
+
+.opt-guide-logo svg {
+  width: 22px;
+  height: 22px;
 }
 
 .opt-guide-text {
@@ -399,12 +423,12 @@ body {
   border-radius: 8px;
   background: rgba(193, 232, 153, 0.15);
   margin-bottom: 10px;
+  color: #0f141a;
 }
 
 .opt-footer-logo svg {
   width: 20px;
   height: 20px;
-  fill: #c1e899;
 }
 
 .opt-footer p {
