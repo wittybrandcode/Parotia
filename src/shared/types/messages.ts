@@ -55,7 +55,8 @@ export type BackgroundCommand =
   | { type: "FREE_SELECT"; payload: { sessionId: string } }
   | { type: "SELECT_REGION"; payload: { sessionId: string; rect: Rect; scrollY: number; dpr: number } }
   | { type: "CAPTURE_REGION_CROP"; payload: { sessionId: string; dataUrl: string; rect: Rect; dpr: number } }
-  | { type: "GET_STATE"; payload: { sessionId: string } };
+  | { type: "GET_STATE"; payload: { sessionId: string } }
+  | { type: "CLOSE_TOOLBAR"; payload: { sessionId: string } };
 
 export const BACKGROUND_COMMAND_TYPES = [
   "START_SESSION",
@@ -91,6 +92,7 @@ export const BACKGROUND_COMMAND_TYPES = [
   "SELECT_REGION",
   "CAPTURE_REGION_CROP",
   "GET_STATE",
+  "CLOSE_TOOLBAR",
 ] as const;
 
 export function isBackgroundCommand(value: unknown): value is BackgroundCommand {

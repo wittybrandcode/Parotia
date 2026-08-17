@@ -260,6 +260,7 @@ async function handleCommand(command: BackgroundCommand, tabId: number | undefin
     case "SAVE_PRESET":
     case "SET_PRESET_ENABLED":
     case "GET_STATE":
+    case "CLOSE_TOOLBAR":
       return routeToTab(tabId, command);
     case "CAPTURE": {
       const capture = command as Extract<BackgroundCommand, { type: "CAPTURE" }>;

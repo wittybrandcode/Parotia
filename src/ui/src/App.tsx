@@ -11,9 +11,11 @@ import {
   BookmarkCheck,
   BoxSelect,
   Camera,
+  CircleX,
   Crosshair,
   Eye,
   EyeOff,
+  ExternalLink,
   History,
   Loader2,
   Redo2,
@@ -420,6 +422,25 @@ export function App() {
           <div className="nc-feedback" data-feedback-ok={feedback?.ok}>
             {busy && <Loader2 className="nc-spin" size={11} aria-hidden="true" />}
             <span>{feedback ? feedback.text : `Removed ${removed} element${removed === 1 ? "" : "s"}`}</span>
+            <a
+              className="nc-inline-icon"
+              href={chrome.runtime.getURL("ui/options.html")}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Settings"
+              aria-label="Open Parotia settings"
+            >
+              <ExternalLink size={13} />
+            </a>
+            <button
+              type="button"
+              className="nc-inline-icon"
+              title="Close Parotia"
+              aria-label="Close Parotia"
+              onClick={() => void run({ type: "CLOSE_TOOLBAR", payload: { sessionId } })}
+            >
+              <CircleX size={14} />
+            </button>
           </div>
         </div>
 

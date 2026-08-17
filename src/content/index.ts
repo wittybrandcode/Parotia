@@ -644,6 +644,15 @@ async function handleCommand(command: BackgroundCommand): Promise<unknown> {
     case "GET_STATE":
       return getSnapshot();
 
+    case "CLOSE_TOOLBAR": {
+      cleanup?.stopInspecting();
+      overlay?.destroy();
+      overlay = null;
+      session = null;
+      cleanup = null;
+      return { success: true };
+    }
+
     case "SELECT_REGION":
       return { success: false, error: "Handled by Service Worker" };
 
