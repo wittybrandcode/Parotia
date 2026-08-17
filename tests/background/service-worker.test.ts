@@ -296,14 +296,13 @@ describe("service-worker", () => {
     );
   });
 
-  it("requests the downloads permission and rejects gracefully when it is denied", async () => {
+  it("rejects capture gracefully when the downloads permission is missing", async () => {
     vi.useFakeTimers();
     sw.tabSessions.set(3, "sess-d");
     chromeStub.tabs.get.mockResolvedValue({ id: 3, windowId: 11 });
     chromeStub.tabs.sendMessage.mockResolvedValue(okResponse({}));
     chromeStub.tabs.captureVisibleTab.mockResolvedValue("data:image/png;base64,AAAA");
     chromeStub.permissions.contains.mockResolvedValue(false);
-    chromeStub.permissions.request.mockResolvedValue(false);
 
     const pending = invokeOnMessage(
       { type: "CAPTURE", payload: { sessionId: "sess-d", mode: "VISIBLE" } },
@@ -313,7 +312,7 @@ describe("service-worker", () => {
     const res = await pending;
 
     expect(chromeStub.permissions.contains).toHaveBeenCalledWith({ permissions: ["downloads"] });
-    expect(chromeStub.permissions.request).toHaveBeenCalledWith({ permissions: ["downloads"] });
+    expect(chromeStub.permissions.request).not.toHaveBeenCalled();
     expect(chromeStub.downloads.download).not.toHaveBeenCalled();
     const data = res.data as { success?: boolean; error?: string };
     expect(data.success).toBe(false);

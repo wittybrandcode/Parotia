@@ -29,12 +29,12 @@ const manifest = {
     page: "ui/options.html",
     open_in_tab: true,
   },
-  // Least privilege (SECURITY doc §7): no `tabs` (only basic tab ids are
-  // used), no broad host permissions — `activeTab` grants temporary access to
-  // the page the user explicitly activates, and `scripting` scopes injection
-  // to that session. `downloads` stays optional and is requested on first export.
-  permissions: ["activeTab", "scripting", "storage", "unlimitedStorage"],
-  optional_permissions: ["downloads"],
+  // `activeTab` grants temporary access to the page the user explicitly
+  // activates; `scripting` scopes injection to that session. `downloads` is
+  // required because MV3 service workers cannot call `permissions.request()`
+  // (only extension pages may), so the permission must be declared upfront.
+  permissions: ["activeTab", "scripting", "storage", "unlimitedStorage", "downloads"],
+  optional_permissions: [],
   content_scripts: [],
   web_accessible_resources: [
     {

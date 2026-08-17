@@ -473,8 +473,7 @@ const DOWNLOAD_PERMISSION_MESSAGE =
 
 async function ensureDownloadsPermission(): Promise<boolean> {
   try {
-    if (await chrome.permissions.contains({ permissions: ["downloads"] })) return true;
-    return await chrome.permissions.request({ permissions: ["downloads"] });
+    return await chrome.permissions.contains({ permissions: ["downloads"] });
   } catch {
     return false;
   }
