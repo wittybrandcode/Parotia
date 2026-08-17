@@ -76,6 +76,7 @@ export function startFreeSelect(): Promise<FreeSelectResult | null> {
 
     const captureBtn = el("button", {
       "data-newsclean-freeselect-capture": "true",
+      "aria-label": "Capture this region",
       title: "Capture this region",
       style: `display:inline-flex;align-items:center;justify-content:center;width:30px;height:28px;border:none;border-radius:4px;background:#2196F3;color:#fff;cursor:pointer;font-size:14px;line-height:1;padding:0;`,
     });
@@ -84,6 +85,7 @@ export function startFreeSelect(): Promise<FreeSelectResult | null> {
 
     const cancelBtn = el("button", {
       "data-newsclean-freeselect-cancel": "true",
+      "aria-label": "Cancel selection",
       title: "Cancel selection (Esc)",
       style: `display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:none;border-radius:4px;background:#444;color:#ccc;cursor:pointer;font-size:14px;line-height:1;padding:0;`,
     });

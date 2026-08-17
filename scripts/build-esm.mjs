@@ -1,3 +1,8 @@
+/**
+ * Bundles content scripts and the service worker. Despite the "esm" in the
+ * filename, the output format is IIFE — required by MV3 for both content
+ * scripts and the background service worker.
+ */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";

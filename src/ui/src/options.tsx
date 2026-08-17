@@ -13,7 +13,11 @@ export function OptionsApp() {
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   const refresh = useCallback(async () => {
-    setPresets(await repository.list());
+    try {
+      setPresets(await repository.list());
+    } catch {
+      setMessage({ ok: false, text: "Failed to load presets. Try reloading the page." });
+    }
   }, []);
 
   useEffect(() => {

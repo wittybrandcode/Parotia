@@ -296,13 +296,13 @@ describe("service-worker", () => {
     );
   });
 
-  it("rejects capture gracefully when the downloads permission is missing", async () => {
+  it("rejects capture gracefully when download fails", async () => {
     vi.useFakeTimers();
     sw.tabSessions.set(3, "sess-d");
     chromeStub.tabs.get.mockResolvedValue({ id: 3, windowId: 11 });
     chromeStub.tabs.sendMessage.mockResolvedValue(okResponse({}));
     chromeStub.tabs.captureVisibleTab.mockResolvedValue("data:image/png;base64,AAAA");
-    chromeStub.permissions.contains.mockResolvedValue(false);
+    chromeStub.downloads.download.mockRejectedValue(new Error("Disk full"));
 
     const pending = invokeOnMessage(
       { type: "CAPTURE", payload: { sessionId: "sess-d", mode: "VISIBLE" } },
@@ -311,12 +311,10 @@ describe("service-worker", () => {
     await vi.advanceTimersByTimeAsync(2000);
     const res = await pending;
 
-    expect(chromeStub.permissions.contains).toHaveBeenCalledWith({ permissions: ["downloads"] });
-    expect(chromeStub.permissions.request).not.toHaveBeenCalled();
-    expect(chromeStub.downloads.download).not.toHaveBeenCalled();
+    expect(chromeStub.downloads.download).toHaveBeenCalled();
     const data = res.data as { success?: boolean; error?: string };
     expect(data.success).toBe(false);
-    expect(data.error).toMatch(/permission/i);
+    expect(data.error).toMatch(/failed to save/i);
   });
 
   it("captures a full page slice-by-slice and assembles it", async () => {

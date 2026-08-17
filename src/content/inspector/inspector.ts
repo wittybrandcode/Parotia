@@ -80,8 +80,20 @@ const EYE_PATH =
 const CAMERA_PATH =
   '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>';
 
-function actionIcon(pathData: string): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${pathData}</svg>`;
+function setIcon(el: HTMLElement, pathData: string): void {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", "16");
+  svg.setAttribute("height", "16");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("aria-hidden", "true");
+  svg.innerHTML = pathData;
+  el.textContent = "";
+  el.appendChild(svg);
 }
 
 function makeActionButton(
@@ -96,7 +108,7 @@ function makeActionButton(
   button.setAttribute("data-nc-action", action);
   button.title = title;
   button.setAttribute("aria-label", title);
-  button.innerHTML = actionIcon(pathData);
+  setIcon(button, pathData);
   button.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -153,7 +165,9 @@ export class DefaultInspector implements Inspector {
     this.onSelectCallback = onSelect;
 
     this.hoverOverlay = styleOverlay(document.createElement("div"), "2px solid #ff8a00", "rgba(255,138,0,0.12)");
+    this.hoverOverlay.setAttribute("aria-hidden", "true");
     this.selectionOverlay = styleOverlay(document.createElement("div"), "2px solid #1a73e8", "rgba(26,115,232,0.14)");
+    this.selectionOverlay.setAttribute("aria-hidden", "true");
     this.actionBar = this.buildActionBar();
     document.documentElement.appendChild(this.hoverOverlay);
     document.documentElement.appendChild(this.selectionOverlay);
@@ -305,7 +319,7 @@ export class DefaultInspector implements Inspector {
     if (!button) return;
     const hidden = this.actionHandlers?.isHidden?.() ?? false;
     const title = hidden ? "Show element" : "Hide element";
-    button.innerHTML = actionIcon(hidden ? EYE_PATH : EYE_OFF_PATH);
+    setIcon(button, hidden ? EYE_PATH : EYE_OFF_PATH);
     button.title = title;
     button.setAttribute("aria-label", title);
   }

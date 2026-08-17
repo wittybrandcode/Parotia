@@ -17,6 +17,8 @@ const manifest = {
   name: "Parotia",
   version,
   description: "clean the stage. keep the story. — Freeze, inspect, clean and capture news pages as broadcast-ready PNGs.",
+  homepage_url: "https://github.com/wittybrandcode/Parotia",
+  minimum_chrome_version: "120",
   icons,
   action: {
     default_title: "Parotia",
@@ -33,12 +35,23 @@ const manifest = {
   // activates; `scripting` scopes injection to that session. `downloads` is
   // required because MV3 service workers cannot call `permissions.request()`
   // (only extension pages may), so the permission must be declared upfront.
-  permissions: ["activeTab", "scripting", "storage", "unlimitedStorage", "downloads"],
+  // `tabs` is required for `setZoom` / `getZoom` used during element capture.
+  // `unlimitedStorage` is needed because full-page captures at 2x DPR can
+  // exceed the default 5 MB chrome.storage.local quota while staging data
+  // between the content script and the service worker.
+  permissions: ["activeTab", "scripting", "storage", "tabs", "unlimitedStorage", "downloads"],
   optional_permissions: [],
   content_scripts: [],
+  content_security_policy: {
+    extension_pages: "script-src 'self'; object-src 'self'",
+  },
   web_accessible_resources: [
     {
-      resources: ["ui/*"],
+      resources: [
+        "ui/index.html",
+        "ui/options.html",
+        "ui/assets/*",
+      ],
       matches: ["http://*/*", "https://*/*"],
     },
   ],

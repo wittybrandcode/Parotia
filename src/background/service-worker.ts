@@ -46,11 +46,15 @@ async function ensureContentScriptInjected(tabId: number): Promise<void> {
 
 chrome.action.onClicked.addListener(async (tab) => {
   if (!tab.id) return;
-  await ensureContentScriptInjected(tab.id);
-  await chrome.tabs.sendMessage(tab.id, {
-    type: "START_SESSION",
-    payload: {},
-  } satisfies BackgroundCommand);
+  try {
+    await ensureContentScriptInjected(tab.id);
+    await chrome.tabs.sendMessage(tab.id, {
+      type: "START_SESSION",
+      payload: {},
+    } satisfies BackgroundCommand);
+  } catch {
+    // Cannot inject into this page (chrome://, PDF, restricted origins).
+  }
 });
 
 chrome.runtime.onMessage.addListener(
@@ -144,7 +148,8 @@ async function recoverTabForSession(): Promise<[number, string] | null> {
     if (typeof fresh !== "string" || fresh === "") return null;
     tabSessions.set(tab.id, fresh);
     return [tab.id, fresh];
-  } catch {
+  } catch (e) {
+    console.debug("[parotia] session recovery failed:", e);
     return null;
   }
 }
@@ -306,8 +311,8 @@ async function hideToolbar(tabId: number, sessionId: string): Promise<void> {
       type: "PREPARE_CAPTURE",
       payload: { sessionId },
     } satisfies BackgroundCommand);
-  } catch {
-    // Content script unavailable — capture whatever is visible.
+  } catch (e) {
+    console.debug("[parotia] hideToolbar failed:", e);
   }
 }
 
@@ -317,8 +322,8 @@ async function showToolbar(tabId: number, sessionId: string): Promise<void> {
       type: "RESTORE_CAPTURE",
       payload: { sessionId },
     } satisfies BackgroundCommand);
-  } catch {
-    // Best effort; the toolbar may already be gone with the tab.
+  } catch (e) {
+    console.debug("[parotia] showToolbar failed:", e);
   }
 }
 
@@ -341,8 +346,8 @@ async function captureVisibleArea(tabId: number | undefined, command: CaptureCom
     pushProgress(tabId, sessionId, { current: 1, total: 1, phase: "RENDERING" });
     const filename = `parotia-${titleSlug(tab)}-${timestampPart()}.png`;
     pushProgress(tabId, sessionId, { current: 1, total: 1, phase: "ENCODING" });
-    const downloaded = await downloadPng(dataUrl, filename);
-    if (!downloaded) return { success: false, error: DOWNLOAD_PERMISSION_MESSAGE };
+    const downloadId = await downloadPng(dataUrl, filename);
+    if (!downloadId) return { success: false, error: "Failed to save the file. Check your downloads folder and try again." };
     return { success: true, filename };
   } finally {
     await showToolbar(tabId, sessionId);
@@ -450,42 +455,30 @@ async function captureFullPage(tabId: number | undefined, command: CaptureComman
 
     const filename = `parotia-fullpage-${titleSlug(tab)}-${timestampPart()}.png`;
     pushProgress(tabId, sessionId, { current: scrollYs.length, total: scrollYs.length, phase: "ENCODING" });
-    const downloaded = await downloadPng(dataUrl, filename);
-    if (!downloaded) return { success: false, error: DOWNLOAD_PERMISSION_MESSAGE, steps };
+    const downloadId = await downloadPng(dataUrl, filename);
+    if (!downloadId) return { success: false, error: "Failed to save the file. Check your downloads folder and try again.", steps };
     steps.push("downloaded");
     return { success: true, filename, steps };
   } catch (error) {
     throw new Error(`Capture failed [${steps.join(" > ") || "start"}]: ${error instanceof Error ? error.message : String(error)}`);
   } finally {
-    await scrollTab(tabId, originalScrollY);
+    await scrollTab(tabId, originalScrollY, sessionId);
     await showToolbar(tabId, sessionId);
   }
 }
 
 /**
  * Downloads a PNG from a data URL (blob: URLs are unavailable in MV3 service
- * workers). `downloads` is optional, so the permission is requested on first
- * export; when it cannot be granted the capture still succeeds and the toolbar
- * shows the message below instead of the exported image.
+ * workers). The `downloads` permission is declared as required in the manifest,
+ * so it is always granted at install time.
  */
-const DOWNLOAD_PERMISSION_MESSAGE =
-  "Export permission unavailable — enable the downloads permission and try again.";
-
-async function ensureDownloadsPermission(): Promise<boolean> {
+async function downloadPng(dataUrl: string, filename: string): Promise<string | null> {
   try {
-    return await chrome.permissions.contains({ permissions: ["downloads"] });
-  } catch {
-    return false;
-  }
-}
-
-async function downloadPng(dataUrl: string, filename: string): Promise<boolean> {
-  if (!(await ensureDownloadsPermission())) return false;
-  try {
-    await chrome.downloads.download({ url: dataUrl, filename, saveAs: false });
-    return true;
-  } catch {
-    return false;
+    const downloadId = await chrome.downloads.download({ url: dataUrl, filename, saveAs: false });
+    return String(downloadId);
+  } catch (e) {
+    console.warn("[parotia] download failed:", e);
+    return null;
   }
 }
 
@@ -631,8 +624,8 @@ async function captureElement(tabId: number | undefined, command: CaptureCommand
 
     const filename = `parotia-element-${titleSlug(tab)}-${timestampPart()}.png`;
     pushProgress(tabId, sessionId, { current: relYs.length, total: relYs.length, phase: "ENCODING" });
-    const downloaded = await downloadPng(cropped, filename);
-    if (!downloaded) return { success: false, error: DOWNLOAD_PERMISSION_MESSAGE, steps };
+    const downloadId = await downloadPng(cropped, filename);
+    if (!downloadId) return { success: false, error: "Failed to save the file. Check your downloads folder and try again.", steps };
     steps.push("downloaded");
     return { success: true, filename, steps };
   } catch (error) {
@@ -704,19 +697,19 @@ async function captureRegion(tabId: number | undefined, command: CaptureCommand)
 
     const filename = `parotia-region-${titleSlug(tab)}-${timestampPart()}.png`;
     pushProgress(tabId, sessionId, { current: 1, total: 1, phase: "ENCODING" });
-    const downloaded = await downloadPng(cropped, filename);
-    if (!downloaded) return { success: false, error: DOWNLOAD_PERMISSION_MESSAGE };
+    const downloadId = await downloadPng(cropped, filename);
+    if (!downloadId) return { success: false, error: "Failed to save the file. Check your downloads folder and try again." };
     return { success: true, filename };
   } finally {
     await showToolbar(tabId, sessionId);
   }
 }
 
-async function scrollTab(tabId: number, y: number): Promise<void> {
+async function scrollTab(tabId: number, y: number, sessionId = ""): Promise<void> {
   try {
     await chrome.tabs.sendMessage(tabId, {
       type: "CAPTURE_SCROLL",
-      payload: { sessionId: "", scrollYCss: y },
+      payload: { sessionId, scrollYCss: y },
     } satisfies BackgroundCommand);
   } catch {
     // Content script may be gone; nothing to restore.
@@ -736,5 +729,22 @@ async function routeToTab(tabId: number | undefined, command: BackgroundCommand)
 chrome.tabs.onRemoved.addListener((tabId) => {
   tabSessions.delete(tabId);
 });
+
+// Clean up orphaned capture data left behind by killed service workers.
+// Large base64 data URLs in chrome.storage.local can consume significant
+// disk space if the SW is terminated between `set` and `get`.
+const CAPTURE_KEY_RE = /^(capture|elementcapture|regioncapture):/;
+async function purgeStaleCaptureData(): Promise<void> {
+  try {
+    const all = await chrome.storage.local.get(null);
+    const staleKeys = Object.keys(all).filter((k) => CAPTURE_KEY_RE.test(k));
+    if (staleKeys.length > 0) await chrome.storage.local.remove(staleKeys);
+  } catch {
+    // Best effort — stale data will be cleaned on next launch.
+  }
+}
+
+// Run cleanup on service worker startup (MV3 wakes the SW on events).
+void purgeStaleCaptureData();
 
 export { tabSessions };

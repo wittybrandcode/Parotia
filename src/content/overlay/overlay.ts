@@ -64,7 +64,11 @@ export function createOverlay(): OverlayInstance {
   };
   window.addEventListener("message", onUiResize);
 
-  document.body.insertBefore(root, document.body.firstChild);
+  if (document.body) {
+    document.body.insertBefore(root, document.body.firstChild);
+  } else {
+    document.documentElement.appendChild(root);
+  }
 
   return {
     root,

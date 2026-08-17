@@ -50,7 +50,9 @@ export class DefaultMatchEngine implements MatchEngine {
     if (!signature) return [target];
 
     const similar: Element[] = [];
-    for (const element of Array.from(document.querySelectorAll<Element>("body *"))) {
+    // Scope query to the same tag name to avoid iterating every DOM node.
+    const selector = target.tagName.toLowerCase();
+    for (const element of Array.from(document.querySelectorAll<Element>(selector))) {
       if (element === target) continue;
       // Skip NewsClean UI, protected elements, and the target's own subtree
       // or ancestors (they would be double-deleted alongside it).

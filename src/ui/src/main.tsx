@@ -12,7 +12,7 @@ if (container) {
   // The message is targeted at the embedding page's origin instead of "*".
   let parentOrigin = "*";
   try {
-    parentOrigin = new URL(document.referrer).origin;
+    parentOrigin = document.referrer ? new URL(document.referrer).origin : new URL(window.location.href).origin;
   } catch {
     // No usable referrer — fall back to "*"; the overlay still verifies the
     // sender window before applying the height.

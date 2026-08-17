@@ -88,7 +88,7 @@ export class DefaultFreezeEngine implements FreezeEngine {
       }
       if (!installed) {
         const durationMs = Math.round(performance.now() - started);
-        this.state = { status: "FROZEN", startedAt: Date.now(), strategy: mode };
+        this.state = { status: "DEGRADED", startedAt: Date.now(), strategy: mode };
         resolve({
           success: true,
           strategy: mode,

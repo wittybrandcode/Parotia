@@ -216,6 +216,7 @@ export function App() {
 
   const freezeStatus = state.freeze?.status ?? "UNFROZEN";
   const frozen = freezeStatus !== "UNFROZEN";
+  const fullyFrozen = freezeStatus === "FROZEN" || freezeStatus === "DEGRADED";
   const removed = state.cleanup?.removedCount ?? 0;
   const selectedHidden = state.cleanup?.selectedHidden ?? false;
   const sessionId = state.sessionId ?? "";
@@ -298,7 +299,7 @@ export function App() {
               title="Pick elements to clean — toggle (Shift+Alt+P)"
               icon={<Crosshair size={18} />}
               active={inspecting}
-              disabled={busy || !state.sessionId || freezeStatus !== "FROZEN"}
+              disabled={busy || !state.sessionId || !fullyFrozen}
               onClick={() => void togglePick()}
             />
           </div>
@@ -309,14 +310,14 @@ export function App() {
               title="Delete the picked element (Delete while picking)"
               icon={<Trash2 size={18} />}
               danger
-              disabled={busy || freezeStatus !== "FROZEN"}
+              disabled={busy || !fullyFrozen}
               onClick={() => void run({ type: "DELETE_ELEMENT", payload: { sessionId } })}
             />
             <IconButton
               label={selectedHidden ? "Show" : "Hide"}
               title={selectedHidden ? "Show the selected element again" : "Hide the selected element"}
               icon={selectedHidden ? <Eye size={18} /> : <EyeOff size={18} />}
-              disabled={busy || freezeStatus !== "FROZEN"}
+              disabled={busy || !fullyFrozen}
               onClick={() =>
                 void run({
                   type: selectedHidden ? "SHOW_ELEMENT" : "HIDE_ELEMENT",
@@ -328,7 +329,7 @@ export function App() {
               label="Keep"
               title="Protect the picked element from cleanup"
               icon={<ShieldCheck size={18} />}
-              disabled={busy || freezeStatus !== "FROZEN"}
+              disabled={busy || !fullyFrozen}
               onClick={() => void run({ type: "KEEP_ELEMENT", payload: { sessionId } })}
             />
           </div>
@@ -406,7 +407,11 @@ export function App() {
               title="Restore all removed and hidden elements"
               icon={<RotateCcw size={18} />}
               disabled={busy}
-              onClick={() => void run({ type: "RESET", payload: { sessionId } })}
+              onClick={() => {
+                if (window.confirm("Restore all removed and hidden elements?")) {
+                  void run({ type: "RESET", payload: { sessionId } });
+                }
+              }}
             />
           </div>
         </div>
@@ -423,7 +428,7 @@ export function App() {
         </div>
 
       {logOpen && (
-        <div className="nc-panel">
+        <div className="nc-panel" aria-live="polite">
           <div className="nc-panel-head">
             <span>Action Log</span>
             <span className="nc-panel-count">{state.actionLog.length} entries</span>
