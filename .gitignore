@@ -5,6 +5,7 @@ playwright-report/
 test-results/
 *.log
 *.md
+!README.md
 .DS_Store
 .vscode/
 .idea/
