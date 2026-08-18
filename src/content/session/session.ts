@@ -12,9 +12,7 @@ import { createId } from "@shared/utils/id";
 const EMPTY_CLEANUP: CleanupState = {
   removedCount: 0,
   hiddenCount: 0,
-  keptCount: 0,
   activeRules: [],
-  protectedTargets: [],
   selectedHidden: false,
 };
 
@@ -29,7 +27,6 @@ export function createSession(page: PageContext): NewsCleanSession {
     extraction: { status: "NOT_RUN" },
     inspection: { ...EMPTY_INSPECTION },
     cleanup: { ...EMPTY_CLEANUP },
-    preset: { detected: false, applied: false },
     capture: { status: "IDLE" },
     status: "CREATED",
   };

@@ -41,6 +41,8 @@ const ELEMENT_CAPTURE_CSS = `
   html[data-newsclean-capture="true"] [data-newsclean-capture] {
     visibility: visible !important;
     opacity: 1 !important;
+    outline: none !important;
+    box-shadow: none !important;
   }
   /* Sites like X/Twitter use content-visibility:auto on feed items, which lets
      the browser skip rendering everything that is off-fold — so slices below
@@ -106,6 +108,7 @@ export class ElementCaptureIsolator {
   private scrollY = 0;
   private loadingAttrs: Map<HTMLImageElement, string | null> | null = null;
   private forcedOpacity: Map<HTMLElement, string> | null = null;
+  private forcedVisibility: Map<HTMLElement, string> | null = null;
 
   /** Scrolls the element into view, hides the rest, and reports its metrics. */
   isolate(target: HTMLElement): ElementCaptureMetrics {
@@ -170,6 +173,11 @@ export class ElementCaptureIsolator {
       for (const [el, opacity] of this.forcedOpacity) el.style.opacity = opacity;
       this.forcedOpacity = null;
     }
+    // Restore any lifted ancestor visibility.
+    if (this.forcedVisibility) {
+      for (const [el, vis] of this.forcedVisibility) el.style.visibility = vis;
+      this.forcedVisibility = null;
+    }
     try {
       window.scrollTo(0, this.scrollY);
     } catch {
@@ -187,23 +195,48 @@ export class ElementCaptureIsolator {
         img.setAttribute("loading", "eager");
       }
     }
+    // <picture> <source> elements may use srcset with lazy loading — force them
+    // to use the largest candidate so the browser fetches the real image.
+    const sources = target.querySelectorAll("picture > source");
+    for (const src of sources) {
+      const srcset = src.getAttribute("srcset");
+      if (srcset) {
+        // Parse srcset to grab the first (largest) URL and use it as the direct
+        // src on the sibling <img>, bypassing the browser's media-query selection.
+        const firstUrl = srcset.split(",")[0]?.trim().split(/\s+/)[0];
+        const img = src.parentElement?.querySelector("img");
+        if (firstUrl && img && !img.src) {
+          img.src = firstUrl;
+        }
+      }
+    }
   }
 
   private forceVisiblePath(target: HTMLElement): void {
     this.forcedOpacity = new Map();
+    this.forcedVisibility = new Map();
     let node: HTMLElement | null = target.parentElement;
     while (node && node !== document.documentElement && node !== document.body) {
-      let computedOpacity = "1";
+      let opacity = 1;
+      let visibility = "visible";
       try {
-        computedOpacity = getComputedStyle(node).opacity;
+        const cs = getComputedStyle(node);
+        opacity = parseFloat(cs.opacity) || 0;
+        visibility = cs.visibility;
       } catch {
         // Best effort.
       }
-      if (computedOpacity === "0" || computedOpacity === "0.0") {
+      if (opacity === 0) {
         if (!this.forcedOpacity.has(node)) {
           this.forcedOpacity.set(node, node.style.opacity);
         }
         node.style.opacity = "1";
+      }
+      if (visibility === "hidden") {
+        if (!this.forcedVisibility.has(node)) {
+          this.forcedVisibility.set(node, node.style.visibility);
+        }
+        node.style.visibility = "visible";
       }
       node = node.parentElement;
     }

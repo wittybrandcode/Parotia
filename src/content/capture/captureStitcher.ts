@@ -48,6 +48,11 @@ export class DefaultCaptureStitcher implements CaptureStitcher {
     // Setting canvas.width resets (clears) the canvas — only set it once.
     if (!this.widthSet && bitmap.width > 0) {
       canvas.width = bitmap.width;
+      // Fill with an opaque white background so any 1 px rounding gaps between
+      // slices render as white rather than transparent (which appears gray in
+      // most image viewers).
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
       this.widthSet = true;
     }
     // For element capture the canvas is element-sized, so slices are drawn

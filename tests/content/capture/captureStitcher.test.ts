@@ -8,7 +8,8 @@ const PNG_DATA_URL = "data:image/png;base64,AA";
 
 function installCaptureStubs(bitmaps: FakeBitmap[]) {
   const drawImage = vi.fn();
-  const fakeCtx = { drawImage } as unknown as CanvasRenderingContext2D;
+  const fillRect = vi.fn();
+  const fakeCtx = { drawImage, fillRect, fillStyle: "" } as unknown as CanvasRenderingContext2D;
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(fakeCtx);
 
   vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(function (

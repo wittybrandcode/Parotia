@@ -31,8 +31,6 @@ export default defineConfig({
   resolve: {
     alias: {
       "@shared": path.join(dir, "src/shared"),
-      "@storage": path.join(dir, "src/storage"),
-      "@presets": path.join(dir, "src/presets"),
       "@content": path.join(dir, "src/content"),
       "@background": path.join(dir, "src/background"),
       "@ui": path.join(dir, "src/ui"),

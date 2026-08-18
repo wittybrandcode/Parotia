@@ -146,7 +146,6 @@ describe("DefaultInspector", () => {
     expect(bar.style.left).toBe("58px");
     expect(bar.querySelector('[data-nc-action="delete"]')).not.toBeNull();
     expect(bar.querySelector('[data-nc-action="hide"]')).not.toBeNull();
-    expect(bar.querySelector('[data-nc-action="keep"]')).not.toBeNull();
   });
 
   it("keeps the bar near the top and on screen for very tall elements", async () => {
@@ -215,7 +214,6 @@ describe("DefaultInspector", () => {
     const handlers: InspectorActionHandlers = {
       onDelete: vi.fn(),
       onHide: vi.fn(),
-      onKeep: vi.fn(),
     };
     const inspector = new DefaultInspector(handlers);
     inspectors.push(inspector);
@@ -236,13 +234,9 @@ describe("DefaultInspector", () => {
     (bar.querySelector('[data-nc-action="hide"]') as HTMLButtonElement).dispatchEvent(
       new MouseEvent("click", { bubbles: true, cancelable: true }),
     );
-    (bar.querySelector('[data-nc-action="keep"]') as HTMLButtonElement).dispatchEvent(
-      new MouseEvent("click", { bubbles: true, cancelable: true }),
-    );
 
     expect(handlers.onDelete).toHaveBeenCalledTimes(1);
     expect(handlers.onHide).toHaveBeenCalledTimes(1);
-    expect(handlers.onKeep).toHaveBeenCalledTimes(1);
   });
 
   it("turns the Hide button into a Show toggle for a hidden element", async () => {
@@ -260,7 +254,6 @@ describe("DefaultInspector", () => {
       onShow: vi.fn(() => {
         hidden = false;
       }),
-      onKeep: () => undefined,
       isHidden: () => hidden,
     };
     const inspector = new DefaultInspector(handlers);
@@ -302,7 +295,6 @@ describe("DefaultInspector", () => {
       onShow: () => {
         hidden = false;
       },
-      onKeep: () => undefined,
       isHidden: () => hidden,
     });
     inspectors.push(inspector);
@@ -361,7 +353,6 @@ describe("DefaultInspector", () => {
     const handlers: InspectorActionHandlers = {
       onDelete: vi.fn(),
       onHide: vi.fn(),
-      onKeep: vi.fn(),
       onDeleteSimilar: vi.fn(),
     };
     const inspector = new DefaultInspector(handlers);

@@ -8,9 +8,8 @@ export interface PageContext {
 }
 
 /**
- * Persistent preset identity uses hostname + optional path pattern, NOT the
- * full URL. Tracking parameters and fragments are retained only for the active
- * session.
+ * Stable identity uses hostname + optional path pattern, NOT the full URL.
+ * Tracking parameters and fragments are retained only for the active session.
  */
 export interface PageIdentity {
   hostname: string;

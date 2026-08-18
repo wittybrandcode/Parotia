@@ -5,7 +5,6 @@ export * from "./cleanup";
 export * from "./history";
 export * from "./freeze";
 export * from "./inspection";
-export * from "./preset";
 export * from "./capture";
 export * from "./session";
 export * from "./messages";

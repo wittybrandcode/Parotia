@@ -4,7 +4,6 @@ import type { ExtractionState } from "./extraction";
 import type { FreezeState } from "./freeze";
 import type { InspectionState } from "./inspection";
 import type { PageContext } from "./page";
-import type { PresetSessionState } from "./preset";
 
 export type SessionStatus =
   | "CREATED"
@@ -38,7 +37,6 @@ export interface NewsCleanSession {
   extraction: ExtractionState;
   inspection: InspectionState;
   cleanup: CleanupState;
-  preset: PresetSessionState;
   capture: CaptureState;
 
   status: SessionStatus;

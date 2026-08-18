@@ -148,24 +148,6 @@ describe("DefaultCleanupEngine", () => {
     });
   });
 
-  describe("keepTarget", () => {
-    it("marks the element as kept, increments keptCount and registers the target", () => {
-      const { cleanup } = setup();
-      const ref = refFor("#related");
-      expect(cleanup.keepTarget(ref)).toBe(true);
-      expect(document.querySelector("#related")?.getAttribute("data-newsclean-keep")).toBe("true");
-      expect(cleanup.getState().keptCount).toBe(1);
-      expect(cleanup.getState().protectedTargets.some((t) => t.selector === "#related")).toBe(true);
-    });
-
-    it("returns false for an unresolvable reference", () => {
-      const { cleanup } = setup();
-      const missing: ElementReference = { id: "ghost", tagName: "div", selector: "#does-not-exist" };
-      expect(cleanup.keepTarget(missing)).toBe(false);
-      expect(cleanup.getState().keptCount).toBe(0);
-    });
-  });
-
   describe("deleteSimilarTargets", () => {
     it("deletes the picked element and its structural lookalikes as one batch", () => {
       const { cleanup } = setup();
@@ -323,7 +305,6 @@ describe("DefaultCleanupEngine", () => {
       const { cleanup } = setup();
       cleanup.deleteTarget(refFor("#a"));
       cleanup.hideTarget(refFor("#nl"));
-      cleanup.keepTarget(refFor("#related"));
       expect(cleanup.getState().removedCount).toBe(1);
       expect(cleanup.getState().hiddenCount).toBe(1);
 
@@ -334,9 +315,7 @@ describe("DefaultCleanupEngine", () => {
       const state = cleanup.getState();
       expect(state.removedCount).toBe(0);
       expect(state.hiddenCount).toBe(0);
-      expect(state.keptCount).toBe(0);
       expect(state.activeRules).toHaveLength(0);
-      expect(state.protectedTargets).toHaveLength(0);
     });
 
     it("returns false when there is nothing to reset", () => {
@@ -365,81 +344,6 @@ describe("DefaultCleanupEngine", () => {
     it("returns a fresh object on every call", () => {
       const { cleanup } = setup();
       expect(cleanup.getState()).not.toBe(cleanup.getState());
-    });
-  });
-
-  describe("keep markers (2.1 / 2.2)", () => {
-    it("Keep is undoable: Undo removes the marker and Redo restores it", () => {
-      const { cleanup } = setup();
-      cleanup.keepTarget(refFor("#nl"));
-
-      expect(document.querySelector("#nl")).toHaveAttribute("data-newsclean-keep", "true");
-      expect(cleanup.getState().keptCount).toBe(1);
-      expect(cleanup.getState().protectedTargets).toHaveLength(1);
-
-      expect(cleanup.undo()).toBe(true);
-      expect(document.querySelector("#nl")).not.toHaveAttribute("data-newsclean-keep");
-      expect(cleanup.getState().keptCount).toBe(0);
-      expect(cleanup.getState().protectedTargets).toHaveLength(0);
-
-      expect(cleanup.redo()).toBe(true);
-      expect(document.querySelector("#nl")).toHaveAttribute("data-newsclean-keep", "true");
-      expect(cleanup.getState().keptCount).toBe(1);
-      expect(cleanup.getState().protectedTargets).toHaveLength(1);
-    });
-
-    it("a second Keep on the same element is a no-op", () => {
-      const { cleanup } = setup();
-      expect(cleanup.keepTarget(refFor("#nl"))).toBe(true);
-      expect(cleanup.keepTarget(refFor("#nl"))).toBe(false);
-      expect(cleanup.getState().keptCount).toBe(1);
-    });
-
-    it("Reset removes keep markers and unprotects the element for deletion", () => {
-      const { cleanup } = setup();
-      cleanup.keepTarget(refFor("#nl"));
-      cleanup.deleteTarget(refFor("#a"));
-      expect(document.querySelector("#a")).toBeNull();
-
-      expect(cleanup.reset()).toBe(true);
-      expect(document.querySelector("#nl")).not.toHaveAttribute("data-newsclean-keep");
-      expect(document.querySelector("#a")).not.toBeNull();
-      expect(cleanup.getState().keptCount).toBe(0);
-      expect(cleanup.getState().protectedTargets).toHaveLength(0);
-
-      // The element can now be deleted again.
-      expect(cleanup.deleteTarget(refFor("#nl"))).toBe(true);
-      expect(document.querySelector("#nl")).toBeNull();
-    });
-
-    it("Reset clears preset-protection keep markers even without history", () => {
-      const { cleanup } = setup();
-      cleanup.applyPreset({
-        schemaVersion: 1,
-        id: "p",
-        version: 1,
-        enabled: true,
-        site: { hostname: "localhost" },
-        protection: { rules: [{ id: "pr", selector: ".newsletter", action: "KEEP" }] },
-        cleanup: { rules: [] },
-        metadata: { name: "P", author: "t" },
-      });
-      expect(document.querySelector("#nl")).toHaveAttribute("data-newsclean-keep", "true");
-
-      expect(cleanup.reset()).toBe(true);
-      expect(document.querySelector("#nl")).not.toHaveAttribute("data-newsclean-keep");
-      expect(cleanup.getState().protectedTargets).toHaveLength(0);
-    });
-
-    it("Undo of Keep keeps delete/hide counts untouched", () => {
-      const { cleanup } = setup();
-      cleanup.keepTarget(refFor("#nl"));
-      cleanup.deleteTarget(refFor("#a"));
-
-      expect(cleanup.undo()).toBe(true); // undoes the DELETE
-      expect(cleanup.getState().removedCount).toBe(0);
-      expect(cleanup.getState().keptCount).toBe(1);
-      expect(document.querySelector("#nl")).toHaveAttribute("data-newsclean-keep", "true");
     });
   });
 });

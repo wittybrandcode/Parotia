@@ -1,5 +1,6 @@
 import type { ElementReference } from "./element";
-import type { CaptureMode } from "./preset";
+
+export type CaptureMode = "VISIBLE" | "FULL_PAGE" | "ELEMENT" | "REGION";
 
 export type CaptureStatus =
   | "IDLE"

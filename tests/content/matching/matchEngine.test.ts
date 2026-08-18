@@ -54,17 +54,6 @@ describe("DefaultMatchEngine", () => {
     expect(similar).toEqual([target]);
   });
 
-  it("skips protected (data-newsclean-keep) elements", () => {
-    document.body.innerHTML = `
-      <div class="ad-slot">keep me</div>
-      <div class="ad-slot">delete me</div>
-    `;
-    const ads = document.querySelectorAll<HTMLElement>(".ad-slot");
-    ads[1]?.setAttribute("data-newsclean-keep", "true");
-    const similar = engine.findSimilar(ads[0] as HTMLElement);
-    expect(similar).toHaveLength(1);
-  });
-
   it("skips NewsClean UI elements even with matching classes", () => {
     document.body.innerHTML = `<div class="ad-slot">A</div>`;
     const root = document.createElement("div");

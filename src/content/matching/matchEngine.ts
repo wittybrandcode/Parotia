@@ -57,7 +57,6 @@ export class DefaultMatchEngine implements MatchEngine {
       // Skip NewsClean UI, protected elements, and the target's own subtree
       // or ancestors (they would be double-deleted alongside it).
       if (isNewsCleanUi(element)) continue;
-      if (element.closest("[data-newsclean-keep]")) continue;
       if (target.contains(element) || element.contains(target)) continue;
       if (this.signatureOf(element) === signature) similar.push(element);
     }

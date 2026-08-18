@@ -1,8 +1,8 @@
 import type { ElementReference, ElementSnapshot } from "./element";
 
-export type CleanupAction = "DELETE" | "HIDE" | "KEEP";
+export type CleanupAction = "DELETE" | "HIDE";
 
-export type CleanupSource = "USER" | "PRESET" | "SYSTEM";
+export type CleanupSource = "USER" | "SYSTEM";
 
 export type CleanupCategory =
   | "ADVERTISEMENT"
@@ -38,7 +38,7 @@ export interface CleanupOperation {
 }
 
 export interface CleanupAfterState {
-  status: "DELETED" | "HIDDEN" | "KEPT";
+  status: "DELETED" | "HIDDEN";
 }
 
 /** One logical bulk operation ("Delete Similar") — undoable as a single unit. */
@@ -54,9 +54,7 @@ export interface BatchCleanupOperation {
 export interface CleanupState {
   removedCount: number;
   hiddenCount: number;
-  keptCount: number;
   activeRules: CleanupRule[];
-  protectedTargets: ElementReference[];
   /** Whether the currently selected element is hidden (drives Hide ⇄ Show). */
   selectedHidden: boolean;
 }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { MessageResponse, SitePreset } from "@shared/types";
+import type { MessageResponse } from "@shared/types";
 
 type OnMessageListener = (
   message: unknown,
@@ -22,8 +22,6 @@ interface ContentChromeStub {
   };
   captured: { onMessage: OnMessageListener[] };
 }
-
-const PRESETS_KEY = "newsclean.presets";
 
 function makeContentChromeStub(): ContentChromeStub {
   const captured: ContentChromeStub["captured"] = { onMessage: [] };
@@ -73,19 +71,7 @@ async function invokeOnMessage(message: unknown, sender: unknown = {}): Promise<
   });
 }
 
-function enabledPreset(rules: NonNullable<SitePreset["cleanup"]>["rules"], hostname = "localhost"): SitePreset {
-  return {
-    schemaVersion: 1,
-    id: "preset-local",
-    version: 1,
-    enabled: true,
-    site: { hostname },
-    cleanup: { rules },
-    metadata: { name: "Local test", author: "test" },
-  };
-}
-
-/** Empty storage: preset repository sees no presets, defaults get seeded. */
+/** Empty storage stub. */
 function stubEmptyStorage(): void {
   chromeStub.storage.local.get.mockImplementation(async (key: string) => ({ [key]: undefined }));
   chromeStub.storage.local.set.mockResolvedValue(undefined);
@@ -112,8 +98,7 @@ type Snapshot = {
   sessionId: string;
   status: string;
   freeze: { status: string };
-  cleanup: { removedCount: number; hiddenCount: number; keptCount: number; activeRules: unknown[] };
-  preset: { detected: boolean; applied: boolean };
+  cleanup: { removedCount: number; hiddenCount: number; activeRules: unknown[] };
   actionLog: unknown[];
   history: { canUndo: boolean; canRedo: boolean };
 };
@@ -139,12 +124,9 @@ describe("content/index command pipeline", () => {
     expect(data.freeze.status).toBe("UNFROZEN");
     expect(data.cleanup.removedCount).toBe(0);
     expect(data.cleanup.hiddenCount).toBe(0);
-    expect(data.cleanup.keptCount).toBe(0);
     expect(data.cleanup.activeRules).toHaveLength(0);
     expect(data.actionLog).toHaveLength(0);
     expect(data.history.canUndo).toBe(false);
-    expect(data.preset.detected).toBe(false);
-    expect(data.preset.applied).toBe(false);
   });
 
   it("GET_STATE returns the same snapshot shape without re-initializing", async () => {
@@ -249,82 +231,6 @@ describe("content/index command pipeline", () => {
     stubEmptyStorage();
     const { response } = await invokeOnMessage({ type: "START_SESSION", payload: {} });
     expect(response?.success).toBe(true);
-  });
-
-  it("APPLY_PRESET applies the stored preset rules and reports the removed count", async () => {
-    document.body.innerHTML = `<main><div class="ad">A</div><div class="ad">B</div><p>story</p></main>`;
-    // Hostname does not match localhost, so START_SESSION never auto-applies it
-    // — it is applied only when the toolbar asks explicitly.
-    chromeStub.storage.local.get.mockImplementation(async (key: string) => {
-      if (key === PRESETS_KEY) {
-        return {
-          [PRESETS_KEY]: {
-            "preset-local": enabledPreset(
-              [{ id: "r1", selector: ".ad", action: "DELETE", category: "ADVERTISEMENT", enabled: true }],
-              "cnn.com",
-            ),
-          },
-        };
-      }
-      return { [key]: undefined };
-    });
-    chromeStub.storage.local.set.mockResolvedValue(undefined);
-
-    const { response: start } = await invokeOnMessage({ type: "START_SESSION", payload: {} });
-    const sessionId = (start?.data as { sessionId: string }).sessionId;
-    const { response } = await invokeOnMessage({
-      type: "APPLY_PRESET",
-      payload: { sessionId, presetId: "preset-local" },
-    });
-
-    expect((response?.data as { success: boolean; count: number }).count).toBe(2);
-    expect(document.querySelectorAll(".ad")).toHaveLength(0);
-  });
-
-  it("auto-applies an enabled matching preset on START_SESSION", async () => {
-    document.body.innerHTML = `<main><div class="ad">A</div><div class="ad">B</div><p>story</p></main>`;
-    chromeStub.storage.local.get.mockImplementation(async (key: string) => {
-      if (key === PRESETS_KEY) {
-        return {
-          [PRESETS_KEY]: {
-            "preset-local": enabledPreset([
-              { id: "r1", selector: ".ad", action: "DELETE", category: "ADVERTISEMENT", enabled: true },
-            ]),
-          },
-        };
-      }
-      return { [key]: undefined };
-    });
-    chromeStub.storage.local.set.mockResolvedValue(undefined);
-
-    const { response } = await invokeOnMessage({ type: "START_SESSION", payload: {} });
-
-    const data = response?.data as Snapshot;
-    expect(data.preset.detected).toBe(true);
-    expect(data.preset.applied).toBe(true);
-    expect(data.cleanup.removedCount).toBe(2);
-    expect(document.querySelectorAll(".ad")).toHaveLength(0);
-  });
-
-  it("does NOT auto-apply a matching but disabled preset", async () => {
-    document.body.innerHTML = `<main><div class="ad">A</div></main>`;
-    const disabled = enabledPreset([
-      { id: "r1", selector: ".ad", action: "DELETE", category: "ADVERTISEMENT", enabled: true },
-    ]);
-    disabled.enabled = false;
-    chromeStub.storage.local.get.mockImplementation(async (key: string) => {
-      if (key === PRESETS_KEY) return { [PRESETS_KEY]: { "preset-local": disabled } };
-      return { [key]: undefined };
-    });
-    chromeStub.storage.local.set.mockResolvedValue(undefined);
-
-    const { response } = await invokeOnMessage({ type: "START_SESSION", payload: {} });
-
-    const data = response?.data as Snapshot;
-    expect(data.preset.detected).toBe(true);
-    expect(data.preset.applied).toBe(false);
-    expect(data.cleanup.removedCount).toBe(0);
-    expect(document.querySelectorAll(".ad")).toHaveLength(1);
   });
 
   it("FREE_SELECT starts the selection overlay and returns the rect", async () => {

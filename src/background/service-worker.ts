@@ -168,9 +168,7 @@ function validatePayload(command: BackgroundCommand): string | null {
     case "DELETE_ELEMENT":
     case "HIDE_ELEMENT":
     case "SHOW_ELEMENT":
-    case "KEEP_ELEMENT":
     case "DELETE_MATCHING":
-    case "PREPARE_ELEMENT_CAPTURE":
       if (typeof payload.elementId !== "string" || payload.elementId === "") return "Missing or invalid elementId";
       break;
     case "CAPTURE": {
@@ -184,14 +182,6 @@ function validatePayload(command: BackgroundCommand): string | null {
     }
     case "UNDO_TO":
       if (typeof payload.entryId !== "string" || payload.entryId === "") return "Missing or invalid entryId";
-      break;
-    case "APPLY_PRESET":
-    case "SET_PRESET_ENABLED":
-      if (typeof payload.presetId !== "string" || payload.presetId === "") return "Missing or invalid presetId";
-      if (command.type === "SET_PRESET_ENABLED" && typeof payload.enabled !== "boolean") return "Invalid enabled flag";
-      break;
-    case "SAVE_PRESET":
-      if (payload.name !== undefined && typeof payload.name !== "string") return "Invalid name";
       break;
     case "CAPTURE_SCROLL":
     case "CAPTURE_ELEMENT_SCROLL":
@@ -250,15 +240,11 @@ async function handleCommand(command: BackgroundCommand, tabId: number | undefin
     case "DELETE_ELEMENT":
     case "HIDE_ELEMENT":
     case "SHOW_ELEMENT":
-    case "KEEP_ELEMENT":
     case "DELETE_MATCHING":
     case "UNDO":
     case "REDO":
     case "UNDO_TO":
     case "RESET":
-    case "APPLY_PRESET":
-    case "SAVE_PRESET":
-    case "SET_PRESET_ENABLED":
     case "GET_STATE":
     case "CLOSE_TOOLBAR":
       return routeToTab(tabId, command);

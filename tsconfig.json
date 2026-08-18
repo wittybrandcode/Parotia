@@ -20,8 +20,6 @@
     "baseUrl": ".",
     "paths": {
       "@shared/*": ["src/shared/*"],
-      "@storage/*": ["src/storage/*"],
-      "@presets/*": ["src/presets/*"],
       "@content/*": ["src/content/*"],
       "@background/*": ["src/background/*"],
       "@ui/*": ["src/ui/*"]

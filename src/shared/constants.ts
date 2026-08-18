@@ -20,7 +20,6 @@ export const PERF_TARGETS = {
   inspectorActivationMs: 100,
   inspectionFrameMs: 16,
   selectorOpMs: 50,
-  presetValidationMs: 250,
   extractionMs: 500,
   captureVisibleMs: 500,
   captureSingleSegmentMs: 2000,

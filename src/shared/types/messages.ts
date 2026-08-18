@@ -31,15 +31,11 @@ export type BackgroundCommand =
   | { type: "DELETE_ELEMENT"; payload: { sessionId: string; elementId: string } }
   | { type: "HIDE_ELEMENT"; payload: { sessionId: string; elementId: string } }
   | { type: "SHOW_ELEMENT"; payload: { sessionId: string; elementId: string } }
-  | { type: "KEEP_ELEMENT"; payload: { sessionId: string; elementId: string } }
   | { type: "DELETE_MATCHING"; payload: { sessionId: string; elementId: string } }
   | { type: "UNDO"; payload: { sessionId: string } }
   | { type: "REDO"; payload: { sessionId: string } }
   | { type: "UNDO_TO"; payload: { sessionId: string; entryId: string } }
   | { type: "RESET"; payload: { sessionId: string } }
-  | { type: "APPLY_PRESET"; payload: { sessionId: string; presetId: string } }
-  | { type: "SAVE_PRESET"; payload: { sessionId: string; name?: string } }
-  | { type: "SET_PRESET_ENABLED"; payload: { sessionId: string; presetId: string; enabled: boolean } }
   | { type: "CAPTURE"; payload: { sessionId: string; mode: "VISIBLE" | "FULL_PAGE" | "ELEMENT" | "REGION"; elementId?: string } }
   | { type: "PREPARE_CAPTURE"; payload: { sessionId: string } }
   | { type: "RESTORE_CAPTURE"; payload: { sessionId: string } }
@@ -67,15 +63,11 @@ export const BACKGROUND_COMMAND_TYPES = [
   "DELETE_ELEMENT",
   "HIDE_ELEMENT",
   "SHOW_ELEMENT",
-  "KEEP_ELEMENT",
   "DELETE_MATCHING",
   "UNDO",
   "REDO",
   "UNDO_TO",
   "RESET",
-  "APPLY_PRESET",
-  "SAVE_PRESET",
-  "SET_PRESET_ENABLED",
   "CAPTURE",
   "PREPARE_CAPTURE",
   "RESTORE_CAPTURE",

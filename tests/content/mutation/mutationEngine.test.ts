@@ -75,7 +75,7 @@ describe("DefaultMutationEngine", () => {
       <div id="ad-b" class="ad-slot">B</div>
     `;
 
-    const count = mutations.deleteMany([ref("#ad-a"), ref("#ad-b"), ref(".prose")], "PRESET");
+    const count = mutations.deleteMany([ref("#ad-a"), ref("#ad-b"), ref(".prose")], "SYSTEM");
     expect(count).toBe(3);
     expect(document.querySelectorAll(".ad-slot")).toHaveLength(0);
     expect(document.querySelector(".prose")).toBeNull();
@@ -166,13 +166,5 @@ describe("DefaultMutationEngine", () => {
   it("returns null when the target cannot be resolved", () => {
     const { mutations } = setup();
     expect(mutations.deleteElement(ref(".missing"))).toBeNull();
-  });
-
-  it("tracks keep operations without removing the element", () => {
-    const { mutations } = setup();
-    const op = mutations.keepElement(ref("#main"));
-    expect(op?.action).toBe("KEEP");
-    expect(document.querySelector("#main")).not.toBeNull();
-    expect(document.querySelector("#main")?.hasAttribute("data-newsclean-keep")).toBe(true);
   });
 });

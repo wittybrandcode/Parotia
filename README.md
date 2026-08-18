@@ -6,14 +6,14 @@ Freeze, inspect, clean and capture news pages as broadcast-ready PNGs.
 
 ## Status
 
-Working extension (Chrome MV3), version `0.2.0`. 251 unit/integration tests across 27 files, all green.
+Working extension (Chrome MV3), version `0.2.0`. 208 unit/integration tests across 23 files, all green.
 
 Implemented:
 
 - **Freeze** — soft freeze with a stability monitor (`window.stop()`, animation/transition/video suspension).
-- **Inspect & clean** — pick elements, then Delete / Hide / Keep / Delete Similar, all undoable through a History Engine with an action log and Redo.
+- **Inspect & clean** — pick elements, then Delete / Hide / Delete Similar, all undoable through a History Engine with an action log and Redo.
 - **Site Presets** — per-site cleanup rules (CNN/BBC/Al Jazeera built-in) saved to `chrome.storage`, applied opt-in only, managed from the options page.
-- **Capture** — full-page capture (viewport slicing + stitching, fixed-header removal), single-element capture (visual isolation, ×2 zoom, crop), and **free-select region capture** (draw a rectangle on the page to capture an arbitrary area), exported as `parotia-<title>-<timestamp>.png` via `chrome.downloads` (requested on first export).
+- **Capture** — full-page capture (viewport slicing + stitching, fixed-header removal), single-element capture (visual isolation, x2 zoom, crop), and **free-select region capture** (draw a rectangle on the page to capture an arbitrary area), exported as `parotia-<title>-<timestamp>.png` via `chrome.downloads` (requested on first export).
 - **Live capture progress** — the toolbar shows `Capture rendering 2/4 (50%)` while a capture runs.
 - **Keyboard shortcuts** — `Shift+Alt+F` freeze, `Shift+Alt+P` pick, `Escape` / `Delete` (see `KEYBOARD_SHORTCUTS.txt`).
 
@@ -37,18 +37,16 @@ npm run dev:ui         # Vite dev server for the toolbar UI
 1. `npm run build`
 2. chrome://extensions → Developer mode → Load unpacked → select `dist/`.
 3. Open a news article and click the extension icon (or let the injected toolbar start its own session): the toolbar appears top-right.
-4. Freeze the page (click the Parotia logo), then use Pick/Delete/Hide/Keep, Delete Similar, Undo/Redo, or capture full page / selected element.
+4. Freeze the page (click the Parotia logo), then use Pick/Delete/Hide, Delete Similar, Undo/Redo, or capture full page / selected element.
 5. Open the extension's options page to enable/disable/delete site presets.
 
 ## Layout
 
 - `src/shared` — types, constants, pure utilities (`filename`, `id`, `selector`)
-- `src/storage` — chrome.storage repositories (presets) + schema
 - `src/background` — MV3 service worker: routing, per-tab sessions, capture orchestration (no DOM access)
 - `src/content` — page runtime (content script owns the DOM exclusively):
   - `index.ts` command bridge + state broadcasting
   - `session/` · `freeze/` · `inspector/` · `cleanup/` · `mutation/` (history) · `matching/` · `extraction/` · `keyboard/` · `overlay/` · `capture/` (stitcher, element capture, slice math, fixed headers) · `selection/` (free-select region capture)
-- `src/presets` — default site presets, matcher, validator
 - `src/ui` — React toolbar (iframe in a Shadow DOM) + options page (Vite multi-page)
 - `scripts` — build tooling (esbuild bundles, manifest generation, icon generation)
 - `tests` — vitest suites (happy-dom) + `tests/e2e` Playwright smoke test

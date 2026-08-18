@@ -7,39 +7,27 @@ import type {
   FreezeState,
 } from "@shared/types";
 import {
-  Bookmark,
-  BookmarkCheck,
   BoxSelect,
   Camera,
   CircleX,
   Crosshair,
+  ExternalLink,
   Eye,
   EyeOff,
-  ExternalLink,
   History,
   Loader2,
   Redo2,
   RotateCcw,
-  ShieldCheck,
   Trash2,
   Undo2,
 } from "lucide-react";
 import { ParotiaLogo } from "./brand";
-
-export interface PresetStatus {
-  detected: boolean;
-  applied: boolean;
-  id?: string;
-  name?: string;
-  enabled?: boolean;
-}
 
 export interface ToolbarState {
   sessionId: string | null;
   status: string;
   freeze: FreezeState | null;
   cleanup: CleanupState | null;
-  preset: PresetStatus | null;
   actionLog: ActionLogEntry[];
   /** Undo/redo availability, driven live by the session history stacks. */
   history?: { canUndo: boolean; canRedo: boolean; undoLabel?: string; redoLabel?: string };
@@ -124,7 +112,6 @@ export function App() {
     status: "CREATED",
     freeze: null,
     cleanup: null,
-    preset: null,
     actionLog: [],
     history: { canUndo: false, canRedo: false },
   });
@@ -248,28 +235,6 @@ export function App() {
     setInspecting(false);
   };
 
-  const savePreset = async () => {
-    const data = await run({ type: "SAVE_PRESET", payload: { sessionId } });
-    if (data?.success) {
-      setFeedback({ ok: true, text: "Rules saved — press Enable to apply automatically" });
-    }
-  };
-
-  const setPresetEnabled = async (enabled: boolean) => {
-    const presetId = state.preset?.id;
-    if (!presetId) return;
-    const data = await run({
-      type: "SET_PRESET_ENABLED",
-      payload: { sessionId, presetId, enabled },
-    });
-    if (data?.success) {
-      setFeedback({ ok: true, text: enabled ? "Preset enabled for this site" : "Preset disabled for this site" });
-    }
-  };
-
-  const presetEnabled = state.preset?.enabled ?? false;
-  const canSave = (state.cleanup?.removedCount ?? 0) > 0 || (state.cleanup?.keptCount ?? 0) > 0;
-
   return (
     <div className="nc-toolbar" data-newsclean-ui="true">
       <button
@@ -327,43 +292,6 @@ export function App() {
                 })
               }
             />
-            <IconButton
-              label="Keep"
-              title="Protect the picked element from cleanup"
-              icon={<ShieldCheck size={18} />}
-              disabled={busy || !fullyFrozen}
-              onClick={() => void run({ type: "KEEP_ELEMENT", payload: { sessionId } })}
-            />
-          </div>
-
-          <div className="nc-group">
-            <IconButton
-              label="Save"
-              title="Remember this site's cleanup as a preset (opt-in: enable it to auto-apply)"
-              icon={<Bookmark size={18} />}
-              disabled={busy || !state.sessionId || !canSave}
-              onClick={() => void savePreset()}
-            />
-            {state.preset?.detected &&
-              (presetEnabled ? (
-                <IconButton
-                  label={state.preset?.name ?? "Preset ✓"}
-                  title={`Auto-cleanup is ON for this site — click to disable`}
-                  icon={<BookmarkCheck size={18} />}
-                  active
-                  disabled={busy || !state.sessionId}
-                  onClick={() => void setPresetEnabled(false)}
-                />
-              ) : (
-                <IconButton
-                  label="Enable"
-                  title={`Apply "${state.preset?.name ?? "preset"}" automatically — click to enable`}
-                  icon={<Bookmark size={18} />}
-                  primary
-                  disabled={busy || !state.sessionId}
-                  onClick={() => void setPresetEnabled(true)}
-                />
-              ))}
           </div>
 
           <div className="nc-group">

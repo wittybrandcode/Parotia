@@ -11,8 +11,6 @@ export interface Command {
   readonly label: string;
   /** Number of elements the operation touches (drives count bookkeeping). */
   readonly affectedCount?: number;
-  /** When the command is a KEEP, the element that carries the marker. */
-  readonly keptElement?: Element;
   execute(): void;
   undo(): void;
 }

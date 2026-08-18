@@ -5,7 +5,7 @@ import { DefaultMatchEngine, type MatchEngine } from "../matching/matchEngine";
 
 /**
  * Mutation Engine — the single point through which every DOM mutation passes
- * (Inspector, Cleanup, Preset, Keep Mode). Centralization makes
+ * (Inspector, Cleanup, Capture). Centralization makes
  * Undo/Redo reliable and guarantees restoration metadata is always recorded.
  *
  * Higher-level services must not call `element.remove()` directly.
@@ -18,7 +18,6 @@ export interface MutationEngine {
   /** Deletes a list of explicit targets as one undoable unit. */
   deleteMany(refs: ElementReference[], source?: CleanupSource): number;
   hideElement(ref: ElementReference): CleanupOperation | null;
-  keepElement(ref: ElementReference): CleanupOperation | null;
   showElement(ref: ElementReference): boolean;
   isHidden(ref: ElementReference): boolean;
   restoreElement(ref: ElementReference): boolean;
@@ -43,8 +42,6 @@ interface ResolvedTarget {
 
 export class DefaultMutationEngine implements MutationEngine {
   private readonly registry = new Map<string, { operation: CleanupOperation; hidden: boolean }>();
-  /** Every element this engine has marked with `data-newsclean-keep`. */
-  private readonly kept = new Set<Element>();
 
   constructor(
     private readonly history: HistoryEngine,
@@ -165,32 +162,6 @@ export class DefaultMutationEngine implements MutationEngine {
     return op;
   }
 
-  keepElement(ref: ElementReference): CleanupOperation | null {
-    const target = this.resolve(ref);
-    if (!target) return null;
-    if (target.element.hasAttribute("data-newsclean-keep")) return null;
-
-    const op = this.buildOperation(ref, "KEEP");
-    const command: Command = {
-      id: createId("cmd"),
-      label: `Keep ${ref.tagName}`,
-      affectedCount: 1,
-      keptElement: target.element,
-      execute: () => {
-        target.element.setAttribute("data-newsclean-keep", "true");
-        this.kept.add(target.element);
-        this.registry.set(ref.id, { operation: op, hidden: false });
-      },
-      undo: () => {
-        target.element.removeAttribute("data-newsclean-keep");
-        this.kept.delete(target.element);
-        this.registry.delete(ref.id);
-      },
-    };
-    this.run(command);
-    return op;
-  }
-
   /** Whether the element is currently hidden by NewsClean (registry-backed). */
   isHidden(ref: ElementReference): boolean {
     return this.registry.get(ref.id)?.hidden ?? false;
@@ -260,12 +231,6 @@ export class DefaultMutationEngine implements MutationEngine {
     for (const command of [...commands].reverse()) {
       command.undo();
     }
-    // Drop any keep markers that survived (e.g. added outside a command),
-    // so a Reset fully restores the DOM to a clean state.
-    for (const element of this.kept) {
-      element.removeAttribute("data-newsclean-keep");
-    }
-    this.kept.clear();
     this.registry.clear();
     return commands.length;
   }
@@ -287,7 +252,7 @@ export class DefaultMutationEngine implements MutationEngine {
 
   private buildOperation(ref: ElementReference, action: CleanupAction, source: CleanupSource = "USER"): CleanupOperation {
     const element = document.querySelector(ref.selector);
-    const after: CleanupAfterState = { status: action === "DELETE" ? "DELETED" : action === "HIDE" ? "HIDDEN" : "KEPT" };
+    const after: CleanupAfterState = { status: action === "DELETE" ? "DELETED" : "HIDDEN" };
     return {
       id: createId("operation"),
       timestamp: Date.now(),

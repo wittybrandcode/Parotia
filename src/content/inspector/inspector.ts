@@ -25,7 +25,6 @@ export interface Inspector {
 export interface InspectorActionHandlers {
   onDelete: () => void;
   onHide: () => void;
-  onKeep: () => void;
   /** Called instead of onHide when the selected element is already hidden. */
   onShow?: () => void;
   /** Whether the selected element is currently hidden by NewsClean. */
@@ -70,7 +69,6 @@ const ACTION_BAR_STYLE = `
 .nc-action-bar .nc-ab-btn:active{transform:scale(.92)}
 .nc-action-bar .nc-ab-btn[data-nc-action="delete"]:hover{background:rgba(239,68,68,.22);color:#ff6b6b}
 .nc-action-bar .nc-ab-btn[data-nc-action="delete-similar"]:hover{background:rgba(249,115,22,.22);color:#fb923c}
-.nc-action-bar .nc-ab-btn[data-nc-action="keep"]:hover{background:rgba(34,197,94,.2);color:#4ade80}
 .nc-action-bar .nc-ab-btn[data-nc-action="capture"]:hover{background:rgba(59,130,246,.22);color:#60a5fa}
 .nc-action-bar .nc-ab-btn:focus-visible{outline:2px solid #ff8a00;outline-offset:1px}
 `;
@@ -99,7 +97,7 @@ function setIcon(el: HTMLElement, pathData: string): void {
 }
 
 function makeActionButton(
-  action: "delete" | "delete-similar" | "hide" | "keep" | "capture",
+  action: "delete" | "delete-similar" | "hide" | "capture",
   title: string,
   pathData: string,
   onClick: () => void,
@@ -375,15 +373,6 @@ export class DefaultInspector implements Inspector {
     );
     bar.appendChild(this.hideShowButton);
 
-    bar.appendChild(
-      makeActionButton(
-        "keep",
-        "Keep element",
-        '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1 1 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
-        () => run(() => this.actionHandlers?.onKeep()),
-      ),
-    );
-
     // Delete Similar: removes the element and every structurally similar one.
     if (this.actionHandlers?.onDeleteSimilar) {
       bar.appendChild(
@@ -403,7 +392,7 @@ export class DefaultInspector implements Inspector {
           "capture",
           "Capture element as PNG",
           CAMERA_PATH,
-          () => this.actionHandlers?.onCapture?.(),
+          () => run(() => this.actionHandlers?.onCapture?.()),
         ),
       );
     }

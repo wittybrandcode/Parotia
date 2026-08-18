@@ -4,14 +4,8 @@ import type {
   CleanupState,
   FreezeState,
   NewsCleanSession,
-  SitePreset,
 } from "@shared/types";
 import { isBackgroundCommand, isBackgroundNotification } from "@shared/types";
-import { SCHEMA_VERSION } from "@shared/constants";
-import { createId } from "@shared/utils/id";
-import { ChromeStoragePresetRepository } from "@storage/chromeStorageRepositories";
-import { defaultPresets } from "@presets/defaultPresets";
-import { matchPresets, normalizeHostname, presetEnabled } from "@presets/matcher";
 import { createOverlay, type OverlayInstance } from "./overlay/overlay";
 import { currentPageContext, createSession, transitionSession } from "./session/session";
 import { HistoryEngine } from "./mutation/history";
@@ -38,8 +32,6 @@ let cleanup: DefaultCleanupEngine | null = null;
 let stitcher: CaptureStitcher | null = null;
 const fixedHeaders = new FixedHeaderManager();
 
-const presetRepository = new ChromeStoragePresetRepository();
-
 const history = new HistoryEngine();
 const mutations = new DefaultMutationEngine(history);
 const freeze = new DefaultFreezeEngine();
@@ -61,12 +53,6 @@ function buildCleanupEngine(): DefaultCleanupEngine {
       onHide: () => {
         void handleCommand({
           type: "HIDE_ELEMENT",
-          payload: { sessionId: session?.id ?? "", elementId: cleanup?.selected?.id ?? "" },
-        });
-      },
-      onKeep: () => {
-        void handleCommand({
-          type: "KEEP_ELEMENT",
           payload: { sessionId: session?.id ?? "", elementId: cleanup?.selected?.id ?? "" },
         });
       },
@@ -98,16 +84,6 @@ function buildCleanupEngine(): DefaultCleanupEngine {
   });
 }
 
-/** Compact preset status for the toolbar. */
-function presetSummary(): { detected: boolean; applied: boolean; id?: string; name?: string; enabled?: boolean } {
-  const preset = session?.preset.preset;
-  return {
-    detected: session?.preset.detected ?? false,
-    applied: session?.preset.applied ?? false,
-    ...(preset ? { id: preset.id, name: preset.metadata.name, enabled: presetEnabled(preset) } : {}),
-  };
-}
-
 /** Session action log (newest first), derived live from the history stacks. */
 function actionLogState(): ActionLogEntry[] {
   return history.log();
@@ -123,46 +99,6 @@ function historyState(): { canUndo: boolean; canRedo: boolean; undoLabel?: strin
   };
 }
 
-/** Seeds built-in example presets on the very first run (never after deletion). */
-async function ensureDefaultPresets(): Promise<void> {
-  try {
-    const existing = await presetRepository.list();
-    if (existing.length > 0) return;
-    for (const preset of defaultPresets()) {
-      await presetRepository.save(preset);
-    }
-  } catch (error) {
-    console.warn("[parotia] default preset seeding failed", error);
-  }
-}
-
-/**
- * Detects a matching preset for the current site on session start. A preset
- * is NEVER applied by force: it only auto-applies when the user opted in by
- * enabling it (persisted `enabled` flag). Detected-but-disabled presets just
- * surface the "Enable" button in the toolbar.
- */
-async function maybeApplyPreset(): Promise<void> {
-  if (!session || !cleanup || session.preset.applied) return;
-  try {
-    await ensureDefaultPresets();
-    const page = currentPageContext();
-    const matches = matchPresets(await presetRepository.list(), {
-      hostname: page.hostname,
-      pathname: page.pathname,
-    });
-    const best = matches[0];
-    if (!best) return;
-    session.preset.detected = true;
-    session.preset.preset = best.preset;
-    if (!presetEnabled(best.preset)) return;
-    cleanup.applyPreset(best.preset);
-    session.preset.applied = true;
-  } catch (error) {
-    console.warn("[parotia] preset auto-apply failed", error);
-  }
-}
-
 /** Pushes the latest state to the toolbar iframe (which talks to the page). */
 function broadcastState(): void {
   if (!session || !overlay) return;
@@ -171,7 +107,6 @@ function broadcastState(): void {
     freeze: freeze.getState() as FreezeState,
     cleanup: cleanup?.getState() as CleanupState | undefined,
     status: session.status,
-    preset: presetSummary(),
     actionLog: actionLogState(),
     history: historyState(),
   };
@@ -221,7 +156,6 @@ async function handleCommand(command: BackgroundCommand): Promise<unknown> {
   switch (command.type) {
     case "START_SESSION":
       ensureRuntime();
-      await maybeApplyPreset();
       broadcastState();
       return getSnapshot();
 
@@ -274,13 +208,6 @@ async function handleCommand(command: BackgroundCommand): Promise<unknown> {
       return { success: ok };
     }
 
-    case "KEEP_ELEMENT": {
-      const ref = cleanup ? cleanup.selected : null;
-      const ok = ref !== null && cleanup ? cleanup.keepTarget(ref) : false;
-      broadcastState();
-      return { success: ok };
-    }
-
     case "DELETE_MATCHING": {
       const ref = cleanup ? cleanup.selected : null;
       const count = ref !== null && cleanup ? cleanup.deleteSimilarTargets(ref) : 0;
@@ -311,96 +238,6 @@ async function handleCommand(command: BackgroundCommand): Promise<unknown> {
       const ok = cleanup?.reset() ?? false;
       broadcastState();
       return { success: ok };
-    }
-
-    case "APPLY_PRESET": {
-      ensureRuntime();
-      const preset = await presetRepository.get(command.payload.presetId);
-      if (!preset) return { success: false, error: "Preset not found" };
-      const count = cleanup?.applyPreset(preset) ?? 0;
-      if (session) {
-        session.preset.detected = true;
-        session.preset.preset = preset;
-        session.preset.applied = true;
-      }
-      broadcastState();
-      return { success: true, count };
-    }
-
-    case "SAVE_PRESET": {
-      ensureRuntime();
-      if (!session || !cleanup) return { success: false, error: "No active session" };
-      const state = cleanup.getState();
-      // Skip rules that already came from a preset, otherwise saving a preset
-      // on top of an auto-applied one would duplicate it.
-      const rules = state.activeRules.filter((rule) => !rule.id.startsWith("rule-preset-"));
-      if (rules.length === 0 && state.protectedTargets.length === 0) {
-        return { success: false, error: "Nothing to save — remove or protect an element first" };
-      }
-      const now = Date.now();
-      const siteHostname = session.page.hostname;
-      // Saving again for the same site updates the existing preset instead of
-      // duplicating it, and preserves its enabled flag (opt-in auto-apply).
-      const existing = (await presetRepository.list()).find(
-        (p) => normalizeHostname(p.site.hostname) === normalizeHostname(siteHostname),
-      );
-      const preset: SitePreset = {
-        schemaVersion: SCHEMA_VERSION,
-        id: existing?.id ?? createId("preset"),
-        version: existing?.version ?? 1,
-        // New presets ship disabled: nothing auto-applies until the user
-        // explicitly enables it from the toolbar or the options page.
-        enabled: existing?.enabled ?? false,
-        site: { hostname: siteHostname },
-        cleanup: {
-          rules: rules.map((rule) => ({ ...rule, required: false })),
-        },
-        protection: {
-          rules: state.protectedTargets.map((ref) => ({
-            id: createId("protect"),
-            selector: ref.selector,
-            action: "KEEP",
-            enabled: true,
-          })),
-        },
-        metadata: {
-          name: command.payload.name || existing?.metadata.name || session.page.hostname,
-          author: existing?.metadata.author ?? "user",
-          source: existing?.metadata.source ?? "USER_CREATED",
-          createdAt: existing?.metadata.createdAt ?? now,
-          updatedAt: now,
-        },
-      };
-      await presetRepository.save(preset);
-      if (session) {
-        session.preset.detected = true;
-        session.preset.preset = preset;
-      }
-      broadcastState();
-      return { success: true, presetId: preset.id };
-    }
-
-    case "SET_PRESET_ENABLED": {
-      ensureRuntime();
-      const { presetId, enabled } = command.payload;
-      const preset = await presetRepository.get(presetId);
-      if (!preset) return { success: false, error: "Preset not found" };
-      const next: SitePreset = {
-        ...preset,
-        enabled,
-        metadata: { ...preset.metadata, updatedAt: Date.now() },
-      };
-      await presetRepository.save(next);
-      // Enabling applies it right away; disabling only stops future auto-apply
-      // (elements already cleaned this visit stay cleaned).
-      if (enabled && cleanup) cleanup.applyPreset(next);
-      if (session) {
-        session.preset.detected = true;
-        session.preset.preset = next;
-        session.preset.applied = enabled;
-      }
-      broadcastState();
-      return { success: true, data: { enabled } };
     }
 
     case "CAPTURE":
@@ -671,7 +508,6 @@ function getSnapshot() {
     freeze: freeze.getState(),
     cleanup: cleanup.getState(),
     extraction: extraction.getState(),
-    preset: presetSummary(),
     actionLog: actionLogState(),
     history: historyState(),
   };

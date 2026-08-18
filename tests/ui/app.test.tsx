@@ -9,12 +9,9 @@ const baseState: ToolbarState = {
   cleanup: {
     removedCount: 0,
     hiddenCount: 0,
-    keptCount: 0,
     activeRules: [],
-    protectedTargets: [],
     selectedHidden: false,
   },
-  preset: null,
   actionLog: [],
   history: { canUndo: false, canRedo: false },
 };
@@ -25,9 +22,7 @@ const frozenState: ToolbarState = {
   cleanup: {
     removedCount: 3,
     hiddenCount: 0,
-    keptCount: 0,
     activeRules: [],
-    protectedTargets: [],
     selectedHidden: false,
   },
   history: { canUndo: true, canRedo: false, undoLabel: "Delete .ad" },
@@ -106,8 +101,6 @@ describe("ui toolbar App", () => {
     expect(screen.getByRole("button", { name: "Pick" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Delete" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Hide" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Keep" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Capture" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "History" })).toBeDisabled();
     // Reset stays available even without a session (sends RESET with the empty session id).

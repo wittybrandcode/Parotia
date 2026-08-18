@@ -18,9 +18,6 @@ describe("options page", () => {
     expect(screen.getByText("Pick")).toBeInTheDocument();
     expect(screen.getAllByText("Delete").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Hide / Show")).toBeInTheDocument();
-    expect(screen.getByText("Keep")).toBeInTheDocument();
-    expect(screen.getByText("Save")).toBeInTheDocument();
-    expect(screen.getByText("Enable")).toBeInTheDocument();
     expect(screen.getByText("Capture")).toBeInTheDocument();
     expect(screen.getByText("Select")).toBeInTheDocument();
     expect(screen.getByText("History")).toBeInTheDocument();

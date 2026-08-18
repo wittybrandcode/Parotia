@@ -1,6 +1,6 @@
 # 🗺️ Parotia — خارطة طريق التطوير (ROADMAP)
 
-> **الإصدار الحالي:** 0.2.0 · **آخر تحديث:** أغسطس 2026 · **الاختبارات الحالية:** 251 اختباراً / 27 ملفاً (كلها خضراء)
+> **الإصدار الحالي:** 0.2.0 · **آخر تحديث:** أغسطس 2026 · **الاختبارات الحالية:** 208 اختباراً / 23 ملفاً (كلها خضراء)
 >
 > هذا المستند يحدد **المرحلتين الأولى والثانية** من تطوير Parotia بتنفيذ كامل ومفصّل،
 > مع نظام تتبع جاهز لمتابعة التقدّم في كل مرحلة.
@@ -59,7 +59,7 @@
 1. **محرك المطابقة** — إنشاء `src/content/matching/matchEngine.ts`:
    - استخراج البنية البنائية للعنصر المحدد: `tagName` + تسلسل `class` (بترتيبها) + `data-*` الحاسمة.
    - دالة `findSimilar(ref): Element[]` تجمع عناصر نفس المستوى/الحاوية تحمل نفس التوقيع.
-   - استبعاد العناصر المحمية (`data-newsclean-keep`) وواجهة NewsClean نفسها.
+   - استبعاد العناصر المحمية وواجهة Parotia نفسها.
 2. **أمر دفعة جديد** — إضافة `DELETE_MATCHING` (الموجود سلفاً في `messages.ts`):
    - تنفيذ الحذف عبر `MutationEngine` كـ `BatchCleanupOperation` **قابل للتراجع كوحدة واحدة** (Undo واحد يعيد الكل).
    - تحديث `CleanupState.removedCount` بعدد المحذوفات فعليّاً.
@@ -137,15 +137,15 @@
 المرّة القادمة بنفس التنظيف، مع تفعيل/تعطيل من لوحة الخيارات.
 
 ### خطوات التنفيذ
-1. **نموذج البيانات** — اعتماد `CleanupRule[]` + `SitePreset` (المعرّف في `PRESET-SYSTEM.md`):
+1. **نموذج البيانات** — اعتماد `CleanupRule[]` + `SitePreset`:
    - `{ site, rules: CleanupRule[], enabled, updatedAt }` مخزّنة بالمفتاح `newsclean.presets`.
-2. **التخزين** — خدمة `storage/presetStore.ts` (قراءة/كتابة/دمج) على `chrome.storage.sync`.
+2. **التخزين** — مخزن (`cleanupEngine.applyPreset`) على `chrome.storage.local`.
 3. **التطبيق** — في `START_SESSION`: إذا وُجد Preset للموقع الحالي و`enabled` → تطبيق القواعد عبر `MutationEngine` (دفعة قابلة للتراجع).
 4. **الواجهة** — أزرار في الشريط: "حفظ قواعد هذا الموقع" + مؤشر "قاعدة نشطة ✓".
 5. **صفحة الخيارات** — `options/` لإدارة القواعد (تفعيل/تعطيل/حذف).
 
 ### الملفات المتأثرة
-- `src/storage/presetStore.ts` (جديد) · `src/shared/types/presets.ts`
+- `src/content/cleanup/cleanupEngine.ts` · `src/shared/types/cleanup.ts`
 - `src/content/index.ts` · `src/ui/src/App.tsx` · `src/ui/options.html`
 - `scripts/build-manifest.mjs` (خيارات + إذن `storage`)
 
