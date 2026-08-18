@@ -131,20 +131,20 @@ export function OptionsApp() {
 
   return (
     <div className={`opt ${isRtl ? "opt-rtl" : ""}`}>
-      {/* ── Language Toggle (icon only, fixed position) ── */}
-      <button
-        type="button"
-        className="opt-lang"
-        onClick={() => setLang((l) => l === "en" ? "ar" : "en")}
-        title={lang === "en" ? "التبديل إلى العربية" : "Switch to English"}
-      >
-        <Globe size={16} />
-      </button>
-
       {/* ── Hero ── */}
       <header className="opt-hero">
         <div className="opt-hero-glow" />
-        <div className="opt-hero-logo"><ParotiaLogo /></div>
+        <div className="opt-hero-row">
+          <div className="opt-hero-logo"><ParotiaLogo /></div>
+          <button
+            type="button"
+            className="opt-lang"
+            onClick={() => setLang((l) => l === "en" ? "ar" : "en")}
+            title={lang === "en" ? "التبديل إلى العربية" : "Switch to English"}
+          >
+            <Globe size={16} />
+          </button>
+        </div>
         <h1 className="opt-hero-title">PAROTIA</h1>
         <p className="opt-hero-sub">{tx.heroSub}</p>
         <p className="opt-hero-desc">{tx.heroDesc}</p>
