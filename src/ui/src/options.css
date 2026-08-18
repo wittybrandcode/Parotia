@@ -25,7 +25,7 @@ body {
   font-family: "Cairo", system-ui, sans-serif;
 }
 
-/* ── Language Toggle (fixed, single button) ── */
+/* ── Language Toggle ── */
 .opt-lang {
   position: fixed;
   top: 20px;
@@ -53,9 +53,7 @@ body {
   background: rgba(12, 16, 28, 0.95);
 }
 
-.opt-lang-text {
-  line-height: 1;
-}
+.opt-lang-text { line-height: 1; }
 
 .opt-rtl .opt-lang {
   right: auto;
@@ -169,7 +167,7 @@ body {
   flex-direction: row-reverse;
 }
 
-.opt-section-title::before {
+.opt-rtl .opt-section-title::before {
   order: -1;
 }
 
@@ -189,71 +187,19 @@ body {
   border-right: 2px solid rgba(255, 255, 255, 0.05);
 }
 
-/* ── Features Grid ── */
-.opt-features {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 14px;
-}
-
-.opt-feature {
-  padding: 24px 20px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.025);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  transition: background 0.25s, border-color 0.25s, transform 0.25s;
-}
-
-.opt-feature:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(193, 232, 153, 0.15);
-  transform: translateY(-2px);
-}
-
-.opt-feature-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  margin-bottom: 14px;
-}
-
-.opt-feature-icon svg {
-  width: 22px;
-  height: 22px;
-  fill: currentColor;
-}
-
-.opt-feature-title {
-  margin: 0 0 6px;
-  font-size: 14px;
-  font-weight: 700;
-  color: #f1f5f9;
-  letter-spacing: 0.2px;
-}
-
-.opt-feature-desc {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.55;
-  color: #64748b;
-}
-
-/* ── Guide ── */
+/* ── Guide (toolbar buttons) ── */
 .opt-guide {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .opt-guide-row {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 12px 16px;
-  border-radius: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.04);
   transition: background 0.15s, border-color 0.15s;
@@ -280,9 +226,11 @@ body {
   fill: currentColor;
 }
 
+/* Brand logo in guide — white bg like toolbar .nc-logo */
 .opt-guide-logo {
+  background: #fff;
   color: #0f141a;
-  padding: 0;
+  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.25);
 }
 
 .opt-guide-logo svg {
@@ -396,9 +344,7 @@ body {
   background: rgba(255, 255, 255, 0.04);
 }
 
-.opt-card-info {
-  min-width: 0;
-}
+.opt-card-info { min-width: 0; }
 
 .opt-card-title {
   display: flex;
@@ -484,7 +430,7 @@ body {
   width: 36px;
   height: 36px;
   border-radius: 10px;
-  background: rgba(193, 232, 153, 0.12);
+  background: #fff;
   margin-bottom: 12px;
   color: #0f141a;
 }
@@ -513,14 +459,7 @@ body {
 }
 
 /* ── Responsive ── */
-@media (max-width: 720px) {
-  .opt-features {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
 @media (max-width: 520px) {
   .opt-hero-title { font-size: 36px; }
-  .opt-features { grid-template-columns: 1fr; }
   .opt-card { flex-direction: column; align-items: flex-start; }
 }
