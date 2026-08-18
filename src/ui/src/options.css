@@ -218,12 +218,7 @@ body {
   height: 36px;
   border-radius: 10px;
   flex-shrink: 0;
-}
-
-.opt-guide-icon svg {
-  width: 18px;
-  height: 18px;
-  fill: currentColor;
+  color: inherit;
 }
 
 /* Brand logo in guide — white bg like toolbar .nc-logo */
@@ -236,6 +231,7 @@ body {
 .opt-guide-logo svg {
   width: 22px;
   height: 22px;
+  fill: currentColor;
 }
 
 .opt-guide-text {
