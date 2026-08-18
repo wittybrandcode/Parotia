@@ -64,21 +64,22 @@ Watch capture progress in real-time — the toolbar shows `Capture rendering 2/4
 
 ## Installation
 
-### From Source (Developer)
+### Quick Install (Windows)
+
+1. Download or clone this repository
+2. Run **`install.bat`**
+3. Chrome opens automatically — follow the 4 steps on screen
+
+### Manual Install (All Platforms)
 
 ```bash
-# Clone the repository
 git clone https://github.com/wittybrandcode/Parotia.git
 cd Parotia
-
-# Install dependencies
 npm install
-
-# Build the extension
 npm run build
 ```
 
-Then load in Chrome:
+Then in Chrome:
 
 1. Open `chrome://extensions`
 2. Enable **Developer mode** (top right)

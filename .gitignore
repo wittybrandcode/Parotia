@@ -6,6 +6,7 @@ test-results/
 *.log
 *.md
 !README.md
+!INSTALL.md
 .DS_Store
 .vscode/
 .idea/
