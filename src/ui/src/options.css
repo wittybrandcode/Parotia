@@ -25,27 +25,30 @@ body {
   font-family: "Cairo", system-ui, sans-serif;
 }
 
-/* ── Language Toggle (icon only, inline with logo) ── */
+/* ── Language Toggle (absolutely fixed, never moves) ── */
 .opt-lang {
+  position: fixed;
+  top: 24px;
+  left: 24px;
+  z-index: 100;
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   padding: 0;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  background: rgba(12, 16, 28, 0.7);
+  border-radius: 10px;
+  background: rgba(12, 16, 28, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: #94a3b8;
   cursor: pointer;
-  transition: color 0.2s, border-color 0.2s, background 0.2s;
-  flex-shrink: 0;
-  align-self: center;
+  transition: color 0.2s, border-color 0.2s;
 }
 
 .opt-lang:hover {
   color: #e2e8f0;
   border-color: rgba(193, 232, 153, 0.3);
-  background: rgba(12, 16, 28, 0.95);
 }
 
 /* ── Hero ── */
@@ -70,35 +73,36 @@ body {
 
 .opt-hero-logo {
   position: relative;
-  width: 80px;
-  height: 80px;
-  border-radius: 22px;
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
   background: #fff;
   display: grid;
   place-items: center;
   color: #0f141a;
   box-shadow: 0 8px 32px rgba(255, 255, 255, 0.12);
+  flex-shrink: 0;
 }
 
 .opt-hero-logo svg {
-  width: 48px;
-  height: 48px;
+  width: 40px;
+  height: 40px;
 }
 
-.opt-hero-row {
+.opt-hero-brand {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 14px;
   margin: 0 auto 20px;
   width: fit-content;
 }
 
 .opt-hero-title {
   position: relative;
-  margin: 0 0 6px;
-  font-size: 36px;
+  margin: 0;
+  font-size: 40px;
   font-weight: 800;
   letter-spacing: 6px;
   color: #fff;
