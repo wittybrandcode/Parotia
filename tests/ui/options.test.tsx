@@ -1,115 +1,57 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
-import type { SitePreset } from "@shared/types";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 import { OptionsApp } from "@ui/src/options";
 
-const PRESETS_KEY = "newsclean.presets";
-
-function preset(overrides?: Partial<SitePreset>): SitePreset {
-  return {
-    schemaVersion: 1,
-    id: "preset-1",
-    version: 1,
-    enabled: true,
-    site: { hostname: "cnn.com" },
-    cleanup: {
-      rules: [{ id: "r1", selector: ".ad", action: "DELETE", category: "ADVERTISEMENT", enabled: true }],
-    },
-    metadata: { name: "Example News", author: "tester", source: "USER_CREATED" },
-    ...overrides,
-  };
-}
-
-function stubStorage(store: Record<string, unknown>) {
-  (vi.mocked(chrome.storage.local.get) as unknown as Mock).mockImplementation(async (keys: unknown) => {
-    if (typeof keys === "string" && keys in store) return { [keys]: store[keys] };
-    if (Array.isArray(keys)) {
-      const out: Record<string, unknown> = {};
-      for (const key of keys) if (typeof key === "string" && key in store) out[key] = store[key];
-      return out;
-    }
-    return {};
-  });
-  vi.mocked(chrome.storage.local.set).mockResolvedValue(undefined);
-  vi.mocked(chrome.storage.local.remove).mockResolvedValue(undefined);
-}
-
 describe("options page", () => {
-  beforeEach(() => {
-    vi.mocked(chrome.storage.local.get).mockReset();
-    vi.mocked(chrome.storage.local.set).mockReset();
-    vi.mocked(chrome.storage.local.remove).mockReset();
+  afterEach(cleanup);
+
+  it("renders the hero section with title and tagline", () => {
+    render(<OptionsApp />);
+    expect(screen.getByText("PAROTIA")).toBeInTheDocument();
+    expect(screen.getByText("Clean the stage. Keep the story.")).toBeInTheDocument();
   });
 
-  afterEach(() => {
-    cleanup();
-    vi.restoreAllMocks();
+  it("renders the toolbar guide with all buttons", () => {
+    render(<OptionsApp />);
+    expect(screen.getByText("Toolbar Guide")).toBeInTheDocument();
+    expect(screen.getByText("Freeze / Unfreeze")).toBeInTheDocument();
+    expect(screen.getByText("Pick")).toBeInTheDocument();
+    expect(screen.getAllByText("Delete").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Hide / Show")).toBeInTheDocument();
+    expect(screen.getByText("Keep")).toBeInTheDocument();
+    expect(screen.getByText("Save")).toBeInTheDocument();
+    expect(screen.getByText("Enable")).toBeInTheDocument();
+    expect(screen.getByText("Capture")).toBeInTheDocument();
+    expect(screen.getByText("Select")).toBeInTheDocument();
+    expect(screen.getByText("History")).toBeInTheDocument();
+    expect(screen.getByText("Undo")).toBeInTheDocument();
+    expect(screen.getByText("Redo")).toBeInTheDocument();
+    expect(screen.getByText("Reset")).toBeInTheDocument();
+    expect(screen.getByText("Settings")).toBeInTheDocument();
+    expect(screen.getByText("Close")).toBeInTheDocument();
   });
 
-  it("renders the empty state when no presets are stored", async () => {
-    stubStorage({});
+  it("renders keyboard shortcuts section", () => {
+    render(<OptionsApp />);
+    expect(screen.getByText("Keyboard Shortcuts")).toBeInTheDocument();
+    expect(screen.getByText("Shift + Alt + F")).toBeInTheDocument();
+    expect(screen.getByText("Shift + Alt + P")).toBeInTheDocument();
+  });
+
+  it("toggles language to Arabic and back", () => {
     render(<OptionsApp />);
 
-    expect(await screen.findByText(/No presets yet/)).toBeInTheDocument();
-    expect(screen.getByText("Saved Presets")).toBeInTheDocument();
+    const langBtn = screen.getByRole("button", { name: /التبديل/i });
+    fireEvent.click(langBtn);
+
+    expect(screen.getByText("نظّف المسرح. احتفظ بالقصة.")).toBeInTheDocument();
+    expect(screen.getByText("دليل الأزرار")).toBeInTheDocument();
+    expect(screen.getByText("تجميد / إلغاء التجميد")).toBeInTheDocument();
   });
 
-  it("lists stored presets with their status chip and metadata", async () => {
-    stubStorage({ [PRESETS_KEY]: { "preset-1": preset() } });
+  it("renders footer", () => {
     render(<OptionsApp />);
-
-    expect(await screen.findByText("Example News")).toBeInTheDocument();
-    expect(screen.getByText("Active")).toBeInTheDocument();
-    expect(screen.getByText(/cnn.com/)).toBeInTheDocument();
-  });
-
-  it("shows Off for a disabled preset", async () => {
-    stubStorage({ [PRESETS_KEY]: { "preset-1": preset({ enabled: false }) } });
-    render(<OptionsApp />);
-
-    expect(await screen.findByText("Off")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Enable" })).toBeInTheDocument();
-  });
-
-  it("enable toggle flips the preset-level opt-in and persists it", async () => {
-    const store = { [PRESETS_KEY]: { "preset-1": preset({ enabled: false }) } };
-    stubStorage(store);
-    render(<OptionsApp />);
-    await screen.findByText("Off");
-
-    fireEvent.click(screen.getByRole("button", { name: "Enable" }));
-    await waitFor(() => expect(chrome.storage.local.set).toHaveBeenCalled());
-    const written = vi.mocked(chrome.storage.local.set).mock.calls[0]?.[0] as {
-      [PRESETS_KEY]: Record<string, SitePreset>;
-    };
-    expect(written[PRESETS_KEY]?.["preset-1"]?.enabled).toBe(true);
-    await screen.findByText(/Enable.*Example News/);
-  });
-
-  it("delete requires confirmation and removes the preset", async () => {
-    const store = { [PRESETS_KEY]: { "preset-1": preset() } };
-    stubStorage(store);
-    vi.spyOn(window, "confirm").mockReturnValue(true);
-    render(<OptionsApp />);
-    await screen.findByText("Example News");
-
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
-    await waitFor(() => expect(chrome.storage.local.set).toHaveBeenCalled());
-    const written = vi.mocked(chrome.storage.local.set).mock.calls[0]?.[0] as {
-      [PRESETS_KEY]: Record<string, SitePreset>;
-    };
-    expect(written[PRESETS_KEY]?.["preset-1"]).toBeUndefined();
-    await screen.findByText(/Delete.*Example News/);
-  });
-
-  it("does not delete when the confirmation is cancelled", async () => {
-    stubStorage({ [PRESETS_KEY]: { "preset-1": preset() } });
-    vi.spyOn(window, "confirm").mockReturnValue(false);
-    render(<OptionsApp />);
-    await screen.findByText("Example News");
-
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
-    expect(chrome.storage.local.set).not.toHaveBeenCalled();
-    expect(screen.getByText("Example News")).toBeInTheDocument();
+    expect(screen.getByText("Parotia — Open source Chrome extension")).toBeInTheDocument();
+    expect(screen.getByText("View on GitHub")).toBeInTheDocument();
   });
 });
