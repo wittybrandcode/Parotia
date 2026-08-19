@@ -416,6 +416,51 @@ describe("service-worker", () => {
     expect(data.filename).toMatch(/^parotia-element-/);
   });
 
+  it("captures an anchored (fixed/sticky) element in a single slice without scrolling", async () => {
+    vi.useFakeTimers();
+    sw.tabSessions.set(7, "sess-anchored");
+    chromeStub.tabs.get.mockResolvedValue({ id: 7, windowId: 15 });
+    chromeStub.tabs.getZoom.mockResolvedValue(1);
+    chromeStub.tabs.setZoom.mockResolvedValue(undefined);
+    chromeStub.tabs.captureVisibleTab.mockResolvedValue("data:image/png;base64,AAAA");
+    chromeStub.downloads.download.mockResolvedValue(1);
+    chromeStub.storage.local.get.mockResolvedValue({ "elementcapture:sess-anchored": "data:image/png;base64,CCCC" });
+    chromeStub.storage.local.remove.mockResolvedValue(undefined);
+    chromeStub.tabs.sendMessage.mockImplementation(async (_tabId: number, message: { type: string }) => {
+      switch (message.type) {
+        case "PREPARE_ELEMENT_CAPTURE":
+          return okResponse({
+            success: true,
+            anchored: true,
+            dpr: 1,
+            rect: { left: 40, top: 20, width: 300, height: 120 },
+            elementDocTop: 0,
+            elementHeightCss: 120,
+            viewportHeightCss: 800,
+          });
+        case "CAPTURE_ELEMENT_FINALIZE":
+          return okResponse({ success: true });
+        default:
+          return okResponse({});
+      }
+    });
+
+    const pending = invokeOnMessage(
+      { type: "CAPTURE", payload: { sessionId: "sess-anchored", mode: "ELEMENT", elementId: "el-10" } },
+      {},
+    );
+    await vi.advanceTimersByTimeAsync(4000);
+    const res = await pending;
+
+    const data = res.data as { success?: boolean; filename?: string };
+    expect(data.success).toBe(true);
+    expect(data.filename).toMatch(/^parotia-element-/);
+    // One viewport shot, no scrolling — a fixed/sticky element never moves.
+    expect(chromeStub.tabs.captureVisibleTab).toHaveBeenCalledTimes(1);
+    const scrollCalls = chromeStub.tabs.sendMessage.mock.calls.filter(([, msg]) => (msg as { type?: string })?.type === "CAPTURE_ELEMENT_SCROLL");
+    expect(scrollCalls).toHaveLength(0);
+  });
+
   it("rejects element capture without an elementId at the boundary", async () => {
     vi.useFakeTimers();
     sw.tabSessions.set(6, "sess-x");

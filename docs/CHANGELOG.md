@@ -4,6 +4,17 @@ All notable changes to Parotia are documented here.
 
 ---
 
+## [1.1.1] - 2026-08-19
+
+### Element Capture Completeness
+
+- **Slice-level image readiness** — before each slice is captured the content script waits (bounded) until every lazy image visible in that slice has painted, so tweets and media-heavy containers no longer come out with missing avatars/photos
+- **Additive eager loading** — lazy images a site hydrates *after* isolation (data-src swaps, infinite scroll) are flipped to eager too and fully restored afterwards
+- **Fixed/sticky element capture** — elements anchored to the viewport (position:fixed/sticky) are now captured in a single shot with a precise crop instead of being mangled by scrolling
+- **Full-rect crop** — the final PNG is cropped to the element's exact bounds both horizontally and vertically
+
+---
+
 ## [1.1.0] - 2026-08-19
 
 ### Hardening Release
@@ -23,7 +34,7 @@ All notable changes to Parotia are documented here.
 
 #### Technical
 
-- 237 tests across 24 files (all green: typecheck, lint, unit, build, e2e)
+- 242 tests across 24 files (all green: typecheck, lint, unit, build, e2e)
 - New `preload` module and regeneration-guard/preview infrastructure behind existing message types
 
 ---

@@ -312,6 +312,7 @@ async function handleCommand(command: BackgroundCommand): Promise<unknown> {
         return { success: false, error: "Selected element no longer exists" };
       }
       const metrics = elementCapture.isolate(element);
+      const anchored = metrics.anchored;
       if (metrics.rect.width <= 0 || metrics.rect.height <= 0) {
         elementCapture.restore();
         return { success: false, error: "Selected element has no visible area" };
@@ -321,31 +322,38 @@ async function handleCommand(command: BackgroundCommand): Promise<unknown> {
       // and paints before any slice is captured. A short pause per step lets
       // the browser's IntersectionObserver wake lazy images (which the images
       // were just flipped to eager in isolate(), but paint needs a tick too).
+      // Anchored (fixed/sticky) elements never move with the scroll, so the
+      // sweep would be pointless — skip it for them.
       const scroller = document.scrollingElement ?? document.documentElement;
       const maxScroll = Math.max(
         0,
         (scroller.scrollHeight || document.documentElement.scrollHeight) - metrics.viewportHeightCss,
       );
-      for (const rel of planSlices(metrics.elementHeightCss, metrics.viewportHeightCss)) {
-        const y = Math.min(metrics.elementDocTop + rel, maxScroll);
-        scroller.scrollTop = y;
-        window.scrollTo(0, y);
-        void document.documentElement.getBoundingClientRect();
-        await sleep(120);
+      if (!anchored) {
+        for (const rel of planSlices(metrics.elementHeightCss, metrics.viewportHeightCss)) {
+          const y = Math.min(metrics.elementDocTop + rel, maxScroll);
+          scroller.scrollTop = y;
+          window.scrollTo(0, y);
+          void document.documentElement.getBoundingClientRect();
+          await sleep(120);
+        }
       }
       await waitForElementRendering(element);
 
       // Re-measure after lazy images have loaded — they can grow the element.
-      scroller.scrollTop = metrics.elementDocTop;
-      window.scrollTo(0, metrics.elementDocTop);
+      if (!anchored) {
+        scroller.scrollTop = metrics.elementDocTop;
+        window.scrollTo(0, metrics.elementDocTop);
+      }
       void document.documentElement.getBoundingClientRect();
       const rect = element.getBoundingClientRect();
       const finalMetrics = {
         dpr: metrics.dpr,
         rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
-        elementDocTop: metrics.elementDocTop,
+        elementDocTop: anchored ? window.scrollY : metrics.elementDocTop,
         elementHeightCss: rect.height,
         viewportHeightCss: metrics.viewportHeightCss,
+        anchored,
       };
       if (finalMetrics.elementHeightCss <= 0) {
         elementCapture.restore();
@@ -383,6 +391,9 @@ async function handleCommand(command: BackgroundCommand): Promise<unknown> {
       // Force a synchronous reflow so the new scroll position is painted
       // before the Service Worker captures the viewport.
       void document.documentElement.getBoundingClientRect();
+      // Wait for lazy media in the current slice to finish painting so it is
+      // never missing from the captured frame.
+      await elementCapture.waitForSliceReady();
       return { success: true, actualScrollY: window.scrollY };
     }
 
@@ -400,19 +411,22 @@ async function handleCommand(command: BackgroundCommand): Promise<unknown> {
       if (!stitcher) return { success: false, error: "Element capture not started" };
       try {
         let dataUrl = await stitcher.finalize();
-        // The stitched canvas is as wide as the captured viewport; crop it to
-        // the element's horizontal bounds so narrow elements (e.g. a tweet in
-        // a side column) have no empty space on their left and right.
+        // The stitched canvas is as wide/tall as the captured viewport; crop it
+        // to the element's bounds so narrow elements (e.g. a tweet in a side
+        // column) have no empty space, and anchored (fixed/sticky) elements are
+        // trimmed to exactly their viewport box.
         const { dpr, rect } = command.payload;
-        if (dpr > 0 && rect && rect.width > 0) {
+        if (dpr > 0 && rect && rect.width > 0 && rect.height > 0) {
           const bitmap = await loadBitmap(dataUrl);
           const vpWidth = bitmap.width;
           const vpHeight = bitmap.height;
           bitmap.close();
           const x = Math.max(0, Math.round(rect.left * dpr));
+          const y = Math.max(0, Math.round(rect.top * dpr));
           const width = Math.max(1, Math.min(vpWidth - x, Math.round(rect.width * dpr)));
-          if (x > 0 || width < vpWidth) {
-            dataUrl = await cropDataUrlToPng(dataUrl, { x, y: 0, width, height: vpHeight });
+          const height = Math.max(1, Math.min(vpHeight - y, Math.round(rect.height * dpr)));
+          if (x > 0 || y > 0 || width < vpWidth || height < vpHeight) {
+            dataUrl = await cropDataUrlToPng(dataUrl, { x, y, width, height });
           }
         }
         try {

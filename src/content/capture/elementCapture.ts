@@ -26,6 +26,13 @@ export interface ElementCaptureMetrics {
   /** Element height in CSS px after lazy images have loaded. */
   elementHeightCss: number;
   viewportHeightCss: number;
+  /**
+   * True when the element (or an ancestor) is position:fixed/sticky, i.e. it is
+   * anchored to the viewport and does NOT move when the page scrolls. Scrolling
+   * the document cannot walk such an element through the viewport, so it must
+   * be captured in a single slice instead of being stitched slice-by-slice.
+   */
+  anchored: boolean;
 }
 
 export const CAPTURE_ATTR = "data-newsclean-capture";
@@ -63,6 +70,27 @@ const ELEMENT_CAPTURE_CSS = `
 
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * True when the element (or any ancestor up to <html>) is anchored to the
+ * viewport — position:fixed or position:sticky. Such elements do not scroll
+ * with the document, so slice-by-slice stitching would capture the same frame
+ * repeatedly; they must be captured in a single viewport shot instead.
+ */
+export function isViewportAnchored(target: HTMLElement): boolean {
+  let node: HTMLElement | null = target;
+  while (node && node !== document.documentElement) {
+    let position = "";
+    try {
+      position = getComputedStyle(node).position;
+    } catch {
+      // Best effort — a broken style lookup is treated as not anchored.
+    }
+    if (position === "fixed" || position === "sticky") return true;
+    node = node.parentElement;
+  }
+  return false;
 }
 
 /** Loads a data-URL image as a bitmap for cropping. */
@@ -150,6 +178,7 @@ export class ElementCaptureIsolator {
       elementDocTop: scrollY + rect.top,
       elementHeightCss: rect.height,
       viewportHeightCss: window.innerHeight,
+      anchored: isViewportAnchored(target),
     };
   }
 
@@ -186,15 +215,7 @@ export class ElementCaptureIsolator {
   }
 
   private forceEagerImages(target: HTMLElement): void {
-    this.loadingAttrs = new Map();
-    const imgs = target instanceof HTMLImageElement ? [target] : Array.from(target.querySelectorAll("img"));
-    for (const img of imgs) {
-      const current = img.getAttribute("loading");
-      if (current !== "eager") {
-        this.loadingAttrs.set(img, current);
-        img.setAttribute("loading", "eager");
-      }
-    }
+    this.reEager(target);
     // <picture> <source> elements may use srcset with lazy loading — force them
     // to use the largest candidate so the browser fetches the real image.
     const sources = target.querySelectorAll("picture > source");
@@ -208,6 +229,24 @@ export class ElementCaptureIsolator {
         if (firstUrl && img && !img.src) {
           img.src = firstUrl;
         }
+      }
+    }
+  }
+
+  /**
+   * Flips lazy images to eager, recording the original value so restore() can
+   * put them back. Additive on purpose: sites that hydrate content after the
+   * initial isolate() (data-src swaps, infinite scroll) add fresh lazy images —
+   * this re-applies to any image not yet recorded without losing the originals.
+   */
+  private reEager(target: HTMLElement): void {
+    if (!this.loadingAttrs) this.loadingAttrs = new Map();
+    const imgs = target instanceof HTMLImageElement ? [target] : Array.from(target.querySelectorAll("img"));
+    for (const img of imgs) {
+      const current = img.getAttribute("loading");
+      if (current !== "eager" && !this.loadingAttrs.has(img)) {
+        this.loadingAttrs.set(img, current);
+        img.setAttribute("loading", "eager");
       }
     }
   }
@@ -240,6 +279,53 @@ export class ElementCaptureIsolator {
       }
       node = node.parentElement;
     }
+  }
+
+  /**
+   * Waits (bounded) until every image inside the isolated element that is
+   * currently visible in the viewport has painted. Called right before each
+   * slice is captured: the pre-roll in PREPARE covers most images, but media
+   * that a site only fetches when scrolled into view (or that loads late over
+   * a slow network) can still be mid-flight when the worker captures a slice.
+   * Kick such images with decode() (forces fetch+paint regardless of the page's
+   * loading hints) and re-check until complete or the deadline is reached.
+   */
+  async waitForSliceReady(timeoutMs = 3000): Promise<void> {
+    const target = this.target;
+    if (!target) return;
+    this.reEager(target);
+    const imagesInView = (): HTMLImageElement[] => {
+      const all = target instanceof HTMLImageElement ? [target] : Array.from(target.querySelectorAll("img"));
+      return all.filter((img) => {
+        if (img.complete) return false;
+        let r: DOMRect | null = null;
+        try {
+          r = img.getBoundingClientRect();
+        } catch {
+          return false;
+        }
+        return r !== null && r.bottom > 0 && r.top < window.innerHeight;
+      });
+    };
+    const kick = (images: HTMLImageElement[]) => {
+      for (const img of images) {
+        try {
+          img.decode().catch(() => undefined);
+        } catch {
+          // Image is not decodable yet (no src, or not connected) — skip it.
+        }
+      }
+    };
+
+    kick(imagesInView());
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline && imagesInView().length > 0) {
+      await sleep(90);
+      kick(imagesInView());
+    }
+    // Force a reflow so post-load layout (image heights) is committed before
+    // the worker captures the viewport frame.
+    void document.documentElement.getBoundingClientRect();
   }
 }
 

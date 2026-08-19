@@ -566,6 +566,7 @@ async function captureElement(tabId: number | undefined, command: CaptureCommand
   interface ElementPrepData {
     success?: boolean;
     tooTall?: boolean;
+    anchored?: boolean;
     dpr?: number;
     rect?: { left: number; top: number; width: number; height: number };
     elementDocTop?: number;
@@ -626,6 +627,7 @@ async function captureElement(tabId: number | undefined, command: CaptureCommand
     const elementDocTop = prep.elementDocTop ?? 0;
     const elementHeightCss = prep.elementHeightCss;
     const viewportHeightCss = prep.viewportHeightCss ?? 0;
+    const anchored = prep.anchored ?? false;
     if (viewportHeightCss <= 0) throw new Error("Could not determine the viewport size");
     if (exceedsCanvasLimit(elementHeightCss, dpr)) {
       return {
@@ -644,10 +646,18 @@ async function captureElement(tabId: number | undefined, command: CaptureCommand
       return typeof res?.data?.actualScrollY === "number" ? res.data.actualScrollY : y;
     };
 
-    const relYs = planSlices(elementHeightCss, viewportHeightCss);
+    // Anchored (fixed/sticky) elements do not move when the page scrolls, so
+    // the scrolling stitch would capture the same frame repeatedly and produce
+    // a mangled image. Capture them in a single viewport shot instead; the
+    // content script crops the frame to the element's exact box on finalize.
+    const relYs = anchored ? [0] : planSlices(elementHeightCss, viewportHeightCss);
+    if (anchored) steps.push("capturing fixed/sticky element in one slice");
     pushProgress(tabId, sessionId, { current: 0, total: relYs.length, phase: "PREPARING" });
     for (const [index, rel] of relYs.entries()) {
-      const actualY = await scrollTo(elementDocTop + rel);
+      let actualY = elementDocTop + rel;
+      if (!anchored) {
+        actualY = await scrollTo(actualY);
+      }
       await sleep(PAINT_SETTLE_MS);
       let dataUrl = await captureSliceWithRetry(tab.windowId);
       let sliceRes = (await chrome.tabs.sendMessage(tabId, {

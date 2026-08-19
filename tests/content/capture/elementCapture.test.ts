@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { CAPTURE_ATTR, CAPTURE_STYLE_ATTR, ElementCaptureIsolator } from "@content/capture/elementCapture";
+import {
+  CAPTURE_ATTR,
+  CAPTURE_STYLE_ATTR,
+  ElementCaptureIsolator,
+  isViewportAnchored,
+} from "@content/capture/elementCapture";
 
 const PAGE = `
   <div id="sibling-a">Other content</div>
@@ -146,5 +151,64 @@ describe("ElementCaptureIsolator", () => {
     expect(first.hasAttribute(CAPTURE_ATTR)).toBe(false);
     expect(second.getAttribute(CAPTURE_ATTR)).toBe("true");
     expect(document.documentElement.getAttribute(CAPTURE_ATTR)).toBe("true");
+  });
+
+  it("reports anchored=false for a normal in-flow element and marks it in metrics", () => {
+    const { target, isolator } = setup();
+    const metrics = isolator.isolate(target);
+
+    expect(metrics.anchored).toBe(false);
+    expect(isViewportAnchored(target)).toBe(false);
+  });
+
+  it("detects viewport-anchored (fixed/sticky) elements", () => {
+    document.body.innerHTML = `
+      <div id="stickyWrap" style="position: sticky; top: 0">
+        <div id="inner"><p>content</p></div>
+      </div>
+      <div id="fixedEl" style="position: fixed; top: 10px">fixed</div>
+    `;
+    const stickyChild = document.querySelector<HTMLElement>("#inner");
+    const fixed = document.querySelector<HTMLElement>("#fixedEl");
+    if (!stickyChild || !fixed) throw new Error("elements missing");
+
+    // The element itself is sticky — but it is still inside the body flow, so
+    // capturing the sticky child directly is also anchored.
+    const sticky = document.querySelector<HTMLElement>("#stickyWrap");
+    expect(isViewportAnchored(sticky as HTMLElement)).toBe(true);
+    expect(isViewportAnchored(stickyChild)).toBe(true);
+    expect(isViewportAnchored(fixed)).toBe(true);
+  });
+
+  it("waitForSliceReady is additive: flips late-arriving lazy images and restores them", async () => {
+    document.body.innerHTML = `
+      <div id="target">
+        <img src="about:blank" loading="lazy" alt="early" />
+      </div>
+    `;
+    const target = document.querySelector<HTMLElement>("#target");
+    if (!target) throw new Error("target missing");
+    const isolator = new ElementCaptureIsolator();
+    isolator.isolate(target);
+
+    // A site hydrates a new lazy image after isolate().
+    const late = document.createElement("img");
+    late.src = "about:blank";
+    late.setAttribute("loading", "lazy");
+    target.appendChild(late);
+
+    await isolator.waitForSliceReady(200);
+
+    const imgs = Array.from(target.querySelectorAll("img"));
+    expect(imgs.map((i) => i.getAttribute("loading"))).toEqual(["eager", "eager"]);
+
+    isolator.restore();
+    expect(imgs[0]?.getAttribute("loading")).toBe("lazy");
+    expect(imgs[1]?.getAttribute("loading")).toBe("lazy");
+  });
+
+  it("waitForSliceReady is a no-op when nothing is isolated", async () => {
+    const isolator = new ElementCaptureIsolator();
+    await expect(isolator.waitForSliceReady(50)).resolves.toBeUndefined();
   });
 });
