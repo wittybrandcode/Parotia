@@ -3,7 +3,10 @@ import {
   CAPTURE_ATTR,
   CAPTURE_STYLE_ATTR,
   ElementCaptureIsolator,
+  frameReplacementFor,
+  isCrossOriginFrame,
   isViewportAnchored,
+  thumbnailFor,
 } from "@content/capture/elementCapture";
 
 const PAGE = `
@@ -210,5 +213,98 @@ describe("ElementCaptureIsolator", () => {
   it("waitForSliceReady is a no-op when nothing is isolated", async () => {
     const isolator = new ElementCaptureIsolator();
     await expect(isolator.waitForSliceReady(50)).resolves.toBeUndefined();
+  });
+
+  describe("cross-origin embeds", () => {
+    it("maps YouTube and Vimeo embed URLs to a real thumbnail", () => {
+      expect(thumbnailFor("https://www.youtube.com/embed/dQw4w9WgXcQ")).toContain(
+        "img.youtube.com/vi/dQw4w9WgXcQ",
+      );
+      expect(thumbnailFor("https://youtu.be/dQw4w9WgXcQ")).toContain(
+        "img.youtube.com/vi/dQw4w9WgXcQ",
+      );
+      expect(thumbnailFor("https://player.vimeo.com/video/76979871")).toBe(
+        "https://vumbnail.com/76979871.jpg",
+      );
+      expect(thumbnailFor("https://example.com/embed/thing")).toBeNull();
+    });
+
+    it("recognises cross-origin frames and leaves same-origin ones alone", () => {
+      const x = document.createElement("iframe");
+      x.setAttribute("src", "https://www.youtube.com/embed/dQw4w9WgXcQ");
+      expect(isCrossOriginFrame(x)).toBe(true);
+
+      const local = document.createElement("iframe");
+      local.setAttribute("src", "/inline/page.html");
+      expect(isCrossOriginFrame(local)).toBe(false);
+
+      const blank = document.createElement("iframe");
+      expect(isCrossOriginFrame(blank)).toBe(false);
+    });
+
+    it("replaces a YouTube iframe with a thumbnail and restores it exactly", () => {
+      document.body.innerHTML = `
+        <div id="target">
+          <iframe id="yt" width="560" height="315"
+            src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>
+        </div>
+      `;
+      const target = document.querySelector<HTMLElement>("#target");
+      if (!target) throw new Error("target missing");
+      const isolator = new ElementCaptureIsolator();
+
+      isolator.isolate(target);
+
+      const yt = document.querySelector("#yt");
+      expect(yt).toBeNull();
+      const img = target.querySelector('img[src*="img.youtube.com"]');
+      expect(img).not.toBeNull();
+      expect(img?.getAttribute("loading")).toBe("eager");
+
+      // Restore puts the iframe back in the same spot.
+      isolator.restore();
+      const restored = document.querySelector("#yt");
+      expect(restored).not.toBeNull();
+      expect(restored?.getAttribute("src")).toContain("youtube.com/embed");
+      expect(target.querySelector('img[src*="img.youtube.com"]')).toBeNull();
+    });
+
+    it("leaves Parotia's own iframes and unknown embeds handled gracefully", () => {
+      document.body.innerHTML = `
+        <div id="target">
+          <div data-newsclean-root="true"><iframe id="ui" src="https://cdn.example/panel"></iframe></div>
+          <iframe id="unknown" width="300" height="200" src="https://maps.example/embed/x"></iframe>
+        </div>
+      `;
+      const target = document.querySelector<HTMLElement>("#target");
+      if (!target) throw new Error("target missing");
+      const isolator = new ElementCaptureIsolator();
+
+      isolator.isolate(target);
+
+      // The extension's own frame is never replaced…
+      expect(document.querySelector("#ui")).not.toBeNull();
+      // …and the unknown embed becomes a branded placeholder, not a blank frame.
+      expect(document.querySelector("#unknown")).toBeNull();
+      expect(target.textContent).toContain("Embedded media");
+      expect(target.textContent).toContain("maps.example");
+
+      isolator.restore();
+      expect(document.querySelector("#unknown")).not.toBeNull();
+    });
+
+    it("frameReplacementFor keeps the iframe's declared size", () => {
+      const frame = document.createElement("iframe");
+      frame.setAttribute("width", "560");
+      frame.setAttribute("height", "315");
+      frame.setAttribute("src", "https://player.vimeo.com/video/76979871");
+
+      const replacement = frameReplacementFor(frame);
+      expect(replacement).not.toBeNull();
+      expect(replacement?.style.width).toBe("560px");
+      expect(replacement?.style.height).toBe("315px");
+      const img = replacement?.querySelector("img");
+      expect(img?.getAttribute("src")).toContain("vumbnail.com");
+    });
   });
 });

@@ -17,7 +17,7 @@ Parotia uses a three-tier testing approach: unit/integration tests with Vitest, 
 ## Running Tests
 
 ```bash
-npm run test            # Run all Vitest tests (242 tests)
+npm run test            # Run all Vitest tests (247 tests)
 npm run test:watch      # Watch mode
 npm run test:coverage   # Run with coverage report + threshold enforcement
 npm run test:e2e        # Playwright E2E (builds first via pretest:e2e)
@@ -59,7 +59,7 @@ tests/
 │   └── capture/
 │       ├── sliceMath.test.ts         # 6 tests — slice planning
 │       ├── fixedHeaders.test.ts      # 10 tests — detection, hide/restore
-│       ├── elementCapture.test.ts    # 12 tests — isolation, eager images, anchored
+│       ├── elementCapture.test.ts    # 17 tests — isolation, eager images, embeds
 │       ├── preload.test.ts           # 7 tests — eager images, pre-roll
 │       └── captureStitcher.test.ts   # 12 tests — canvas stitching, blank checks
 ├── shared/

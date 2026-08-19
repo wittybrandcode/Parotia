@@ -9,7 +9,15 @@
  * The captured result is assembled by scrolling the element through the
  * viewport and stitching the slices (see captureStitcher.ts), so elements that
  * are taller than the viewport are captured in full instead of being cut off.
+ *
+ * Cross-origin embeds: the browser deliberately paints cross-origin iframes
+ * (YouTube, Vimeo, Twitter cards…) as blank frames in `captureVisibleTab`.
+ * To avoid empty boxes in the output, such iframes are temporarily replaced
+ * with a real thumbnail of the embedded media (YouTube/Vimeo) or a branded
+ * placeholder, and restored exactly after the capture.
  */
+
+import { isNewsCleanUi } from "../overlay/overlay";
 
 export interface CaptureRect {
   left: number;
@@ -93,6 +101,100 @@ export function isViewportAnchored(target: HTMLElement): boolean {
   return false;
 }
 
+/**
+ * True when the iframe points at a different origin. Such frames are painted
+ * blank by `captureVisibleTab`, so the capture path replaces them.
+ */
+export function isCrossOriginFrame(frame: HTMLIFrameElement): boolean {
+  const src = frame.getAttribute("src") || frame.src || "";
+  if (!src || src.startsWith("about:") || src.startsWith("javascript:")) return false;
+  try {
+    const url = new URL(src, window.location.href);
+    if (url.protocol === "data:" || url.protocol === "blob:") return false;
+    return url.origin !== window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+/** Maps common embed URLs to a real media thumbnail so embeds appear in captures. */
+export function thumbnailFor(src: string): string | null {
+  const youtube =
+    src.match(/youtube\.com\/embed\/([\w-]{6,})/i) || src.match(/youtu\.be\/([\w-]{6,})/i);
+  if (youtube?.[1]) return `https://img.youtube.com/vi/${youtube[1]}/maxresdefault.jpg`;
+  const vimeo = src.match(/player\.vimeo\.com\/video\/(\d+)/i);
+  if (vimeo?.[1]) return `https://vumbnail.com/${vimeo[1]}.jpg`;
+  return null;
+}
+
+interface ReplacedFrame {
+  frame: HTMLIFrameElement;
+  replacement: HTMLElement;
+  parent: HTMLElement;
+  nextSibling: Node | null;
+}
+
+/**
+ * Builds the stand-in element for a cross-origin iframe: the media thumbnail
+ * with a play badge for known providers, or a branded placeholder otherwise.
+ * Sizing honours the iframe's width/height attributes and falls back to a
+ * 16:9 box so the rest of the layout (and thus the stitching) is unchanged.
+ */
+export function frameReplacementFor(frame: HTMLIFrameElement): HTMLElement | null {
+  const computed = frame.getBoundingClientRect();
+  let w = parseFloat(frame.getAttribute("width") || "") || computed.width || 0;
+  let h = parseFloat(frame.getAttribute("height") || "") || computed.height || 0;
+  if (w <= 0 && h <= 0) return null; // hidden/zero-size frame — leave it.
+  if (w <= 0) w = Math.round((h * 16) / 9);
+  if (h <= 0) h = Math.round((w * 9) / 16);
+
+  const wrap = document.createElement("div");
+  wrap.style.cssText =
+    `position:relative;width:${w}px;height:${h}px;overflow:hidden;` +
+    `background:#0f0f14;display:block;max-width:100%;`;
+
+  const src = frame.getAttribute("src") || "";
+  const thumbnail = thumbnailFor(src);
+  if (thumbnail) {
+    const img = document.createElement("img");
+    img.src = thumbnail;
+    img.setAttribute("loading", "eager");
+    img.alt = "Embedded media";
+    img.style.cssText = "width:100%;height:100%;object-fit:cover;display:block;";
+    // maxresdefault.jpg only exists for HD videos — drop to the guaranteed
+    // hqdefault on 404 so a normal thumbnail still appears.
+    img.onerror = () => {
+      img.onerror = null;
+      img.src = thumbnail.replace("/maxresdefault.jpg", "/hqdefault.jpg");
+    };
+    wrap.appendChild(img);
+  } else {
+    const label = document.createElement("div");
+    label.textContent = `Embedded media${providerNameFor(src) ? ` · ${providerNameFor(src)}` : ""}`;
+    label.style.cssText =
+      "position:absolute;left:0;right:0;bottom:0;padding:4px 8px;font:11px/1.4 system-ui,sans-serif;" +
+      "color:rgba(255,255,255,.85);background:rgba(0,0,0,.45);text-align:left;";
+    wrap.appendChild(label);
+  }
+
+  const play = document.createElement("div");
+  play.textContent = "▶";
+  play.setAttribute("aria-hidden", "true");
+  play.style.cssText =
+    "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;" +
+    "color:#fff;font-size:44px;text-shadow:0 2px 10px rgba(0,0,0,.7);pointer-events:none;";
+  wrap.appendChild(play);
+  return wrap;
+}
+
+function providerNameFor(src: string): string {
+  try {
+    return new URL(src, window.location.href).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
 /** Loads a data-URL image as a bitmap for cropping. */
 export async function loadBitmap(dataUrl: string): Promise<ImageBitmap> {
   const response = await fetch(dataUrl);
@@ -137,6 +239,7 @@ export class ElementCaptureIsolator {
   private loadingAttrs: Map<HTMLImageElement, string | null> | null = null;
   private forcedOpacity: Map<HTMLElement, string> | null = null;
   private forcedVisibility: Map<HTMLElement, string> | null = null;
+  private replacedFrames: ReplacedFrame[] = [];
 
   /** Scrolls the element into view, hides the rest, and reports its metrics. */
   isolate(target: HTMLElement): ElementCaptureMetrics {
@@ -167,6 +270,10 @@ export class ElementCaptureIsolator {
     // until the image loads. visibility:visible on the target cannot beat that,
     // so temporarily lift any fully-transparent ancestor on the way up.
     this.forceVisiblePath(target);
+
+    // Cross-origin embeds render blank in viewport captures — swap them for a
+    // real media thumbnail (or a branded placeholder) for the duration.
+    this.replaceCrossOriginFrames(target);
 
     // Force a synchronous reflow so the post-scroll position is measured.
     void document.documentElement.getBoundingClientRect();
@@ -207,6 +314,7 @@ export class ElementCaptureIsolator {
       for (const [el, vis] of this.forcedVisibility) el.style.visibility = vis;
       this.forcedVisibility = null;
     }
+    this.restoreFrames();
     try {
       window.scrollTo(0, this.scrollY);
     } catch {
@@ -279,6 +387,34 @@ export class ElementCaptureIsolator {
       }
       node = node.parentElement;
     }
+  }
+
+  /**
+   * Swaps every cross-origin iframe inside the target for a stand-in that
+   * actually paints (a media thumbnail or a branded placeholder), recording the
+   * original frame so restore() puts it back in place. Parotia's own UI frames
+   * are never touched.
+   */
+  private replaceCrossOriginFrames(target: HTMLElement): void {
+    const frames = Array.from(target.querySelectorAll<HTMLIFrameElement>("iframe")).filter(
+      (frame) => !isNewsCleanUi(frame) && isCrossOriginFrame(frame),
+    );
+    for (const frame of frames) {
+      const replacement = frameReplacementFor(frame);
+      if (!replacement) continue;
+      const parent = frame.parentElement ?? document.body;
+      this.replacedFrames.push({ frame, replacement, parent, nextSibling: frame.nextSibling });
+      parent.replaceChild(replacement, frame);
+    }
+  }
+
+  /** Puts every replaced embed back exactly where it was. */
+  private restoreFrames(): void {
+    for (const entry of this.replacedFrames) {
+      entry.replacement.remove();
+      entry.parent.insertBefore(entry.frame, entry.nextSibling);
+    }
+    this.replacedFrames = [];
   }
 
   /**

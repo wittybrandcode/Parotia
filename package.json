@@ -1,7 +1,7 @@
 {
   "name": "parotia",
   "private": true,
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Parotia — clean the stage. keep the story. Editorial web capture extension. Freeze, inspect, clean and capture news pages as broadcast-ready PNGs.",
   "type": "module",
   "scripts": {

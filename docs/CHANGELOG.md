@@ -4,6 +4,16 @@ All notable changes to Parotia are documented here.
 
 ---
 
+## [1.1.2] - 2026-08-19
+
+### Embedded Media in Captures
+
+- **Cross-origin embeds now appear** — cross-origin iframes (YouTube, Vimeo embeds, Twitter/Instagram cards) are painted blank by `captureVisibleTab`, so during element capture they are temporarily swapped for the real media thumbnail (YouTube `img.youtube.com`, Vimeo) or a branded placeholder, then restored exactly afterwards
+- YouTube thumbnails use the HD `maxresdefault` image with automatic fallback to `hqdefault`
+- Parotia's own UI frames are never touched
+
+---
+
 ## [1.1.1] - 2026-08-19
 
 ### Element Capture Completeness
@@ -34,7 +44,7 @@ All notable changes to Parotia are documented here.
 
 #### Technical
 
-- 242 tests across 24 files (all green: typecheck, lint, unit, build, e2e)
+- 247 tests across 24 files (all green: typecheck, lint, unit, build, e2e)
 - New `preload` module and regeneration-guard/preview infrastructure behind existing message types
 
 ---
