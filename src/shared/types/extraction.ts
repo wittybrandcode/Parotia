@@ -3,7 +3,7 @@ import type { ElementReference } from "./element";
 export type ExtractionStatus = "NOT_RUN" | "RUNNING" | "SUCCESS" | "PARTIAL" | "FAILED";
 
 /**
- * Shared confidence terminology across Extraction and Preset validation.
+ * Shared confidence terminology across Extraction and user-facing features.
  * Numeric scores stay internal; only levels cross the domain boundary.
  */
 export type ConfidenceLevel = "HIGH" | "MEDIUM" | "LOW" | "NONE";

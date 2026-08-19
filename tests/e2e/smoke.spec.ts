@@ -45,7 +45,7 @@ test("4.1 built extension boots: service worker registers and options page rende
 
     const page = context.pages()[0] ?? (await context.newPage());
     await page.goto(`chrome-extension://${extensionId}/ui/options.html`);
-    await expect(page.getByRole("heading", { name: "Parotia — Site Presets" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "PAROTIA" })).toBeVisible({ timeout: 15_000 });
   } finally {
     await context.close();
   }
@@ -60,7 +60,7 @@ test("4.2 extension storage API works from options page", async () => {
 
     const page = context.pages()[0] ?? (await context.newPage());
     await page.goto(`chrome-extension://${extensionId}/ui/options.html`);
-    await expect(page.getByRole("heading", { name: "Parotia — Site Presets" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "PAROTIA" })).toBeVisible({ timeout: 15_000 });
 
     const result = await page.evaluate(() =>
       new Promise<Record<string, unknown>>((resolve) => {

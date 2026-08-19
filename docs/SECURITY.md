@@ -95,12 +95,12 @@ iframe.contentWindow.postMessage(broadcast, targetOrigin);
 
 All exported PNG filenames pass through `sanitizeFilenamePart()`:
 
-1. **NFKC normalization** — Unicode canonical decomposition
-2. **Forbidden char removal** — `\ / : * ? " < > |`
-3. **Control char removal** — All characters below U+0020
-4. **Whitespace collapse** — Multiple spaces → single space
+1. **NFKC normalization** — Unicode compatibility normalization (canonical + compatibility decomposition, then canonical composition)
+2. **Forbidden char removal** — `\ / : * ? " < > |` replaced with `-`
+3. **Control char removal** — All C0/C1 control characters removed
+4. **Whitespace collapse** — Whitespace runs collapsed into a single `-`
 5. **Dot stripping** — Leading/trailing dots removed (prevents `..` path traversal)
-6. **Length cap** — 80 characters max
+6. **Length cap** — 80 characters max, falls back to `"article"` if empty
 
 ---
 

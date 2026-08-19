@@ -36,10 +36,10 @@ Parotia Chrome Extension v1.0.0
 
 | Metric | Value |
 |--------|-------|
-| Source files | 42 |
-| Test files | 25 |
+| Source files | 37 |
+| Test files | 24 |
 | Total tests | 208 |
 | Test pass rate | 100% |
-| Build output | ~315 KB |
-| Chrome APIs used | 16 |
+| Build output | ~310 KB |
+| Chrome APIs used | 14 |
 | Supported browsers | Chrome 120+ |

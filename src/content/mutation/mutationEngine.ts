@@ -108,7 +108,7 @@ export class DefaultMutationEngine implements MutationEngine {
 
   /**
    * Deletes a list of explicit targets as ONE undoable unit
-   * (Presets). Unresolvable, already-handled, or duplicate targets are skipped.
+   * (batch operations). Unresolvable, already-handled, or duplicate targets are skipped.
    */
   deleteMany(refs: ElementReference[], source: CleanupSource = "USER"): number {
     const resolved: { ref: ElementReference; target: ResolvedTarget }[] = [];
