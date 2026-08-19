@@ -196,6 +196,15 @@ describe("content/index command pipeline", () => {
     expect((response?.data as { success: boolean }).success).toBe(false);
   });
 
+  it("DELETE_MATCHING without a selection reports failure", async () => {
+    const sessionId = await startSession();
+    const { response } = await invokeOnMessage({
+      type: "DELETE_MATCHING",
+      payload: { sessionId, elementId: "el-1" },
+    });
+    expect((response?.data as { success: boolean }).success).toBe(false);
+  });
+
   it("refuses CAPTURE locally — it is orchestrated by the Service Worker", async () => {
     const sessionId = await startSession();
     const { response } = await invokeOnMessage({

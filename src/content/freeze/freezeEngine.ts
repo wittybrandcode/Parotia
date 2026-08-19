@@ -1,5 +1,6 @@
 import { STABILITY_WINDOW_MS } from "@shared/constants";
 import type { FreezeDiagnostics, FreezeState, FreezeStrategy } from "@shared/types";
+import { isNewsCleanUi } from "../overlay/overlay";
 
 /**
  * Freeze Engine — stabilizes a dynamic page into a controlled working DOM.
@@ -7,7 +8,9 @@ import type { FreezeDiagnostics, FreezeState, FreezeStrategy } from "@shared/typ
  * clean, decide relevance, or capture.
  *
  * Soft Freeze (default): stop pending loads (best effort), disable visual
- * motion, pause media, monitor remaining mutations until a stable window.
+ * motion, pause media, stop repeating timers (carousels/tickers), block
+ * embedded-frame interaction, and monitor remaining mutations until a stable
+ * window. Everything is fully restored on unfreeze.
  */
 
 export interface FreezeResult {
@@ -42,6 +45,10 @@ export class DefaultFreezeEngine implements FreezeEngine {
   private stabilityTimer: number | null = null;
   private mutationsObserved = 0;
   private pausedMedia: HTMLMediaElement[] = [];
+  private frozenFrames: HTMLIFrameElement[] = [];
+  private timerPatchInstalled = false;
+  private restoreTimerFns: (() => void) | null = null;
+  private readonly patchedIntervals = new Set<number>();
 
   freeze(mode: FreezeStrategy = "SOFT_FREEZE"): Promise<FreezeResult> {
     if (this.state.status === "FROZEN") {
@@ -63,6 +70,8 @@ export class DefaultFreezeEngine implements FreezeEngine {
 
     this.injectFreezeStyles();
     this.pauseMedia();
+    this.neutralizeTimers();
+    this.freezeFrames();
 
     return new Promise((resolve) => {
       let installed = false;
@@ -115,6 +124,15 @@ export class DefaultFreezeEngine implements FreezeEngine {
     }
     this.pausedMedia = [];
 
+    for (const frame of this.frozenFrames) {
+      frame.style.removeProperty("pointer-events");
+    }
+    this.frozenFrames = [];
+
+    this.restoreTimerFns?.();
+    this.restoreTimerFns = null;
+    this.timerPatchInstalled = false;
+
     this.state = { status: "UNFROZEN" };
     this.observerBlocked = false;
   }
@@ -149,6 +167,46 @@ export class DefaultFreezeEngine implements FreezeEngine {
       (m) => !m.paused,
     );
     for (const media of this.pausedMedia) media.pause();
+  }
+
+  /**
+   * Stops repeating timers while frozen. Carousels, ad tickers, and refresh
+   * loops are driven by setInterval — the most common source of motion that the
+   * CSS freeze cannot stop (it only covers CSS animations/transitions). The
+   * patch cancels new intervals the page schedules and is fully restored on
+   * unfreeze. One-shot setTimeout and requestAnimationFrame are left alone:
+   * blocking them can break a page's core rendering, and they don't repeat.
+   */
+  private neutralizeTimers(): void {
+    if (this.timerPatchInstalled) return;
+    const win = window as unknown as Record<string, unknown>;
+    const origSetInterval = window.setInterval;
+    const origClearInterval = window.clearInterval;
+
+    const patchedSetInterval = ((handler: TimerHandler, timeout?: number, ...args: unknown[]): number => {
+      const id = origSetInterval(handler, timeout, ...args);
+      this.patchedIntervals.add(id);
+      origClearInterval(id);
+      return id;
+    }) as typeof setInterval;
+
+    win.setInterval = patchedSetInterval;
+    this.timerPatchInstalled = true;
+    this.restoreTimerFns = () => {
+      win.setInterval = origSetInterval;
+      win.clearInterval = origClearInterval;
+      this.patchedIntervals.clear();
+    };
+  }
+
+  /** Blocks interaction with embedded frames so they can't re-render or move. */
+  private freezeFrames(): void {
+    this.frozenFrames = Array.from(document.querySelectorAll<HTMLIFrameElement>("iframe")).filter(
+      (frame) => !isNewsCleanUi(frame),
+    );
+    for (const frame of this.frozenFrames) {
+      frame.style.setProperty("pointer-events", "none", "important");
+    }
   }
 
   /**

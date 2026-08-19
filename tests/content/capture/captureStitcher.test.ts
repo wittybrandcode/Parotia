@@ -1,16 +1,46 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DefaultCaptureStitcher } from "@content/capture/captureStitcher";
+import { DefaultCaptureStitcher, bitmapLooksBlank } from "@content/capture/captureStitcher";
 import { canvasHeightFor } from "@content/capture/sliceMath";
 
 type FakeBitmap = { width: number; height: number; close: () => void };
 
 const PNG_DATA_URL = "data:image/png;base64,AA";
 
-function installCaptureStubs(bitmaps: FakeBitmap[]) {
+/** Uniform RGBA sample (all pixels identical) → bitmapLooksBlank returns true. */
+function flatImageData(value: number): { data: Uint8ClampedArray; width: number; height: number } {
+  return { data: new Uint8ClampedArray(32 * 32 * 4).fill(value), width: 32, height: 32 };
+}
+
+/** Alternating black/white sample → high deviation → not blank. */
+function noisyImageData(): { data: Uint8ClampedArray; width: number; height: number } {
+  const data = new Uint8ClampedArray(32 * 32 * 4);
+  for (let i = 0; i < data.length; i += 4) {
+    const on = (i / 4) % 2 === 0;
+    data[i] = on ? 255 : 0;
+    data[i + 1] = on ? 255 : 0;
+    data[i + 2] = on ? 255 : 0;
+    data[i + 3] = 255;
+  }
+  return { data, width: 32, height: 32 };
+}
+
+function installCaptureStubs(
+  bitmaps: FakeBitmap[],
+  imageData?: { data: Uint8ClampedArray; width: number; height: number },
+) {
   const drawImage = vi.fn();
   const fillRect = vi.fn();
-  const fakeCtx = { drawImage, fillRect, fillStyle: "" } as unknown as CanvasRenderingContext2D;
-  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(fakeCtx);
+  const probeData = imageData ?? noisyImageData();
+  const getImageData = vi.fn(() => probeData);
+  // The stitcher's main canvas is appended to the document before getContext;
+  // the blank-probe canvas is never appended. Use DOM connectivity to return a
+  // distinct context per canvas so probe drawImage calls don't pollute the
+  // main canvas assertions.
+  const mainCtx = { drawImage, fillRect, fillStyle: "" } as unknown as CanvasRenderingContext2D;
+  const probeCtx = { drawImage: vi.fn(), fillRect: vi.fn(), fillStyle: "", getImageData } as unknown as CanvasRenderingContext2D;
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(function (this: HTMLCanvasElement) {
+    return this.isConnected ? mainCtx : probeCtx;
+  });
 
   vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(function (
     this: HTMLCanvasElement,
@@ -138,5 +168,40 @@ describe("DefaultCaptureStitcher", () => {
     stitcher.dispose();
     expect(document.documentElement.querySelector("canvas")).toBeNull();
     await expect(stitcher.addSlice(PNG_DATA_URL, 0)).rejects.toThrow("Stitcher not started");
+  });
+
+  it("addSlice reports a blank flag for a flat-color (unpainted) slice", async () => {
+    installCaptureStubs([{ width: 800, height: 800, close: () => {} }], flatImageData(255));
+    const stitcher = new DefaultCaptureStitcher();
+
+    stitcher.start(1000, 1);
+    const result = await stitcher.addSlice(PNG_DATA_URL, 0);
+
+    expect(result.blank).toBe(true);
+    stitcher.dispose();
+  });
+
+  it("addSlice does not flag a slice with real content", async () => {
+    installCaptureStubs([{ width: 800, height: 800, close: () => {} }], noisyImageData());
+    const stitcher = new DefaultCaptureStitcher();
+
+    stitcher.start(1000, 1);
+    const result = await stitcher.addSlice(PNG_DATA_URL, 0);
+
+    expect(result.blank).toBe(false);
+    stitcher.dispose();
+  });
+
+  it("bitmapLooksBlank returns true for a uniformly-transparent bitmap", () => {
+    const transparent = { width: 800, height: 600, close: () => {} } as unknown as ImageBitmap;
+    installCaptureStubs([], flatImageData(0));
+    expect(bitmapLooksBlank(transparent)).toBe(true);
+  });
+
+  it("bitmapLooksBlank returns false when the canvas cannot be probed", () => {
+    const bitmap = { width: 800, height: 600, close: () => {} } as unknown as ImageBitmap;
+    installCaptureStubs([]);
+    vi.mocked(HTMLCanvasElement.prototype.getContext).mockReturnValue(null);
+    expect(bitmapLooksBlank(bitmap)).toBe(false);
   });
 });

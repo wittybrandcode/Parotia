@@ -13,7 +13,7 @@ Freeze, inspect, clean and capture news pages as broadcast-ready PNGs.
 [![Chrome Extension](https://img.shields.io/badge/Chrome-Extension-blue?logo=googlechrome)](https://developer.chrome.com/docs/extensions/)
 [![MV3](https://img.shields.io/badge/MV3-Support-green)](https://developer.chrome.com/docs/extensions/mv3/)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](#license)
-[![Tests](https://img.shields.io/badge/Tests-208%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/Tests-237%20passing-brightgreen)](#testing)
 
 </div>
 
@@ -152,7 +152,7 @@ npm run dev:ui         # Vite dev server for toolbar UI
 | **v8 coverage** | Enforced thresholds (lines ≥80%, branches ≥75%) |
 
 ```bash
-npm run test           # 208 tests across 23 files
+npm run test           # 237 tests across 24 files
 npm run test:coverage  # With coverage report
 npm run test:e2e       # Requires build first
 ```

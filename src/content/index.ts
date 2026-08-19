@@ -17,8 +17,10 @@ import { DefaultCaptureStitcher, type CaptureStitcher } from "./capture/captureS
 import { ElementCaptureIsolator, cropDataUrlToPng, loadBitmap, sleep, waitForElementRendering } from "./capture/elementCapture";
 import { MAX_CANVAS_DIMENSION, exceedsCanvasLimit, planSlices } from "./capture/sliceMath";
 import { FixedHeaderManager } from "./capture/fixedHeaders";
+import { forceEagerImages, preRollForCapture, waitForImagesReady } from "./capture/preload";
 import { KeyboardShortcuts } from "./keyboard/shortcuts";
 import { startFreeSelect } from "./selection/freeSelect";
+import { createId } from "@shared/utils/id";
 
 /**
  * Content Runtime entry. Wires the session, engines, and overlay together and
@@ -37,6 +39,14 @@ const mutations = new DefaultMutationEngine(history);
 const freeze = new DefaultFreezeEngine();
 const extraction = new DefaultExtractionEngine();
 const elementCapture = new ElementCaptureIsolator();
+
+/**
+ * Pending "Delete Similar" confirmations. The first click previews the matches
+ * and issues a short-lived token; the second click confirms with that token so
+ * a stale confirm can never delete a different (changed) set of elements.
+ */
+const deleteSimilarPreviews = new Map<string, { signatures: string[]; expires: number }>();
+let deleteSimilarToken: string | null = null;
 let shortcuts: KeyboardShortcuts | null = null;
 
 function buildCleanupEngine(): DefaultCleanupEngine {
@@ -66,7 +76,12 @@ function buildCleanupEngine(): DefaultCleanupEngine {
       onDeleteSimilar: () => {
         void handleCommand({
           type: "DELETE_MATCHING",
-          payload: { sessionId: session?.id ?? "", elementId: cleanup?.selected?.id ?? "" },
+          payload: {
+            sessionId: session?.id ?? "",
+            elementId: cleanup?.selected?.id ?? "",
+            // A pending preview means this click is the confirmation.
+            ...(deleteSimilarToken ? { confirm: true, token: deleteSimilarToken } : {}),
+          },
         });
       },
       // CAPTURE is orchestrated by the Service Worker, so unlike the cleanup
@@ -163,11 +178,16 @@ async function handleCommand(command: BackgroundCommand): Promise<unknown> {
       ensureRuntime();
       // Session stays ACTIVE while freezing; the freeze sub-state tracks FROZEN.
       const result = await freeze.freeze(command.payload.strategy);
+      // While frozen, the page can still re-render deleted/hidden elements
+      // (injected scripts, rAF loops). Guard those signatures so the user's
+      // cleanup decisions survive re-renders.
+      if (result.success) mutations.startRegenerationGuard();
       broadcastState();
       return result;
     }
 
     case "UNFREEZE_PAGE":
+      mutations.stopRegenerationGuard();
       await freeze.unfreeze();
       broadcastState();
       return freeze.getState();
@@ -210,9 +230,37 @@ async function handleCommand(command: BackgroundCommand): Promise<unknown> {
 
     case "DELETE_MATCHING": {
       const ref = cleanup ? cleanup.selected : null;
-      const count = ref !== null && cleanup ? cleanup.deleteSimilarTargets(ref) : 0;
-      broadcastState();
-      return { success: count > 0, data: { count } };
+      if (!ref || !cleanup) return { success: false, error: "No element selected" };
+
+      if (command.payload.confirm) {
+        const token = command.payload.token ?? "";
+        const preview = deleteSimilarPreviews.get(token);
+        deleteSimilarPreviews.delete(token);
+        deleteSimilarToken = null;
+        if (!preview || Date.now() > preview.expires) {
+          cleanup.clearPreview();
+          cleanup.setDeleteSimilarPreview(null);
+          return { success: false, error: "Preview expired — pick the element and try again" };
+        }
+        const count = cleanup.confirmDeleteSimilar(ref, preview.signatures);
+        cleanup.setDeleteSimilarPreview(null);
+        broadcastState();
+        return { success: count > 0, data: { count } };
+      }
+
+      // Preview mode: show what would be removed and issue a confirmation token.
+      const preview = cleanup.previewSimilarTargets(ref);
+      if (!preview || preview.count === 0) {
+        cleanup.clearPreview();
+        cleanup.setDeleteSimilarPreview(null);
+        return { success: false, error: "No similar elements found" };
+      }
+      const token = createId("preview");
+      deleteSimilarPreviews.set(token, { signatures: preview.signatures, expires: Date.now() + 60_000 });
+      deleteSimilarToken = token;
+      cleanup.showPreview(preview.elements);
+      cleanup.setDeleteSimilarPreview(preview.count);
+      return { success: true, data: { count: preview.count, token, previewActive: true } };
     }
 
     case "UNDO": {
@@ -341,8 +389,8 @@ async function handleCommand(command: BackgroundCommand): Promise<unknown> {
     case "CAPTURE_ELEMENT_SLICE": {
       if (!stitcher) return { success: false, error: "Element capture not started" };
       try {
-        await stitcher.addSlice(command.payload.dataUrl, command.payload.scrollYCss);
-        return { success: true };
+        const { blank } = await stitcher.addSlice(command.payload.dataUrl, command.payload.scrollYCss);
+        return { success: true, blank };
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) };
       }
@@ -419,13 +467,20 @@ async function handleCommand(command: BackgroundCommand): Promise<unknown> {
 
     case "CAPTURE_STITCH_START": {
       ensureRuntime();
+      // Lazy images far from the viewport would render as white gaps. Pre-roll
+      // the page once so the browser fetches them, promote lazy placeholders to
+      // eager, and wait until every image is painted before measuring.
+      const originalScrollY = window.scrollY;
+      await preRollForCapture(originalScrollY);
+      forceEagerImages(document);
+      await waitForImagesReady(document);
       const pageHeightCss = Math.max(
         document.documentElement.scrollHeight,
         document.body?.scrollHeight ?? 0,
       );
       const viewportHeightCss = window.innerHeight;
       const dpr = window.devicePixelRatio || 1;
-      const scrollY = window.scrollY;
+      const scrollY = originalScrollY;
       fixedHeaders.reset();
       const fixedHeaderCount = fixedHeaders.detect();
       stitcher?.dispose();
@@ -452,8 +507,8 @@ async function handleCommand(command: BackgroundCommand): Promise<unknown> {
 
     case "CAPTURE_SLICE": {
       if (!stitcher) return { success: false, error: "Stitcher not started" };
-      await stitcher.addSlice(command.payload.dataUrl, command.payload.scrollYCss);
-      return { success: true };
+      const { blank } = await stitcher.addSlice(command.payload.dataUrl, command.payload.scrollYCss);
+      return { success: true, blank };
     }
 
     case "CAPTURE_FINALIZE": {
@@ -482,6 +537,9 @@ async function handleCommand(command: BackgroundCommand): Promise<unknown> {
       return getSnapshot();
 
     case "CLOSE_TOOLBAR": {
+      mutations.stopRegenerationGuard();
+      deleteSimilarPreviews.clear();
+      deleteSimilarToken = null;
       cleanup?.stopInspecting();
       overlay?.destroy();
       overlay = null;

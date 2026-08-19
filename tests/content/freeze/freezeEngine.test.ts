@@ -110,4 +110,43 @@ describe("DefaultFreezeEngine", () => {
     expect(result.degraded).toBe(true);
     expect(engine.getDiagnostics().mutationObserverBlocked).toBe(true);
   });
+
+  it("freeze blocks interaction with foreign iframes but skips Parotia UI", async () => {
+    document.body.innerHTML = `
+      <article>
+        <iframe data-src="https://player.example"></iframe>
+        <div data-newsclean-root="true"><iframe></iframe></div>
+      </article>
+    `;
+    const engine = new DefaultFreezeEngine();
+    const promise = engine.freeze();
+    vi.advanceTimersByTime(600);
+    await promise;
+
+    const foreign = document.querySelector<HTMLIFrameElement>('iframe[data-src]');
+    const ui = document.querySelector<HTMLIFrameElement>('[data-newsclean-root="true"] iframe');
+    expect(foreign?.style.pointerEvents).toBe("none");
+    expect(ui?.style.pointerEvents).not.toBe("none");
+
+    await engine.unfreeze();
+    expect(foreign?.style.pointerEvents).toBe("");
+  });
+
+  it("freeze cancels repeating intervals and unfreeze restores them", async () => {
+    const engine = new DefaultFreezeEngine();
+    const promise = engine.freeze();
+    vi.advanceTimersByTime(600);
+    await promise;
+
+    const frozenCallback = vi.fn();
+    window.setInterval(frozenCallback, 100);
+    vi.advanceTimersByTime(1000);
+    expect(frozenCallback).not.toHaveBeenCalled();
+
+    await engine.unfreeze();
+    const restoredCallback = vi.fn();
+    window.setInterval(restoredCallback, 100);
+    vi.advanceTimersByTime(1000);
+    expect(restoredCallback).toHaveBeenCalled();
+  });
 });

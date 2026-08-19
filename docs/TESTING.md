@@ -17,7 +17,7 @@ Parotia uses a three-tier testing approach: unit/integration tests with Vitest, 
 ## Running Tests
 
 ```bash
-npm run test            # Run all Vitest tests (208 tests)
+npm run test            # Run all Vitest tests (237 tests)
 npm run test:watch      # Watch mode
 npm run test:coverage   # Run with coverage report + threshold enforcement
 npm run test:e2e        # Playwright E2E (builds first via pretest:e2e)
@@ -31,26 +31,26 @@ npm run test:e2e        # Playwright E2E (builds first via pretest:e2e)
 tests/
 ├── setup.ts                          # Global chrome.* stubs
 ├── background/
-│   └── service-worker.test.ts        # 21 tests — dispatch, validation, capture
+│   └── service-worker.test.ts        # 26 tests — dispatch, validation, capture
 ├── content/
-│   ├── contentIndex.test.ts          # 13 tests — command hub, lifecycle
+│   ├── contentIndex.test.ts          # 14 tests — command hub, lifecycle
 │   ├── session/
 │   │   └── session.test.ts           # 4 tests — creation, transitions
 │   ├── inspector/
-│   │   └── inspector.test.ts         # 13 tests — picker, overlay, action bar
+│   │   └── inspector.test.ts         # 14 tests — picker, overlay, action bar
 │   ├── selection/
 │   │   └── freeSelect.test.ts        # 11 tests — drawing, resize, capture
 │   ├── freeze/
-│   │   └── freezeEngine.test.ts      # 7 tests — freeze, stability, degraded
+│   │   └── freezeEngine.test.ts      # 9 tests — freeze, stability, degraded
 │   ├── overlay/
 │   │   └── overlay.test.ts           # 4 tests — shadow DOM, iframe
 │   ├── extraction/
 │   │   ├── extractionEngine.test.ts  # 5 tests — scoring, candidates
 │   │   └── score.test.ts             # 3 tests — text/link density
 │   ├── cleanup/
-│   │   └── cleanupEngine.test.ts     # 24 tests — delete/hide/undo/redo
+│   │   └── cleanupEngine.test.ts     # 28 tests — delete/hide/undo/redo
 │   ├── mutation/
-│   │   ├── mutationEngine.test.ts    # 11 tests — DOM mutations, undo
+│   │   ├── mutationEngine.test.ts    # 16 tests — DOM mutations, undo, regen guard
 │   │   └── history.test.ts           # 11 tests — LIFO stack, undoTo
 │   ├── matching/
 │   │   └── matchEngine.test.ts       # 7 tests — similarity, signatures
@@ -60,7 +60,8 @@ tests/
 │       ├── sliceMath.test.ts         # 6 tests — slice planning
 │       ├── fixedHeaders.test.ts      # 10 tests — detection, hide/restore
 │       ├── elementCapture.test.ts    # 8 tests — isolation, eager images
-│       └── captureStitcher.test.ts   # 8 tests — canvas stitching
+│       ├── preload.test.ts           # 7 tests — eager images, pre-roll
+│       └── captureStitcher.test.ts   # 12 tests — canvas stitching, blank checks
 ├── shared/
 │   ├── id.test.ts                    # 3 tests — uniqueness
 │   └── utils/

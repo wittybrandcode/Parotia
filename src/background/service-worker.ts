@@ -329,7 +329,7 @@ async function captureVisibleArea(tabId: number | undefined, command: CaptureCom
   try {
     pushProgress(tabId, sessionId, { current: 0, total: 1, phase: "PREPARING" });
     await sleep(PAINT_SETTLE_MS);
-    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
+    const dataUrl = await captureSliceWithRetry(tab.windowId);
     pushProgress(tabId, sessionId, { current: 1, total: 1, phase: "RENDERING" });
     const filename = `parotia-${titleSlug(tab)}-${timestampPart()}.png`;
     pushProgress(tabId, sessionId, { current: 1, total: 1, phase: "ENCODING" });
@@ -351,28 +351,48 @@ async function captureFullPage(tabId: number | undefined, command: CaptureComman
   const { sessionId } = command.payload;
   const tab = await chrome.tabs.get(tabId);
   let originalScrollY = 0;
+  let zoomChangedForLimit = false;
+  let originalZoom = 1;
+  try {
+    const zoomValue = await chrome.tabs.getZoom(tabId);
+    if (typeof zoomValue === "number" && Number.isFinite(zoomValue)) originalZoom = zoomValue;
+  } catch {
+    // Zoom API unavailable — treat as 100%.
+  }
   const steps: string[] = [];
 
   await hideToolbar(tabId, sessionId);
   try {
-    const startRes = (await chrome.tabs.sendMessage(tabId, {
-      type: "CAPTURE_STITCH_START",
-      payload: { sessionId },
-    } satisfies BackgroundCommand)) as
-      | MessageResponse<{
-          success?: boolean;
-          metrics?: {
-            pageHeightCss: number;
-            viewportHeightCss: number;
-            dpr: number;
-            scrollY: number;
-            fixedHeaders?: number;
-          };
-        }>
-      | undefined;
+    const sendStart = async (): Promise<
+      MessageResponse<{
+        success?: boolean;
+        metrics?: {
+          pageHeightCss: number;
+          viewportHeightCss: number;
+          dpr: number;
+          scrollY: number;
+          fixedHeaders?: number;
+        };
+      }>
+    > => {
+      return (await chrome.tabs.sendMessage(tabId, {
+        type: "CAPTURE_STITCH_START",
+        payload: { sessionId },
+      } satisfies BackgroundCommand)) as MessageResponse<{
+        success?: boolean;
+        metrics?: {
+          pageHeightCss: number;
+          viewportHeightCss: number;
+          dpr: number;
+          scrollY: number;
+          fixedHeaders?: number;
+        };
+      }>;
+    };
 
+    const startRes = await sendStart();
     const startData = startRes?.data;
-    const metrics = startData?.metrics;
+    let metrics = startData?.metrics;
     if (!startData?.success || !metrics || metrics.pageHeightCss <= 0) {
       const detail =
         (startRes?.error?.message ?? "") ||
@@ -386,10 +406,40 @@ async function captureFullPage(tabId: number | undefined, command: CaptureComman
     steps.push(`measured ${Math.round(metrics.pageHeightCss)}px`);
     if (metrics.fixedHeaders) steps.push(`${metrics.fixedHeaders} fixed header(s)`);
     originalScrollY = metrics.scrollY;
+
+    // Canvas bitmaps are capped at MAX_CANVAS_DIMENSION per edge. If the page at
+    // the native resolution exceeds that, zoom the tab out so the effective
+    // device-pixel ratio shrinks (like element capture zooms IN for quality,
+    // this zooms OUT for coverage). Re-measure and capture at the lower DPR.
     if (exceedsCanvasLimit(metrics.pageHeightCss, metrics.dpr)) {
+      const targetZoom = Math.max(
+        0.25,
+        (originalZoom * MAX_CANVAS_DIMENSION) / (metrics.pageHeightCss * metrics.dpr),
+      );
+      if (Math.abs(targetZoom - originalZoom) > 0.05) {
+        try {
+          await chrome.tabs.setZoom(tabId, targetZoom);
+          await sleep(PAINT_SETTLE_MS);
+          zoomChangedForLimit = true;
+          steps.push(`zoomed out to ${targetZoom.toFixed(2)}x`);
+          const retry = await sendStart();
+          if (retry?.data?.success && retry.data.metrics && retry.data.metrics.pageHeightCss > 0) {
+            metrics = retry.data.metrics;
+            originalScrollY = metrics.scrollY;
+            steps.push(`re-measured ${Math.round(metrics.pageHeightCss)}px @ dpr ${metrics.dpr.toFixed(2)}`);
+          }
+        } catch {
+          // Zoom unavailable — fall through and report the limit below.
+        }
+      }
+    }
+
+    if (!metrics || exceedsCanvasLimit(metrics.pageHeightCss, metrics.dpr)) {
       return {
         success: false,
-        error: `Page is too tall for full-page capture (max ${MAX_CANVAS_DIMENSION}px)`,
+        error:
+          `Page is too tall for a single full-page capture (max ${MAX_CANVAS_DIMENSION}px). ` +
+          `Use Free-Select to capture a section, or capture at a lower zoom.`,
       };
     }
 
@@ -409,11 +459,25 @@ async function captureFullPage(tabId: number | undefined, command: CaptureComman
     for (const [index, y] of scrollYs.entries()) {
       const actualY = await scrollTo(Math.min(y, maxScroll));
       await sleep(PAINT_SETTLE_MS);
-      const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
-      await chrome.tabs.sendMessage(tabId, {
+      let dataUrl = await captureSliceWithRetry(tab.windowId);
+      let sliceRes = (await chrome.tabs.sendMessage(tabId, {
         type: "CAPTURE_SLICE",
         payload: { sessionId, dataUrl, scrollYCss: actualY },
-      } satisfies BackgroundCommand);
+      } satisfies BackgroundCommand)) as
+        | MessageResponse<{ success?: boolean; blank?: boolean }>
+        | undefined;
+      // The content script flagged a likely-blank slice (viewport captured
+      // mid-paint). Re-capture that same viewport once before moving on.
+      if (sliceRes?.data?.blank) {
+        await sleep(PAINT_SETTLE_MS);
+        dataUrl = await captureSliceWithRetry(tab.windowId);
+        sliceRes = (await chrome.tabs.sendMessage(tabId, {
+          type: "CAPTURE_SLICE",
+          payload: { sessionId, dataUrl, scrollYCss: actualY },
+        } satisfies BackgroundCommand)) as
+          | MessageResponse<{ success?: boolean; blank?: boolean }>
+          | undefined;
+      }
       pushProgress(tabId, sessionId, { current: index + 1, total: scrollYs.length, phase: "RENDERING" });
     }
     steps.push(`captured ${scrollYs.length} slices`);
@@ -450,6 +514,13 @@ async function captureFullPage(tabId: number | undefined, command: CaptureComman
     throw new Error(`Capture failed [${steps.join(" > ") || "start"}]: ${error instanceof Error ? error.message : String(error)}`);
   } finally {
     await scrollTab(tabId, originalScrollY, sessionId);
+    if (zoomChangedForLimit) {
+      try {
+        await chrome.tabs.setZoom(tabId, originalZoom);
+      } catch {
+        // Ignore — the tab zoom is best-effort to restore.
+      }
+    }
     await showToolbar(tabId, sessionId);
   }
 }
@@ -578,11 +649,24 @@ async function captureElement(tabId: number | undefined, command: CaptureCommand
     for (const [index, rel] of relYs.entries()) {
       const actualY = await scrollTo(elementDocTop + rel);
       await sleep(PAINT_SETTLE_MS);
-      const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
-      await chrome.tabs.sendMessage(tabId, {
+      let dataUrl = await captureSliceWithRetry(tab.windowId);
+      let sliceRes = (await chrome.tabs.sendMessage(tabId, {
         type: "CAPTURE_ELEMENT_SLICE",
         payload: { sessionId, dataUrl, scrollYCss: actualY },
-      } satisfies BackgroundCommand);
+      } satisfies BackgroundCommand)) as
+        | MessageResponse<{ success?: boolean; blank?: boolean }>
+        | undefined;
+      // Same blank-slice guard as full-page capture: re-capture once.
+      if (sliceRes?.data?.blank) {
+        await sleep(PAINT_SETTLE_MS);
+        dataUrl = await captureSliceWithRetry(tab.windowId);
+        sliceRes = (await chrome.tabs.sendMessage(tabId, {
+          type: "CAPTURE_ELEMENT_SLICE",
+          payload: { sessionId, dataUrl, scrollYCss: actualY },
+        } satisfies BackgroundCommand)) as
+          | MessageResponse<{ success?: boolean; blank?: boolean }>
+          | undefined;
+      }
       pushProgress(tabId, sessionId, { current: index + 1, total: relYs.length, phase: "RENDERING" });
     }
     steps.push(`captured ${relYs.length} slice(s)`);
@@ -668,7 +752,7 @@ async function captureRegion(tabId: number | undefined, command: CaptureCommand)
 
     pushProgress(tabId, sessionId, { current: 0, total: 1, phase: "RENDERING" });
     await sleep(PAINT_SETTLE_MS);
-    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
+    const dataUrl = await captureSliceWithRetry(tab.windowId);
     pushProgress(tabId, sessionId, { current: 1, total: 1, phase: "ENCODING" });
 
     await chrome.tabs.sendMessage(tabId, {
@@ -705,6 +789,27 @@ async function scrollTab(tabId: number, y: number, sessionId = ""): Promise<void
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Number of capture attempts before giving up on a single viewport. */
+const MAX_CAPTURE_ATTEMPTS = 3;
+
+/**
+ * Captures the visible tab with retries. Chrome rate-limits captureVisibleTab,
+ * and a transient failure used to abort the whole capture. Retry with linear
+ * backoff and validate the result is a real PNG data URL before accepting it.
+ */
+async function captureSliceWithRetry(windowId: number): Promise<string> {
+  for (let attempt = 1; attempt <= MAX_CAPTURE_ATTEMPTS; attempt++) {
+    try {
+      const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: "png" });
+      if (typeof dataUrl === "string" && dataUrl.startsWith("data:image/png")) return dataUrl;
+    } catch (e) {
+      console.warn(`[parotia] viewport capture attempt ${attempt}/${MAX_CAPTURE_ATTEMPTS} failed:`, e);
+    }
+    if (attempt < MAX_CAPTURE_ATTEMPTS) await sleep(PAINT_SETTLE_MS * attempt);
+  }
+  throw new Error(`Capture failed after ${MAX_CAPTURE_ATTEMPTS} attempts — try again`);
 }
 
 async function routeToTab(tabId: number | undefined, command: BackgroundCommand) {

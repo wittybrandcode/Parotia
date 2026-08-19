@@ -4,6 +4,30 @@ All notable changes to Parotia are documented here.
 
 ---
 
+## [1.1.0] - 2026-08-19
+
+### Hardening Release
+
+#### Capture Reliability
+
+- **Slice verification** — each captured slice is checked for blank output; blank slices are re-captured automatically
+- **Capture retry** — viewport captures are retried up to 3 attempts with linear backoff instead of aborting on transient failures
+- **Eager image loading** — images are force-loaded (scroll pre-roll + `loading=eager` + settle wait) before stitching so lazy-loaded articles capture completely
+- **Long-page fallback** — pages too tall for the canvas limit automatically zoom out and re-measure; a clear error suggests Free-Select capture when that isn't enough
+
+#### Stability & Precision
+
+- **Regeneration guard** — the freeze engine now blocks sites from recreating deleted elements; undo/redo restores are never blocked
+- **Stronger freeze** — embedded frames are locked against interaction and repeating `setInterval` timers (carousels, ad tickers) are neutralized; both fully restored on unfreeze
+- **Delete Similar preview** — a preview highlights every matching element before deletion; confirming re-validates the DOM so new matches are never silently removed
+
+#### Technical
+
+- 237 tests across 24 files (all green: typecheck, lint, unit, build, e2e)
+- New `preload` module and regeneration-guard/preview infrastructure behind existing message types
+
+---
+
 ## [1.0.0] - 2026-08-19
 
 ### Initial Release

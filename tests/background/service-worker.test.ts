@@ -528,4 +528,190 @@ describe("service-worker", () => {
     // REGION mode is valid payload-wise; this just verifies it doesn't crash.
     expect(res.success).toBe(true);
   });
+
+  it("retries a failed viewport capture instead of aborting the capture", async () => {
+    vi.useFakeTimers();
+    sw.tabSessions.set(11, "sess-retry");
+    chromeStub.tabs.get.mockResolvedValue({ id: 11, windowId: 17 });
+    chromeStub.tabs.captureVisibleTab
+      .mockRejectedValueOnce(new Error("rate limited"))
+      .mockResolvedValueOnce("data:image/png;base64,AAAA");
+    chromeStub.downloads.download.mockResolvedValue(1);
+    chromeStub.storage.local.get.mockResolvedValue({ "capture:sess-retry": "data:image/png;base64,BBBB" });
+    chromeStub.storage.local.remove.mockResolvedValue(undefined);
+    chromeStub.tabs.sendMessage.mockImplementation(async (_tabId: number, message: { type: string }) => {
+      switch (message.type) {
+        case "CAPTURE_STITCH_START":
+          return okResponse({ success: true, metrics: { pageHeightCss: 1000, viewportHeightCss: 1000, dpr: 1, scrollY: 0 } });
+        case "CAPTURE_SCROLL":
+          return okResponse({ success: true, actualScrollY: 0 });
+        case "CAPTURE_FINALIZE":
+          return okResponse({ success: true });
+        default:
+          return okResponse({});
+      }
+    });
+
+    const pending = invokeOnMessage(
+      { type: "CAPTURE", payload: { sessionId: "sess-retry", mode: "FULL_PAGE" } },
+      {},
+    );
+    await vi.advanceTimersByTimeAsync(4000);
+    const res = await pending;
+
+    const data = res.data as { success?: boolean; steps?: string[] };
+    expect(data.success).toBe(true);
+    expect(data.steps).toEqual(expect.arrayContaining(["captured 1 slices", "downloaded"]));
+    // First attempt failed, second succeeded → two calls for one slice.
+    expect(chromeStub.tabs.captureVisibleTab).toHaveBeenCalledTimes(2);
+  });
+
+  it("re-captures a slice the content script flagged as blank", async () => {
+    vi.useFakeTimers();
+    sw.tabSessions.set(12, "sess-blank");
+    chromeStub.tabs.get.mockResolvedValue({ id: 12, windowId: 18 });
+    chromeStub.tabs.captureVisibleTab.mockResolvedValue("data:image/png;base64,AAAA");
+    chromeStub.downloads.download.mockResolvedValue(1);
+    chromeStub.storage.local.get.mockResolvedValue({ "capture:sess-blank": "data:image/png;base64,BBBB" });
+    chromeStub.storage.local.remove.mockResolvedValue(undefined);
+    let sliceCalls = 0;
+    chromeStub.tabs.sendMessage.mockImplementation(async (_tabId: number, message: { type: string }) => {
+      switch (message.type) {
+        case "CAPTURE_STITCH_START":
+          return okResponse({ success: true, metrics: { pageHeightCss: 1000, viewportHeightCss: 1000, dpr: 1, scrollY: 0 } });
+        case "CAPTURE_SCROLL":
+          return okResponse({ success: true, actualScrollY: 0 });
+        case "CAPTURE_SLICE":
+          sliceCalls += 1;
+          return okResponse({ success: true, blank: sliceCalls === 1 });
+        case "CAPTURE_FINALIZE":
+          return okResponse({ success: true });
+        default:
+          return okResponse({});
+      }
+    });
+
+    const pending = invokeOnMessage(
+      { type: "CAPTURE", payload: { sessionId: "sess-blank", mode: "FULL_PAGE" } },
+      {},
+    );
+    await vi.advanceTimersByTimeAsync(4000);
+    const res = await pending;
+
+    const data = res.data as { success?: boolean };
+    expect(data.success).toBe(true);
+    // Blank slice → one re-capture → two viewport captures, two slice sends.
+    expect(chromeStub.tabs.captureVisibleTab).toHaveBeenCalledTimes(2);
+    expect(sliceCalls).toBe(2);
+  });
+
+  it("gives up with a clean error when every viewport capture attempt fails", async () => {
+    vi.useFakeTimers();
+    sw.tabSessions.set(13, "sess-fail");
+    chromeStub.tabs.get.mockResolvedValue({ id: 13, windowId: 19 });
+    chromeStub.tabs.captureVisibleTab.mockRejectedValue(new Error("rate limited"));
+    chromeStub.downloads.download.mockResolvedValue(1);
+    chromeStub.storage.local.get.mockResolvedValue({ "capture:sess-fail": "data:image/png;base64,BBBB" });
+    chromeStub.storage.local.remove.mockResolvedValue(undefined);
+    chromeStub.tabs.sendMessage.mockImplementation(async (_tabId: number, message: { type: string }) => {
+      switch (message.type) {
+        case "CAPTURE_STITCH_START":
+          return okResponse({ success: true, metrics: { pageHeightCss: 1000, viewportHeightCss: 1000, dpr: 1, scrollY: 0 } });
+        case "CAPTURE_SCROLL":
+          return okResponse({ success: true, actualScrollY: 0 });
+        case "CAPTURE_FINALIZE":
+          return okResponse({ success: true });
+        default:
+          return okResponse({});
+      }
+    });
+
+    const pending = invokeOnMessage(
+      { type: "CAPTURE", payload: { sessionId: "sess-fail", mode: "FULL_PAGE" } },
+      {},
+    );
+    await vi.advanceTimersByTimeAsync(10000);
+    const res = await pending;
+
+    expect(res.success).toBe(false);
+    expect(res.error?.message).toMatch(/after 3 attempts/i);
+    expect(chromeStub.tabs.captureVisibleTab).toHaveBeenCalledTimes(3);
+  });
+
+  it("zooms out and re-measures when the page exceeds the canvas limit", async () => {
+    vi.useFakeTimers();
+    sw.tabSessions.set(14, "sess-tall");
+    chromeStub.tabs.get.mockResolvedValue({ id: 14, windowId: 20 });
+    chromeStub.tabs.getZoom.mockResolvedValue(1);
+    chromeStub.tabs.setZoom.mockResolvedValue(undefined);
+    chromeStub.tabs.captureVisibleTab.mockResolvedValue("data:image/png;base64,AAAA");
+    chromeStub.downloads.download.mockResolvedValue(1);
+    chromeStub.storage.local.get.mockResolvedValue({ "capture:sess-tall": "data:image/png;base64,BBBB" });
+    chromeStub.storage.local.remove.mockResolvedValue(undefined);
+    let startCalls = 0;
+    chromeStub.tabs.sendMessage.mockImplementation(async (_tabId: number, message: { type: string; payload?: { scrollYCss?: number } }) => {
+      switch (message.type) {
+        case "CAPTURE_STITCH_START":
+          startCalls += 1;
+          return okResponse({
+            success: true,
+            // First measure at native DPR exceeds the canvas limit; after the
+            // zoom-out the effective DPR drops and the page fits.
+            metrics: startCalls === 1
+              ? { pageHeightCss: 40000, viewportHeightCss: 1000, dpr: 1, scrollY: 0 }
+              : { pageHeightCss: 40000, viewportHeightCss: 1000, dpr: 0.819, scrollY: 0 },
+          });
+        case "CAPTURE_SCROLL":
+          return okResponse({ success: true, actualScrollY: message.payload?.scrollYCss ?? 0 });
+        case "CAPTURE_FINALIZE":
+          return okResponse({ success: true });
+        default:
+          return okResponse({});
+      }
+    });
+
+    const pending = invokeOnMessage(
+      { type: "CAPTURE", payload: { sessionId: "sess-tall", mode: "FULL_PAGE" } },
+      {},
+    );
+    // 40 slices at ~450ms settle each, plus the zoom settle — advance past all.
+    await vi.advanceTimersByTimeAsync(20000);
+    const res = await pending;
+
+    const data = res.data as { success?: boolean; steps?: string[] };
+    expect(data.success).toBe(true);
+    expect(data.steps).toEqual(expect.arrayContaining([expect.stringMatching(/^zoomed out to/)]));
+    expect(startCalls).toBe(2);
+    expect(chromeStub.tabs.setZoom).toHaveBeenCalledWith(14, expect.closeTo(0.819175, 4));
+    // Zoom restored afterwards.
+    expect(chromeStub.tabs.setZoom).toHaveBeenLastCalledWith(14, 1);
+  });
+
+  it("reports a clear error when the page still exceeds the limit after zoom-out", async () => {
+    vi.useFakeTimers();
+    sw.tabSessions.set(15, "sess-huge");
+    chromeStub.tabs.get.mockResolvedValue({ id: 15, windowId: 21 });
+    chromeStub.tabs.getZoom.mockResolvedValue(1);
+    chromeStub.tabs.setZoom.mockResolvedValue(undefined);
+    chromeStub.tabs.sendMessage.mockImplementation(async (_tabId: number, message: { type: string }) => {
+      if (message.type === "CAPTURE_STITCH_START") {
+        return okResponse({ success: true, metrics: { pageHeightCss: 200000, viewportHeightCss: 1000, dpr: 1, scrollY: 0 } });
+      }
+      return okResponse({});
+    });
+
+    const pending = invokeOnMessage(
+      { type: "CAPTURE", payload: { sessionId: "sess-huge", mode: "FULL_PAGE" } },
+      {},
+    );
+    await vi.advanceTimersByTimeAsync(4000);
+    const res = await pending;
+
+    // The too-tall guard returns a normal result (no throw), so it lands in
+    // the top-level `data` wrapper with a plain-string error.
+    const data = res.data as { success?: boolean; error?: string };
+    expect(data.success).toBe(false);
+    expect(data.error).toMatch(/too tall/i);
+    expect(data.error).toMatch(/Free-Select/i);
+  });
 });

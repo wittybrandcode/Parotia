@@ -25,10 +25,10 @@ Complete technical documentation for the Parotia Chrome extension.
 ## Quick Reference
 
 ```
-Parotia Chrome Extension v1.0.0
+Parotia Chrome Extension v1.1.0
 ├── Manifest V3 (MV3)
 ├── TypeScript (strict) + React 18 + Vite 6
-├── 208 tests / 23 files / 80%+ coverage
+├── 237 tests / 24 files / 80%+ coverage
 ├── Zero network activity — all local
 └── MIT License
 ```
@@ -39,7 +39,7 @@ Parotia Chrome Extension v1.0.0
 |--------|-------|
 | Source files | 37 |
 | Test files | 24 |
-| Total tests | 208 |
+| Total tests | 237 |
 | Test pass rate | 100% |
 | Build output | ~310 KB |
 | Chrome APIs used | 14 |

@@ -372,6 +372,34 @@ describe("DefaultInspector", () => {
     expect(handlers.onDeleteSimilar).toHaveBeenCalledTimes(1);
   });
 
+  it("setDeleteSimilarPreview flips the delete-similar button into confirm mode", async () => {
+    const teaser = document.querySelector<HTMLElement>(".teaser") as HTMLElement;
+    vi.spyOn(teaser, "getBoundingClientRect").mockReturnValue(FAKE_RECT);
+    const elementFromPoint = vi.spyOn(document, "elementFromPoint");
+    elementFromPoint.mockReturnValue(teaser);
+
+    const handlers: InspectorActionHandlers = { onDelete: vi.fn(), onHide: vi.fn(), onDeleteSimilar: vi.fn() };
+    const inspector = new DefaultInspector(handlers);
+    inspectors.push(inspector);
+    inspector.start(() => undefined);
+
+    window.dispatchEvent(
+      new MouseEvent("click", { clientX: 10, clientY: 10, bubbles: true, cancelable: true }),
+    );
+
+    const bar = document.querySelector(".nc-action-bar") as HTMLElement;
+    const button = bar.querySelector('[data-nc-action="delete-similar"]') as HTMLButtonElement;
+    expect(button.dataset.ncConfirm).toBeUndefined();
+
+    inspector.setDeleteSimilarPreview(3);
+    expect(button.dataset.ncConfirm).toBe("true");
+    expect(button.title).toContain("delete 3");
+
+    inspector.setDeleteSimilarPreview(null);
+    expect(button.dataset.ncConfirm).toBeUndefined();
+    expect(button.title).toBe("Delete similar elements");
+  });
+
   it("generates a selector that resolves to the picked element even when many siblings share data-testid", () => {
     document.body.innerHTML = `
       <main>

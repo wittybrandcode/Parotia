@@ -31,7 +31,7 @@ export type BackgroundCommand =
   | { type: "DELETE_ELEMENT"; payload: { sessionId: string; elementId: string } }
   | { type: "HIDE_ELEMENT"; payload: { sessionId: string; elementId: string } }
   | { type: "SHOW_ELEMENT"; payload: { sessionId: string; elementId: string } }
-  | { type: "DELETE_MATCHING"; payload: { sessionId: string; elementId: string } }
+  | { type: "DELETE_MATCHING"; payload: { sessionId: string; elementId: string; confirm?: boolean; token?: string } }
   | { type: "UNDO"; payload: { sessionId: string } }
   | { type: "REDO"; payload: { sessionId: string } }
   | { type: "UNDO_TO"; payload: { sessionId: string; entryId: string } }

@@ -19,6 +19,8 @@ export interface Inspector {
   start(onSelect: (ref: ElementReference) => void): void;
   stop(): void;
   get active(): boolean;
+  /** Marks the Delete Similar button as awaiting confirmation (shows count). */
+  setDeleteSimilarPreview(count: number | null): void;
 }
 
 /** Actions shown in the floating bar anchored to the selected element. */
@@ -69,6 +71,7 @@ const ACTION_BAR_STYLE = `
 .nc-action-bar .nc-ab-btn:active{transform:scale(.92)}
 .nc-action-bar .nc-ab-btn[data-nc-action="delete"]:hover{background:rgba(239,68,68,.22);color:#ff6b6b}
 .nc-action-bar .nc-ab-btn[data-nc-action="delete-similar"]:hover{background:rgba(249,115,22,.22);color:#fb923c}
+.nc-action-bar .nc-ab-btn[data-nc-action="delete-similar"][data-nc-confirm="true"]{background:rgba(249,115,22,.28);color:#fdba74;box-shadow:inset 0 0 0 1px rgba(249,115,22,.5)}
 .nc-action-bar .nc-ab-btn[data-nc-action="capture"]:hover{background:rgba(59,130,246,.22);color:#60a5fa}
 .nc-action-bar .nc-ab-btn:focus-visible{outline:2px solid #ff8a00;outline-offset:1px}
 `;
@@ -128,6 +131,7 @@ export class DefaultInspector implements Inspector {
   private rafId: number | null = null;
   private lastEvent: { clientX: number; clientY: number } | null = null;
   private hideShowButton: HTMLButtonElement | null = null;
+  private deleteSimilarButton: HTMLButtonElement | null = null;
   private lastBarPosition: { top: number; left: number } | null = null;
 
   constructor(private readonly actionHandlers?: InspectorActionHandlers) {}
@@ -198,6 +202,7 @@ export class DefaultInspector implements Inspector {
     this.selectionOverlay = null;
     this.actionBar = null;
     this.hideShowButton = null;
+    this.deleteSimilarButton = null;
     this.hovered = null;
     this.selected = null;
     this.lastBarPosition = null;
@@ -207,6 +212,21 @@ export class DefaultInspector implements Inspector {
 
   get active(): boolean {
     return this.isActive;
+  }
+
+  /** Toggles the Delete Similar button into "confirm" mode with the match count. */
+  setDeleteSimilarPreview(count: number | null): void {
+    const button = this.deleteSimilarButton;
+    if (!button) return;
+    if (count !== null && count > 0) {
+      button.dataset.ncConfirm = "true";
+      button.title = `Confirm: delete ${count} similar elements`;
+      button.setAttribute("aria-label", `Confirm deleting ${count} similar elements`);
+    } else {
+      delete button.dataset.ncConfirm;
+      button.title = "Delete similar elements";
+      button.setAttribute("aria-label", "Delete similar elements");
+    }
   }
 
   private updateHover(): void {
@@ -375,14 +395,13 @@ export class DefaultInspector implements Inspector {
 
     // Delete Similar: removes the element and every structurally similar one.
     if (this.actionHandlers?.onDeleteSimilar) {
-      bar.appendChild(
-        makeActionButton(
-          "delete-similar",
-          "Delete similar elements",
-          '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
-          () => run(() => this.actionHandlers?.onDeleteSimilar?.()),
-        ),
+      this.deleteSimilarButton = makeActionButton(
+        "delete-similar",
+        "Delete similar elements",
+        '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+        () => run(() => this.actionHandlers?.onDeleteSimilar?.()),
       );
+      bar.appendChild(this.deleteSimilarButton);
     }
 
     // Capture: exports only this element as a crisp PNG.

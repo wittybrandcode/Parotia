@@ -167,4 +167,88 @@ describe("DefaultMutationEngine", () => {
     const { mutations } = setup();
     expect(mutations.deleteElement(ref(".missing"))).toBeNull();
   });
+
+  describe("regeneration guard", () => {
+    const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    it("re-deletes a re-rendered element with the same signature", async () => {
+      const { mutations } = setup();
+      document.body.innerHTML = `<div class="ad-slot">A</div><p class="prose">copy</p>`;
+      mutations.deleteElement(ref(".ad-slot"));
+      expect(document.querySelector(".ad-slot")).toBeNull();
+
+      mutations.startRegenerationGuard();
+      // Page re-renders a structurally identical slot.
+      const newSlot = document.createElement("div");
+      newSlot.className = "ad-slot";
+      newSlot.textContent = "B";
+      document.body.appendChild(newSlot);
+      await flush();
+
+      expect(document.querySelector(".ad-slot")).toBeNull();
+      mutations.stopRegenerationGuard();
+    });
+
+    it("does not re-delete a re-rendered element with a different signature", async () => {
+      const { mutations } = setup();
+      document.body.innerHTML = `<div class="ad-slot" data-slot="a">A</div>`;
+      mutations.deleteElement(ref(".ad-slot"));
+
+      mutations.startRegenerationGuard();
+      const newSlot = document.createElement("div");
+      newSlot.className = "ad-slot";
+      newSlot.setAttribute("data-slot", "b");
+      document.body.appendChild(newSlot);
+      await flush();
+
+      expect(document.querySelector(".ad-slot")).not.toBeNull();
+      mutations.stopRegenerationGuard();
+    });
+
+    it("does not re-delete an element restored by undo", async () => {
+      const { mutations } = setup();
+      document.body.innerHTML = `<div class="teaser">copy</div>`;
+      mutations.deleteElement(ref(".teaser"));
+
+      mutations.startRegenerationGuard();
+      mutations.undo();
+      await flush();
+
+      expect(document.querySelector(".teaser")).not.toBeNull();
+      mutations.stopRegenerationGuard();
+    });
+
+    it("re-hides a re-rendered element with the same signature", async () => {
+      const { mutations } = setup();
+      document.body.innerHTML = `<div class="cookie-banner" data-cookie="1">Banner</div>`;
+      const op = mutations.hideElement(ref(".cookie-banner"));
+      expect(op?.action).toBe("HIDE");
+
+      mutations.startRegenerationGuard();
+      const banner = document.createElement("div");
+      banner.className = "cookie-banner";
+      banner.setAttribute("data-cookie", "1");
+      banner.textContent = "Banner again";
+      document.body.appendChild(banner);
+      await flush();
+
+      expect(banner.style.display).toBe("none");
+      mutations.stopRegenerationGuard();
+    });
+
+    it("stopRegenerationGuard disables re-deletion", async () => {
+      const { mutations } = setup();
+      document.body.innerHTML = `<div class="ad-slot">A</div>`;
+      mutations.deleteElement(ref(".ad-slot"));
+
+      mutations.startRegenerationGuard();
+      mutations.stopRegenerationGuard();
+      const newSlot = document.createElement("div");
+      newSlot.className = "ad-slot";
+      document.body.appendChild(newSlot);
+      await flush();
+
+      expect(document.querySelector(".ad-slot")).not.toBeNull();
+    });
+  });
 });

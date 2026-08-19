@@ -17,6 +17,16 @@ export interface CleanupEngine {
   deleteTarget(ref: ElementReference): boolean;
   /** Deletes the picked element plus lookalikes; returns the removed count. */
   deleteSimilarTargets(ref: ElementReference): number;
+  /** Returns the elements "Delete Similar" would remove, without deleting. */
+  previewSimilarTargets(ref: ElementReference): { count: number; signatures: string[]; elements: Element[] } | null;
+  /** Deletes the pick plus lookalikes, validating they still match the preview. */
+  confirmDeleteSimilar(ref: ElementReference, expectedSignatures: string[]): number;
+  /** Shows orange preview boxes over the given elements. */
+  showPreview(elements: Element[]): void;
+  /** Removes preview boxes. */
+  clearPreview(): void;
+  /** Marks the Delete Similar action as awaiting confirmation (count shown). */
+  setDeleteSimilarPreview(count: number | null): void;
   hideTarget(ref: ElementReference): boolean;
   showSelected(): boolean;
   isHidden(ref: ElementReference): boolean;
@@ -41,6 +51,7 @@ export class DefaultCleanupEngine implements CleanupEngine {
     activeRules: [],
     selectedHidden: false,
   };
+  private readonly previewOverlays: HTMLElement[] = [];
 
   private lastSelection: ElementReference | null = null;
   /** Rules removed by Undo, restored by Redo (keeps counts action-aware). */
@@ -63,6 +74,8 @@ export class DefaultCleanupEngine implements CleanupEngine {
 
   startInspecting(): void {
     this.lastSelection = null;
+    this.clearPreview();
+    this.setDeleteSimilarPreview(null);
     this.inspector.start((ref) => {
       this.lastSelection = ref;
     });
@@ -96,7 +109,68 @@ export class DefaultCleanupEngine implements CleanupEngine {
         enabled: true,
       });
     }
+    this.clearPreview();
     return count;
+  }
+
+  /** Computes what "Delete Similar" would remove, without changing the DOM. */
+  previewSimilarTargets(ref: ElementReference): { count: number; signatures: string[]; elements: Element[] } | null {
+    const similar = this.mutations.previewSimilar(ref);
+    if (!similar || similar.length === 0) return null;
+    const signatures = similar
+      .map((element) => this.mutations.signatureOf(element))
+      .filter((s): s is string => s !== null);
+    return { count: similar.length, signatures, elements: similar };
+  }
+
+  /**
+   * Deletes the pick plus lookalikes after a preview. Re-computes the match set
+   * at confirm time and refuses to act if the page changed the signatures the
+   * user approved (prevents over-deleting on a mutated DOM).
+   */
+  confirmDeleteSimilar(ref: ElementReference, expectedSignatures: string[]): number {
+    const current = this.previewSimilarTargets(ref);
+    if (!current) return 0;
+    const currentSignatures = current.signatures.sort().join("\u0000");
+    const expected = [...expectedSignatures].sort().join("\u0000");
+    if (currentSignatures !== expected) return 0;
+    return this.deleteSimilarTargets(ref);
+  }
+
+  showPreview(elements: Element[]): void {
+    this.clearPreview();
+    for (const element of elements) {
+      const box = document.createElement("div");
+      box.setAttribute("data-newsclean-preview", "true");
+      Object.assign(box.style, {
+        position: "fixed",
+        zIndex: "2147483646",
+        pointerEvents: "none",
+        boxSizing: "border-box",
+        border: "2px solid #f97316",
+        background: "rgba(249,115,22,0.14)",
+      } as Partial<CSSStyleDeclaration>);
+      document.documentElement.appendChild(box);
+      this.positionPreview(box, element);
+      this.previewOverlays.push(box);
+    }
+  }
+
+  clearPreview(): void {
+    for (const box of this.previewOverlays) box.remove();
+    this.previewOverlays.length = 0;
+  }
+
+  setDeleteSimilarPreview(count: number | null): void {
+    this.inspector.setDeleteSimilarPreview(count);
+  }
+
+  private positionPreview(box: HTMLElement, element: Element): void {
+    const rect = element.getBoundingClientRect();
+    box.style.left = `${rect.left}px`;
+    box.style.top = `${rect.top}px`;
+    box.style.width = `${rect.width}px`;
+    box.style.height = `${rect.height}px`;
   }
 
   hideTarget(ref: ElementReference): boolean {

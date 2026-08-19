@@ -178,6 +178,72 @@ describe("DefaultCleanupEngine", () => {
     });
   });
 
+  describe("delete-similar preview", () => {
+    beforeEach(() => {
+      document.body.innerHTML = `
+        <div data-ad-slot="x" class="slot">1</div>
+        <div data-ad-slot="x" class="slot">2</div>
+        <div data-ad-slot="y" class="slot">3</div>
+      `;
+    });
+
+    it("previewSimilarTargets reports the match set without deleting", () => {
+      const { cleanup } = setup();
+      const first = document.querySelector<HTMLElement>('[data-ad-slot="x"]');
+      if (!first) throw new Error("fixture");
+
+      const preview = cleanup.previewSimilarTargets(elementReferenceOf(first));
+      expect(preview?.count).toBe(2);
+      expect(document.querySelectorAll('[data-ad-slot="x"]')).toHaveLength(2);
+      expect(cleanup.getState().removedCount).toBe(0);
+    });
+
+    it("confirmDeleteSimilar deletes exactly the previewed set", () => {
+      const { cleanup } = setup();
+      const first = document.querySelector<HTMLElement>('[data-ad-slot="x"]');
+      if (!first) throw new Error("fixture");
+      const preview = cleanup.previewSimilarTargets(elementReferenceOf(first));
+      if (!preview) throw new Error("preview");
+
+      const count = cleanup.confirmDeleteSimilar(elementReferenceOf(first), preview.signatures);
+      expect(count).toBe(2);
+      expect(document.querySelectorAll('[data-ad-slot="x"]')).toHaveLength(0);
+      expect(document.querySelector('[data-ad-slot="y"]')).not.toBeNull();
+    });
+
+    it("rejects the confirm when the DOM changed since the preview", () => {
+      const { cleanup } = setup();
+      const first = document.querySelector<HTMLElement>('[data-ad-slot="x"]');
+      if (!first) throw new Error("fixture");
+      const preview = cleanup.previewSimilarTargets(elementReferenceOf(first));
+      if (!preview) throw new Error("preview");
+
+      // Page mutates between preview and confirm: a different ad slot appears.
+      const extra = document.createElement("div");
+      extra.setAttribute("data-ad-slot", "x");
+      extra.className = "slot";
+      document.body.appendChild(extra);
+
+      const count = cleanup.confirmDeleteSimilar(elementReferenceOf(first), preview.signatures);
+      expect(count).toBe(0);
+      expect(document.querySelectorAll('[data-ad-slot="x"]')).toHaveLength(3);
+    });
+
+    it("showPreview adds overlay boxes and clearPreview removes them", () => {
+      const { cleanup } = setup();
+      const first = document.querySelector<HTMLElement>('[data-ad-slot="x"]');
+      if (!first) throw new Error("fixture");
+      const preview = cleanup.previewSimilarTargets(elementReferenceOf(first));
+      if (!preview) throw new Error("preview");
+
+      cleanup.showPreview(preview.elements);
+      expect(document.querySelectorAll("[data-newsclean-preview]")).toHaveLength(2);
+
+      cleanup.clearPreview();
+      expect(document.querySelectorAll("[data-newsclean-preview]")).toHaveLength(0);
+    });
+  });
+
   describe("undo / redo counter consistency", () => {
     it("tracks removedCount across individual deletes, undo and redo", () => {
       const { cleanup } = setup();
