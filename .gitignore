@@ -7,6 +7,7 @@ test-results/
 *.md
 !README.md
 !INSTALL.md
+!docs/*.md
 .DS_Store
 .vscode/
 .idea/

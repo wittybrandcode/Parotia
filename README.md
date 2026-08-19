@@ -173,6 +173,23 @@ npm run test:e2e       # Requires build first
 
 ---
 
+## Documentation
+
+Complete technical documentation is in the [`docs/`](./docs/) folder:
+
+| Document | Description |
+|----------|-------------|
+| [Architecture](./docs/ARCHITECTURE.md) | System design, module structure, data flow |
+| [Security](./docs/SECURITY.md) | Security model, validation, CSP, threat mitigation |
+| [Permissions](./docs/PERMISSIONS.md) | Why each Chrome permission is needed |
+| [Testing](./docs/TESTING.md) | Test strategy, coverage, writing new tests |
+| [Build System](./docs/BUILD.md) | Build pipeline, scripts, configuration |
+| [Keyboard Shortcuts](./docs/KEYBOARD-SHORTCUTS.md) | Complete shortcut reference |
+| [Contributing](./docs/CONTRIBUTING.md) | How to contribute, code conventions |
+| [Changelog](./docs/CHANGELOG.md) | Version history and release notes |
+
+---
+
 ## License
 
 MIT
