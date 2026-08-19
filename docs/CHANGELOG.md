@@ -4,6 +4,15 @@ All notable changes to Parotia are documented here.
 
 ---
 
+## [1.1.3] - 2026-08-19
+
+### Element Capture Reverted
+
+- **Reverted** the v1.1.1/v1.1.2 element-capture changes: the anchored (fixed/sticky) single-shot, the full-rect crop, the slice-level image wait, and the cross-origin iframe substitution introduced stray visual content and dropped the profile picture on sites like Twitter/X
+- Element capture is back to the v1.1.0 behaviour (pre-roll eager sweep, `waitForElementRendering`, 2× zoom, horizontal-only crop) that captured containers correctly
+
+---
+
 ## [1.1.2] - 2026-08-19
 
 ### Embedded Media in Captures
@@ -44,7 +53,7 @@ All notable changes to Parotia are documented here.
 
 #### Technical
 
-- 247 tests across 24 files (all green: typecheck, lint, unit, build, e2e)
+- 237 tests across 24 files (all green: typecheck, lint, unit, build, e2e)
 - New `preload` module and regeneration-guard/preview infrastructure behind existing message types
 
 ---

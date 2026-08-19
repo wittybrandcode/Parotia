@@ -9,15 +9,7 @@
  * The captured result is assembled by scrolling the element through the
  * viewport and stitching the slices (see captureStitcher.ts), so elements that
  * are taller than the viewport are captured in full instead of being cut off.
- *
- * Cross-origin embeds: the browser deliberately paints cross-origin iframes
- * (YouTube, Vimeo, Twitter cards…) as blank frames in `captureVisibleTab`.
- * To avoid empty boxes in the output, such iframes are temporarily replaced
- * with a real thumbnail of the embedded media (YouTube/Vimeo) or a branded
- * placeholder, and restored exactly after the capture.
  */
-
-import { isNewsCleanUi } from "../overlay/overlay";
 
 export interface CaptureRect {
   left: number;
@@ -34,13 +26,6 @@ export interface ElementCaptureMetrics {
   /** Element height in CSS px after lazy images have loaded. */
   elementHeightCss: number;
   viewportHeightCss: number;
-  /**
-   * True when the element (or an ancestor) is position:fixed/sticky, i.e. it is
-   * anchored to the viewport and does NOT move when the page scrolls. Scrolling
-   * the document cannot walk such an element through the viewport, so it must
-   * be captured in a single slice instead of being stitched slice-by-slice.
-   */
-  anchored: boolean;
 }
 
 export const CAPTURE_ATTR = "data-newsclean-capture";
@@ -78,121 +63,6 @@ const ELEMENT_CAPTURE_CSS = `
 
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * True when the element (or any ancestor up to <html>) is anchored to the
- * viewport — position:fixed or position:sticky. Such elements do not scroll
- * with the document, so slice-by-slice stitching would capture the same frame
- * repeatedly; they must be captured in a single viewport shot instead.
- */
-export function isViewportAnchored(target: HTMLElement): boolean {
-  let node: HTMLElement | null = target;
-  while (node && node !== document.documentElement) {
-    let position = "";
-    try {
-      position = getComputedStyle(node).position;
-    } catch {
-      // Best effort — a broken style lookup is treated as not anchored.
-    }
-    if (position === "fixed" || position === "sticky") return true;
-    node = node.parentElement;
-  }
-  return false;
-}
-
-/**
- * True when the iframe points at a different origin. Such frames are painted
- * blank by `captureVisibleTab`, so the capture path replaces them.
- */
-export function isCrossOriginFrame(frame: HTMLIFrameElement): boolean {
-  const src = frame.getAttribute("src") || frame.src || "";
-  if (!src || src.startsWith("about:") || src.startsWith("javascript:")) return false;
-  try {
-    const url = new URL(src, window.location.href);
-    if (url.protocol === "data:" || url.protocol === "blob:") return false;
-    return url.origin !== window.location.origin;
-  } catch {
-    return false;
-  }
-}
-
-/** Maps common embed URLs to a real media thumbnail so embeds appear in captures. */
-export function thumbnailFor(src: string): string | null {
-  const youtube =
-    src.match(/youtube\.com\/embed\/([\w-]{6,})/i) || src.match(/youtu\.be\/([\w-]{6,})/i);
-  if (youtube?.[1]) return `https://img.youtube.com/vi/${youtube[1]}/maxresdefault.jpg`;
-  const vimeo = src.match(/player\.vimeo\.com\/video\/(\d+)/i);
-  if (vimeo?.[1]) return `https://vumbnail.com/${vimeo[1]}.jpg`;
-  return null;
-}
-
-interface ReplacedFrame {
-  frame: HTMLIFrameElement;
-  replacement: HTMLElement;
-  parent: HTMLElement;
-  nextSibling: Node | null;
-}
-
-/**
- * Builds the stand-in element for a cross-origin iframe: the media thumbnail
- * with a play badge for known providers, or a branded placeholder otherwise.
- * Sizing honours the iframe's width/height attributes and falls back to a
- * 16:9 box so the rest of the layout (and thus the stitching) is unchanged.
- */
-export function frameReplacementFor(frame: HTMLIFrameElement): HTMLElement | null {
-  const computed = frame.getBoundingClientRect();
-  let w = parseFloat(frame.getAttribute("width") || "") || computed.width || 0;
-  let h = parseFloat(frame.getAttribute("height") || "") || computed.height || 0;
-  if (w <= 0 && h <= 0) return null; // hidden/zero-size frame — leave it.
-  if (w <= 0) w = Math.round((h * 16) / 9);
-  if (h <= 0) h = Math.round((w * 9) / 16);
-
-  const wrap = document.createElement("div");
-  wrap.style.cssText =
-    `position:relative;width:${w}px;height:${h}px;overflow:hidden;` +
-    `background:#0f0f14;display:block;max-width:100%;`;
-
-  const src = frame.getAttribute("src") || "";
-  const thumbnail = thumbnailFor(src);
-  if (thumbnail) {
-    const img = document.createElement("img");
-    img.src = thumbnail;
-    img.setAttribute("loading", "eager");
-    img.alt = "Embedded media";
-    img.style.cssText = "width:100%;height:100%;object-fit:cover;display:block;";
-    // maxresdefault.jpg only exists for HD videos — drop to the guaranteed
-    // hqdefault on 404 so a normal thumbnail still appears.
-    img.onerror = () => {
-      img.onerror = null;
-      img.src = thumbnail.replace("/maxresdefault.jpg", "/hqdefault.jpg");
-    };
-    wrap.appendChild(img);
-  } else {
-    const label = document.createElement("div");
-    label.textContent = `Embedded media${providerNameFor(src) ? ` · ${providerNameFor(src)}` : ""}`;
-    label.style.cssText =
-      "position:absolute;left:0;right:0;bottom:0;padding:4px 8px;font:11px/1.4 system-ui,sans-serif;" +
-      "color:rgba(255,255,255,.85);background:rgba(0,0,0,.45);text-align:left;";
-    wrap.appendChild(label);
-  }
-
-  const play = document.createElement("div");
-  play.textContent = "▶";
-  play.setAttribute("aria-hidden", "true");
-  play.style.cssText =
-    "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;" +
-    "color:#fff;font-size:44px;text-shadow:0 2px 10px rgba(0,0,0,.7);pointer-events:none;";
-  wrap.appendChild(play);
-  return wrap;
-}
-
-function providerNameFor(src: string): string {
-  try {
-    return new URL(src, window.location.href).hostname.replace(/^www\./, "");
-  } catch {
-    return "";
-  }
 }
 
 /** Loads a data-URL image as a bitmap for cropping. */
@@ -239,7 +109,6 @@ export class ElementCaptureIsolator {
   private loadingAttrs: Map<HTMLImageElement, string | null> | null = null;
   private forcedOpacity: Map<HTMLElement, string> | null = null;
   private forcedVisibility: Map<HTMLElement, string> | null = null;
-  private replacedFrames: ReplacedFrame[] = [];
 
   /** Scrolls the element into view, hides the rest, and reports its metrics. */
   isolate(target: HTMLElement): ElementCaptureMetrics {
@@ -271,10 +140,6 @@ export class ElementCaptureIsolator {
     // so temporarily lift any fully-transparent ancestor on the way up.
     this.forceVisiblePath(target);
 
-    // Cross-origin embeds render blank in viewport captures — swap them for a
-    // real media thumbnail (or a branded placeholder) for the duration.
-    this.replaceCrossOriginFrames(target);
-
     // Force a synchronous reflow so the post-scroll position is measured.
     void document.documentElement.getBoundingClientRect();
     const rect = target.getBoundingClientRect();
@@ -285,7 +150,6 @@ export class ElementCaptureIsolator {
       elementDocTop: scrollY + rect.top,
       elementHeightCss: rect.height,
       viewportHeightCss: window.innerHeight,
-      anchored: isViewportAnchored(target),
     };
   }
 
@@ -314,7 +178,6 @@ export class ElementCaptureIsolator {
       for (const [el, vis] of this.forcedVisibility) el.style.visibility = vis;
       this.forcedVisibility = null;
     }
-    this.restoreFrames();
     try {
       window.scrollTo(0, this.scrollY);
     } catch {
@@ -323,7 +186,15 @@ export class ElementCaptureIsolator {
   }
 
   private forceEagerImages(target: HTMLElement): void {
-    this.reEager(target);
+    this.loadingAttrs = new Map();
+    const imgs = target instanceof HTMLImageElement ? [target] : Array.from(target.querySelectorAll("img"));
+    for (const img of imgs) {
+      const current = img.getAttribute("loading");
+      if (current !== "eager") {
+        this.loadingAttrs.set(img, current);
+        img.setAttribute("loading", "eager");
+      }
+    }
     // <picture> <source> elements may use srcset with lazy loading — force them
     // to use the largest candidate so the browser fetches the real image.
     const sources = target.querySelectorAll("picture > source");
@@ -337,24 +208,6 @@ export class ElementCaptureIsolator {
         if (firstUrl && img && !img.src) {
           img.src = firstUrl;
         }
-      }
-    }
-  }
-
-  /**
-   * Flips lazy images to eager, recording the original value so restore() can
-   * put them back. Additive on purpose: sites that hydrate content after the
-   * initial isolate() (data-src swaps, infinite scroll) add fresh lazy images —
-   * this re-applies to any image not yet recorded without losing the originals.
-   */
-  private reEager(target: HTMLElement): void {
-    if (!this.loadingAttrs) this.loadingAttrs = new Map();
-    const imgs = target instanceof HTMLImageElement ? [target] : Array.from(target.querySelectorAll("img"));
-    for (const img of imgs) {
-      const current = img.getAttribute("loading");
-      if (current !== "eager" && !this.loadingAttrs.has(img)) {
-        this.loadingAttrs.set(img, current);
-        img.setAttribute("loading", "eager");
       }
     }
   }
@@ -387,81 +240,6 @@ export class ElementCaptureIsolator {
       }
       node = node.parentElement;
     }
-  }
-
-  /**
-   * Swaps every cross-origin iframe inside the target for a stand-in that
-   * actually paints (a media thumbnail or a branded placeholder), recording the
-   * original frame so restore() puts it back in place. Parotia's own UI frames
-   * are never touched.
-   */
-  private replaceCrossOriginFrames(target: HTMLElement): void {
-    const frames = Array.from(target.querySelectorAll<HTMLIFrameElement>("iframe")).filter(
-      (frame) => !isNewsCleanUi(frame) && isCrossOriginFrame(frame),
-    );
-    for (const frame of frames) {
-      const replacement = frameReplacementFor(frame);
-      if (!replacement) continue;
-      const parent = frame.parentElement ?? document.body;
-      this.replacedFrames.push({ frame, replacement, parent, nextSibling: frame.nextSibling });
-      parent.replaceChild(replacement, frame);
-    }
-  }
-
-  /** Puts every replaced embed back exactly where it was. */
-  private restoreFrames(): void {
-    for (const entry of this.replacedFrames) {
-      entry.replacement.remove();
-      entry.parent.insertBefore(entry.frame, entry.nextSibling);
-    }
-    this.replacedFrames = [];
-  }
-
-  /**
-   * Waits (bounded) until every image inside the isolated element that is
-   * currently visible in the viewport has painted. Called right before each
-   * slice is captured: the pre-roll in PREPARE covers most images, but media
-   * that a site only fetches when scrolled into view (or that loads late over
-   * a slow network) can still be mid-flight when the worker captures a slice.
-   * Kick such images with decode() (forces fetch+paint regardless of the page's
-   * loading hints) and re-check until complete or the deadline is reached.
-   */
-  async waitForSliceReady(timeoutMs = 3000): Promise<void> {
-    const target = this.target;
-    if (!target) return;
-    this.reEager(target);
-    const imagesInView = (): HTMLImageElement[] => {
-      const all = target instanceof HTMLImageElement ? [target] : Array.from(target.querySelectorAll("img"));
-      return all.filter((img) => {
-        if (img.complete) return false;
-        let r: DOMRect | null = null;
-        try {
-          r = img.getBoundingClientRect();
-        } catch {
-          return false;
-        }
-        return r !== null && r.bottom > 0 && r.top < window.innerHeight;
-      });
-    };
-    const kick = (images: HTMLImageElement[]) => {
-      for (const img of images) {
-        try {
-          img.decode().catch(() => undefined);
-        } catch {
-          // Image is not decodable yet (no src, or not connected) — skip it.
-        }
-      }
-    };
-
-    kick(imagesInView());
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline && imagesInView().length > 0) {
-      await sleep(90);
-      kick(imagesInView());
-    }
-    // Force a reflow so post-load layout (image heights) is committed before
-    // the worker captures the viewport frame.
-    void document.documentElement.getBoundingClientRect();
   }
 }
 

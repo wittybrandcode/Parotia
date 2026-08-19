@@ -49,7 +49,7 @@ git checkout -b feature/your-feature-name
 ```bash
 npm run typecheck    # TypeScript must be clean
 npm run lint         # Zero warnings
-npm run test         # All 247 tests must pass
+npm run test         # All 237 tests must pass
 npm run build        # Build must succeed
 ```
 
@@ -143,7 +143,7 @@ Include:
 
 - [ ] `npm run typecheck` passes
 - [ ] `npm run lint` passes (zero warnings)
-- [ ] `npm run test` passes (all 247 tests)
+- [ ] `npm run test` passes (all 237 tests)
 - [ ] `npm run build` succeeds
 - [ ] New tests added for new functionality
 - [ ] No unrelated changes included
