@@ -53,6 +53,13 @@ const ELEMENT_CAPTURE_CSS = `
     outline: none !important;
     box-shadow: none !important;
   }
+  /* Push the target above every other element inside the clip region so that
+     sticky headers, overlays, or virtualized siblings cannot paint over it. */
+  html[data-newsclean-capture="true"] [data-newsclean-capture] {
+    position: relative !important;
+    z-index: 2147483647 !important;
+    isolation: isolate !important;
+  }
   /* The picker's own overlays live on <html>, not <body>, so the body rule
      above does not reach them. Hide them or they would be painted into the
      captured image (extra border, tint, and action bar). */
@@ -145,12 +152,25 @@ export class ElementCaptureIsolator {
     void document.documentElement.getBoundingClientRect();
     const rect = target.getBoundingClientRect();
     const scrollY = window.scrollY;
+
+    // Clip the entire page to the element's viewport bounding box so that
+    // absolutely/fixed-positioned overlays, sticky headers, or virtualized
+    // siblings outside the element's column cannot appear in the capture.
+    // The clip stays fixed in viewport coordinates throughout the scroll-based
+    // slice capture — as the element scrolls, different vertical sections
+    // pass through the same clip rectangle, which is exactly what the
+    // stitcher expects.
+    const vpWidth = window.innerWidth;
+    const vpHeight = window.innerHeight;
+    document.documentElement.style.clipPath =
+      `inset(${rect.top}px ${vpWidth - rect.right}px ${Math.max(0, vpHeight - rect.bottom)}px ${rect.left}px)`;
+
     return {
       dpr: window.devicePixelRatio || 1,
       rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
       elementDocTop: scrollY + rect.top,
       elementHeightCss: rect.height,
-      viewportHeightCss: window.innerHeight,
+      viewportHeightCss: vpHeight,
     };
   }
 
@@ -161,6 +181,7 @@ export class ElementCaptureIsolator {
     this.target?.removeAttribute(CAPTURE_ATTR);
     this.target = null;
     document.documentElement.removeAttribute(CAPTURE_ATTR);
+    document.documentElement.style.clipPath = "";
     // Put every image's original loading mode back.
     if (this.loadingAttrs) {
       for (const [img, value] of this.loadingAttrs) {
