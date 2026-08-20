@@ -38,19 +38,20 @@ const ELEMENT_CAPTURE_CSS = `
   html[data-newsclean-capture="true"] [data-newsclean-root] {
     visibility: hidden !important;
   }
-  html[data-newsclean-capture="true"] [data-newsclean-capture] {
-    visibility: visible !important;
-    opacity: 1 !important;
-    outline: none !important;
-    box-shadow: none !important;
-  }
-  /* Sites like X/Twitter use content-visibility:auto on feed items, which lets
-     the browser skip rendering everything that is off-fold — so slices below
-     the fold (and lazy images like profile avatars) would come out blank.
-     Force full rendering of the target and all of its descendants. */
+  /* Force full rendering and visibility on the target AND all descendants.
+     X/Twitter wraps profile avatars and media in containers with opacity:0
+     (or visibility:hidden) until their lazy images load. The parent rule
+     would leave those wrappers hidden; this ensures everything inside the
+     captured element is painted — including avatars that haven't finished
+     their fade-in animation. Also overrides content-visibility:auto so
+     off-fold descendants are not skipped by the browser. */
   html[data-newsclean-capture="true"] [data-newsclean-capture],
   html[data-newsclean-capture="true"] [data-newsclean-capture] * {
+    visibility: visible !important;
+    opacity: 1 !important;
     content-visibility: visible !important;
+    outline: none !important;
+    box-shadow: none !important;
   }
   /* The picker's own overlays live on <html>, not <body>, so the body rule
      above does not reach them. Hide them or they would be painted into the
