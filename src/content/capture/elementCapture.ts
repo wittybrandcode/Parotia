@@ -109,6 +109,7 @@ export class ElementCaptureIsolator {
   private loadingAttrs: Map<HTMLImageElement, string | null> | null = null;
   private forcedOpacity: Map<HTMLElement, string> | null = null;
   private forcedVisibility: Map<HTMLElement, string> | null = null;
+  private hiddenElements: HTMLElement[] = [];
 
   /** Scrolls the element into view, hides the rest, and reports its metrics. */
   isolate(target: HTMLElement): ElementCaptureMetrics {
@@ -140,6 +141,15 @@ export class ElementCaptureIsolator {
     // so temporarily lift any fully-transparent ancestor on the way up.
     this.forceVisiblePath(target);
 
+    // Walk every element in the DOM and set visibility:hidden via inline
+    // !important on everything except the target subtree.  Inline !important
+    // has specificity (1,0,0,0) which beats ANY author stylesheet rule —
+    // including X/Twitter's CSS-in-JS rules that set visibility:visible on
+    // tweet components (which would otherwise override the inherited hidden
+    // from body > *).  This is the only way to guarantee isolation on sites
+    // that explicitly set visibility on nested elements.
+    this.hideAllExceptTarget(target);
+
     // Force a synchronous reflow so the post-scroll position is measured.
     void document.documentElement.getBoundingClientRect();
     const rect = target.getBoundingClientRect();
@@ -160,6 +170,11 @@ export class ElementCaptureIsolator {
     this.target?.removeAttribute(CAPTURE_ATTR);
     this.target = null;
     document.documentElement.removeAttribute(CAPTURE_ATTR);
+    // Restore inline visibility overrides set by hideAllExceptTarget.
+    for (const el of this.hiddenElements) {
+      el.style.removeProperty("visibility");
+    }
+    this.hiddenElements = [];
     // Put every image's original loading mode back.
     if (this.loadingAttrs) {
       for (const [img, value] of this.loadingAttrs) {
@@ -230,15 +245,49 @@ export class ElementCaptureIsolator {
         if (!this.forcedOpacity.has(node)) {
           this.forcedOpacity.set(node, node.style.opacity);
         }
-        node.style.opacity = "1";
+        // Inline !important beats any author !important stylesheet rule.
+        node.style.setProperty("opacity", "1", "important");
       }
       if (visibility === "hidden") {
         if (!this.forcedVisibility.has(node)) {
           this.forcedVisibility.set(node, node.style.visibility);
         }
-        node.style.visibility = "visible";
+        node.style.setProperty("visibility", "visible", "important");
       }
       node = node.parentElement;
+    }
+  }
+
+  /**
+   * Walks every element in the DOM and sets `visibility: hidden` via inline
+   * `!important` on everything except the target subtree.  Inline `!important`
+   * has specificity (1,0,0,0) which beats any author stylesheet rule —
+   * including X/Twitter's CSS-in-JS rules that set `visibility: visible`
+   * on tweet components.  The CSS `body > *` rule relies on inheritance, but
+   * inherited values have zero specificity and are overridden by any direct
+   * declaration on a child element.  This method closes that gap.
+   */
+  private hideAllExceptTarget(target: HTMLElement): void {
+    this.hiddenElements = [];
+    // Collect the target and all its ancestors so we skip them.
+    const protectedSet = new Set<Node>();
+    let ancestor: Node | null = target;
+    while (ancestor) {
+      protectedSet.add(ancestor);
+      ancestor = ancestor.parentNode;
+    }
+    const walker = document.createTreeWalker(
+      document.documentElement,
+      NodeFilter.SHOW_ELEMENT,
+    );
+    let node: HTMLElement | null;
+    while ((node = walker.nextNode() as HTMLElement | null)) {
+      if (protectedSet.has(node)) continue;
+      // Skip <head>, <meta>, <style>, <script> — they don't render visibly.
+      const tag = node.tagName;
+      if (tag === "HEAD" || tag === "META" || tag === "STYLE" || tag === "SCRIPT" || tag === "LINK") continue;
+      node.style.setProperty("visibility", "hidden", "important");
+      this.hiddenElements.push(node);
     }
   }
 }
