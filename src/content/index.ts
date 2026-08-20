@@ -318,9 +318,18 @@ async function handleCommand(command: BackgroundCommand): Promise<unknown> {
 
     case "PREPARE_ELEMENT_CAPTURE": {
       ensureRuntime();
+      // Hide the toolbar and stop inspecting BEFORE isolation so no Parotia UI
+      // (action bar, highlights, toolbar iframe) leaks into the captured image.
+      // This is done inside PREPARE_ELEMENT_CAPTURE rather than relying on the
+      // separate hideToolbar(PREPARE_CAPTURE) call from the worker, because
+      // that message may fail silently and leave Parotia components visible.
+      cleanup?.stopInspecting();
+      overlay?.setVisible(false);
       const ref = cleanup?.selected;
       const element = ref && ref.id === command.payload.elementId ? document.querySelector<HTMLElement>(ref.selector) : null;
       if (!element || !element.isConnected) {
+        elementCapture.restore();
+        overlay?.setVisible(true);
         return { success: false, error: "Selected element no longer exists" };
       }
       const metrics = elementCapture.isolate(element);
