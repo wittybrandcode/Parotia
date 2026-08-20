@@ -4,6 +4,16 @@ All notable changes to Parotia are documented here.
 
 ---
 
+## [1.1.4] - 2026-08-20
+
+### Element Capture: X.com / Virtualized-Feed Fix
+
+- **Removed pre-roll scroll** from `PREPARE_ELEMENT_CAPTURE` — the pre-roll scrolled through every slice position to wake lazy images, but on virtualized sites like X/Twitter, programmatic scrolling triggers feed re-rendering (cells are `transform: translateY()` + unmounted off-screen), which could reposition the target element between capture slices → scrambled/misaligned output. The `isolate()` step already forces `loading="eager"` + `img.decode()` on all images inside the element, so the pre-roll was redundant
+- **Recompute `elementDocTop`** after re-measuring the element post-render — the previous code preserved the stale offset from `isolate()`, which could drift if the element moved during the pre-render wait. Now uses fresh `window.scrollY + rect.top`
+- **Fixed `postMessage` throw** in `broadcastState` / `broadcastProgress` — the toolbar iframe starts as `about:blank` (page origin) and only navigates to the extension origin after load; posting with a `chrome-extension://` target origin before load threw `DOMException` and could break command handlers that called `broadcastState`
+
+---
+
 ## [1.1.3] - 2026-08-19
 
 ### Element Capture Reverted

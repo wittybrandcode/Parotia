@@ -25,7 +25,7 @@ Complete technical documentation for the Parotia Chrome extension.
 ## Quick Reference
 
 ```
-Parotia Chrome Extension v1.1.3
+Parotia Chrome Extension v1.1.4
 ├── Manifest V3 (MV3)
 ├── TypeScript (strict) + React 18 + Vite 6
 ├── 237 tests / 24 files / 80%+ coverage

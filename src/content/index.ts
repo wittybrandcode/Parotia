@@ -14,8 +14,8 @@ import { DefaultFreezeEngine } from "./freeze/freezeEngine";
 import { DefaultExtractionEngine } from "./extraction/extractionEngine";
 import { DefaultCleanupEngine } from "./cleanup/cleanupEngine";
 import { DefaultCaptureStitcher, type CaptureStitcher } from "./capture/captureStitcher";
-import { ElementCaptureIsolator, cropDataUrlToPng, loadBitmap, sleep, waitForElementRendering } from "./capture/elementCapture";
-import { MAX_CANVAS_DIMENSION, exceedsCanvasLimit, planSlices } from "./capture/sliceMath";
+import { ElementCaptureIsolator, cropDataUrlToPng, loadBitmap, waitForElementRendering } from "./capture/elementCapture";
+import { MAX_CANVAS_DIMENSION, exceedsCanvasLimit } from "./capture/sliceMath";
 import { FixedHeaderManager } from "./capture/fixedHeaders";
 import { forceEagerImages, preRollForCapture, waitForImagesReady } from "./capture/preload";
 import { KeyboardShortcuts } from "./keyboard/shortcuts";
@@ -114,6 +114,24 @@ function historyState(): { canUndo: boolean; canRedo: boolean; undoLabel?: strin
   };
 }
 
+/**
+ * Posts a message to the toolbar iframe. The frame starts as about:blank and
+ * only navigates to the extension origin after load, so until then its window's
+ * origin is the page's — posting with the extension's target origin throws and
+ * would abort the caller. Dropping those early broadcasts is safe: the UI pulls
+ * fresh state via GET_STATE after every action and on bootstrap.
+ */
+function postToToolbar(message: Record<string, unknown>): void {
+  const frame = overlay?.shadow.querySelector<HTMLIFrameElement>("iframe[data-newsclean-frame]");
+  if (!frame?.contentWindow) return;
+  const targetOrigin = new URL(chrome.runtime.getURL("")).origin;
+  try {
+    frame.contentWindow.postMessage(message, targetOrigin);
+  } catch {
+    // Toolbar iframe not navigated to the extension origin yet — skip.
+  }
+}
+
 /** Pushes the latest state to the toolbar iframe (which talks to the page). */
 function broadcastState(): void {
   if (!session || !overlay) return;
@@ -125,18 +143,12 @@ function broadcastState(): void {
     actionLog: actionLogState(),
     history: historyState(),
   };
-  const frame = overlay.shadow.querySelector<HTMLIFrameElement>("iframe[data-newsclean-frame]");
-  // Target the extension origin explicitly instead of "*": STATE is only ever
-  // delivered to the NewsClean toolbar iframe and never to other windows.
-  const targetOrigin = new URL(chrome.runtime.getURL("")).origin;
-  frame?.contentWindow?.postMessage({ source: "newsclean-content", type: "STATE", state }, targetOrigin);
+  postToToolbar({ source: "newsclean-content", type: "STATE", state });
 }
 
 /** Relays Service Worker progress (capture) to the toolbar iframe. */
 function broadcastProgress(progress: { current: number; total: number; phase: string }): void {
-  const frame = overlay?.shadow.querySelector<HTMLIFrameElement>("iframe[data-newsclean-frame]");
-  const targetOrigin = new URL(chrome.runtime.getURL("")).origin;
-  frame?.contentWindow?.postMessage({ source: "newsclean-content", type: "PROGRESS", progress }, targetOrigin);
+  postToToolbar({ source: "newsclean-content", type: "PROGRESS", progress });
 }
 
 function ensureRuntime(): void {
@@ -317,33 +329,24 @@ async function handleCommand(command: BackgroundCommand): Promise<unknown> {
         return { success: false, error: "Selected element has no visible area" };
       }
 
-      // Scroll through the element's whole range so lazy media inside it loads
-      // and paints before any slice is captured. A short pause per step lets
-      // the browser's IntersectionObserver wake lazy images (which the images
-      // were just flipped to eager in isolate(), but paint needs a tick too).
-      const scroller = document.scrollingElement ?? document.documentElement;
-      const maxScroll = Math.max(
-        0,
-        (scroller.scrollHeight || document.documentElement.scrollHeight) - metrics.viewportHeightCss,
-      );
-      for (const rel of planSlices(metrics.elementHeightCss, metrics.viewportHeightCss)) {
-        const y = Math.min(metrics.elementDocTop + rel, maxScroll);
-        scroller.scrollTop = y;
-        window.scrollTo(0, y);
-        void document.documentElement.getBoundingClientRect();
-        await sleep(120);
-      }
+      // Wait for images inside the element to finish loading. We do NOT scroll
+      // through the element first (pre-roll) because on virtualized sites like
+      // X/Twitter, programmatic scrolling triggers feed re-rendering and can
+      // unmount or reposition the target element between capture slices.
+      // The isolate() step already forced every <img> to loading="eager" and
+      // kicked img.decode() so the browser starts fetching immediately.
       await waitForElementRendering(element);
 
       // Re-measure after lazy images have loaded — they can grow the element.
-      scroller.scrollTop = metrics.elementDocTop;
-      window.scrollTo(0, metrics.elementDocTop);
+      // Recompute elementDocTop from the fresh rect so any drift (e.g. from
+      // X repositioning the feed cell) does not produce misaligned slices.
       void document.documentElement.getBoundingClientRect();
       const rect = element.getBoundingClientRect();
+      const freshDocTop = window.scrollY + rect.top;
       const finalMetrics = {
         dpr: metrics.dpr,
         rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
-        elementDocTop: metrics.elementDocTop,
+        elementDocTop: freshDocTop,
         elementHeightCss: rect.height,
         viewportHeightCss: metrics.viewportHeightCss,
       };
