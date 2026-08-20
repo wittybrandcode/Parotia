@@ -14,8 +14,8 @@ import { DefaultFreezeEngine } from "./freeze/freezeEngine";
 import { DefaultExtractionEngine } from "./extraction/extractionEngine";
 import { DefaultCleanupEngine } from "./cleanup/cleanupEngine";
 import { DefaultCaptureStitcher, type CaptureStitcher } from "./capture/captureStitcher";
-import { ElementCaptureIsolator, cropDataUrlToPng, loadBitmap, waitForElementRendering } from "./capture/elementCapture";
-import { MAX_CANVAS_DIMENSION, exceedsCanvasLimit } from "./capture/sliceMath";
+import { ElementCaptureIsolator, cropDataUrlToPng, loadBitmap, sleep, waitForElementRendering } from "./capture/elementCapture";
+import { MAX_CANVAS_DIMENSION, exceedsCanvasLimit, planSlices } from "./capture/sliceMath";
 import { FixedHeaderManager } from "./capture/fixedHeaders";
 import { forceEagerImages, preRollForCapture, waitForImagesReady } from "./capture/preload";
 import { KeyboardShortcuts } from "./keyboard/shortcuts";
@@ -318,18 +318,9 @@ async function handleCommand(command: BackgroundCommand): Promise<unknown> {
 
     case "PREPARE_ELEMENT_CAPTURE": {
       ensureRuntime();
-      // Hide the toolbar and stop inspecting BEFORE isolation so no Parotia UI
-      // (action bar, highlights, toolbar iframe) leaks into the captured image.
-      // This is done inside PREPARE_ELEMENT_CAPTURE rather than relying on the
-      // separate hideToolbar(PREPARE_CAPTURE) call from the worker, because
-      // that message may fail silently and leave Parotia components visible.
-      cleanup?.stopInspecting();
-      overlay?.setVisible(false);
       const ref = cleanup?.selected;
       const element = ref && ref.id === command.payload.elementId ? document.querySelector<HTMLElement>(ref.selector) : null;
       if (!element || !element.isConnected) {
-        elementCapture.restore();
-        overlay?.setVisible(true);
         return { success: false, error: "Selected element no longer exists" };
       }
       const metrics = elementCapture.isolate(element);
@@ -338,24 +329,33 @@ async function handleCommand(command: BackgroundCommand): Promise<unknown> {
         return { success: false, error: "Selected element has no visible area" };
       }
 
-      // Wait for images inside the element to finish loading. We do NOT scroll
-      // through the element first (pre-roll) because on virtualized sites like
-      // X/Twitter, programmatic scrolling triggers feed re-rendering and can
-      // unmount or reposition the target element between capture slices.
-      // The isolate() step already forced every <img> to loading="eager" and
-      // kicked img.decode() so the browser starts fetching immediately.
+      // Scroll through the element's whole range so lazy media inside it loads
+      // and paints before any slice is captured. A short pause per step lets
+      // the browser's IntersectionObserver wake lazy images (which the images
+      // were just flipped to eager in isolate(), but paint needs a tick too).
+      const scroller = document.scrollingElement ?? document.documentElement;
+      const maxScroll = Math.max(
+        0,
+        (scroller.scrollHeight || document.documentElement.scrollHeight) - metrics.viewportHeightCss,
+      );
+      for (const rel of planSlices(metrics.elementHeightCss, metrics.viewportHeightCss)) {
+        const y = Math.min(metrics.elementDocTop + rel, maxScroll);
+        scroller.scrollTop = y;
+        window.scrollTo(0, y);
+        void document.documentElement.getBoundingClientRect();
+        await sleep(120);
+      }
       await waitForElementRendering(element);
 
       // Re-measure after lazy images have loaded — they can grow the element.
-      // Recompute elementDocTop from the fresh rect so any drift (e.g. from
-      // X repositioning the feed cell) does not produce misaligned slices.
+      scroller.scrollTop = metrics.elementDocTop;
+      window.scrollTo(0, metrics.elementDocTop);
       void document.documentElement.getBoundingClientRect();
       const rect = element.getBoundingClientRect();
-      const freshDocTop = window.scrollY + rect.top;
       const finalMetrics = {
         dpr: metrics.dpr,
         rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
-        elementDocTop: freshDocTop,
+        elementDocTop: metrics.elementDocTop,
         elementHeightCss: rect.height,
         viewportHeightCss: metrics.viewportHeightCss,
       };

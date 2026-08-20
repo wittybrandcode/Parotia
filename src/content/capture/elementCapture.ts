@@ -38,27 +38,19 @@ const ELEMENT_CAPTURE_CSS = `
   html[data-newsclean-capture="true"] [data-newsclean-root] {
     visibility: hidden !important;
   }
-  /* Force full rendering and visibility on the target AND all descendants.
-     X/Twitter wraps profile avatars and media in containers with opacity:0
-     (or visibility:hidden) until their lazy images load. The parent rule
-     would leave those wrappers hidden; this ensures everything inside the
-     captured element is painted — including avatars that haven't finished
-     their fade-in animation. Also overrides content-visibility:auto so
-     off-fold descendants are not skipped by the browser. */
-  html[data-newsclean-capture="true"] [data-newsclean-capture],
-  html[data-newsclean-capture="true"] [data-newsclean-capture] * {
+  html[data-newsclean-capture="true"] [data-newsclean-capture] {
     visibility: visible !important;
     opacity: 1 !important;
-    content-visibility: visible !important;
     outline: none !important;
     box-shadow: none !important;
   }
-  /* Push the target above every other element inside the clip region so that
-     sticky headers, overlays, or virtualized siblings cannot paint over it. */
-  html[data-newsclean-capture="true"] [data-newsclean-capture] {
-    position: relative !important;
-    z-index: 2147483647 !important;
-    isolation: isolate !important;
+  /* Sites like X/Twitter use content-visibility:auto on feed items, which lets
+     the browser skip rendering everything that is off-fold — so slices below
+     the fold (and lazy images like profile avatars) would come out blank.
+     Force full rendering of the target and all of its descendants. */
+  html[data-newsclean-capture="true"] [data-newsclean-capture],
+  html[data-newsclean-capture="true"] [data-newsclean-capture] * {
+    content-visibility: visible !important;
   }
   /* The picker's own overlays live on <html>, not <body>, so the body rule
      above does not reach them. Hide them or they would be painted into the
@@ -152,25 +144,12 @@ export class ElementCaptureIsolator {
     void document.documentElement.getBoundingClientRect();
     const rect = target.getBoundingClientRect();
     const scrollY = window.scrollY;
-
-    // Clip the entire page to the element's viewport bounding box so that
-    // absolutely/fixed-positioned overlays, sticky headers, or virtualized
-    // siblings outside the element's column cannot appear in the capture.
-    // The clip stays fixed in viewport coordinates throughout the scroll-based
-    // slice capture — as the element scrolls, different vertical sections
-    // pass through the same clip rectangle, which is exactly what the
-    // stitcher expects.
-    const vpWidth = window.innerWidth;
-    const vpHeight = window.innerHeight;
-    document.documentElement.style.clipPath =
-      `inset(${rect.top}px ${vpWidth - rect.right}px ${Math.max(0, vpHeight - rect.bottom)}px ${rect.left}px)`;
-
     return {
       dpr: window.devicePixelRatio || 1,
       rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
       elementDocTop: scrollY + rect.top,
       elementHeightCss: rect.height,
-      viewportHeightCss: vpHeight,
+      viewportHeightCss: window.innerHeight,
     };
   }
 
@@ -181,7 +160,6 @@ export class ElementCaptureIsolator {
     this.target?.removeAttribute(CAPTURE_ATTR);
     this.target = null;
     document.documentElement.removeAttribute(CAPTURE_ATTR);
-    document.documentElement.style.clipPath = "";
     // Put every image's original loading mode back.
     if (this.loadingAttrs) {
       for (const [img, value] of this.loadingAttrs) {
