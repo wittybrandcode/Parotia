@@ -269,12 +269,19 @@ export class ElementCaptureIsolator {
    */
   private hideAllExceptTarget(target: HTMLElement): void {
     this.hiddenElements = [];
-    // Collect the target and all its ancestors so we skip them.
+    // Collect the target, all its descendants, and all its ancestors.
+    // Anything outside this protected set gets inline visibility:hidden !important.
     const protectedSet = new Set<Node>();
+    // Ancestors — walk up to <html>.
     let ancestor: Node | null = target;
     while (ancestor) {
       protectedSet.add(ancestor);
       ancestor = ancestor.parentNode;
+    }
+    // Descendants — walk the entire target subtree.
+    const sub = document.createTreeWalker(target, NodeFilter.SHOW_ELEMENT);
+    while (sub.nextNode()) {
+      protectedSet.add(sub.currentNode);
     }
     const walker = document.createTreeWalker(
       document.documentElement,
@@ -283,7 +290,6 @@ export class ElementCaptureIsolator {
     let node: HTMLElement | null;
     while ((node = walker.nextNode() as HTMLElement | null)) {
       if (protectedSet.has(node)) continue;
-      // Skip <head>, <meta>, <style>, <script> — they don't render visibly.
       const tag = node.tagName;
       if (tag === "HEAD" || tag === "META" || tag === "STYLE" || tag === "SCRIPT" || tag === "LINK") continue;
       node.style.setProperty("visibility", "hidden", "important");
