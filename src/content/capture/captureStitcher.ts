@@ -1,4 +1,4 @@
-import { canvasHeightFor, drawHeightFor } from "./sliceMath";
+import { canvasHeightFor } from "./sliceMath";
 
 /**
  * Stitches full-page capture slices onto a hidden off-screen canvas inside the
@@ -26,17 +26,17 @@ export class DefaultCaptureStitcher implements CaptureStitcher {
   private dpr = 1;
   private baseScrollCss = 0;
   private widthSet = false;
+  private nextY = 0;
 
   start(pageHeightCss: number, dpr: number, baseScrollCss = 0): void {
     this.pageHeightCss = pageHeightCss;
     this.dpr = dpr || 1;
     this.baseScrollCss = baseScrollCss || 0;
     this.widthSet = false;
+    this.nextY = 0;
     const canvas = document.createElement("canvas");
     canvas.width = 1;
     canvas.height = canvasHeightFor(pageHeightCss, this.dpr);
-    // The canvas bitmap is sized in device px above; the CSS box is collapsed so
-    // it never affects layout, paint, or scroll metrics while capturing.
     canvas.style.width = "0px";
     canvas.style.height = "0px";
     canvas.style.position = "fixed";
@@ -47,32 +47,25 @@ export class DefaultCaptureStitcher implements CaptureStitcher {
     this.ctx = canvas.getContext("2d");
   }
 
-  async addSlice(dataUrl: string, scrollYCss: number): Promise<SliceResult> {
+  async addSlice(dataUrl: string, _scrollYCss: number): Promise<SliceResult> {
     const { ctx, canvas } = this;
     if (!ctx || !canvas) throw new Error("Stitcher not started");
     const bitmap = await loadBitmap(dataUrl);
-    // Flag likely-blank slices BEFORE drawing so the caller can re-capture the
-    // viewport. A screenshot taken while the page is still painting renders as
-    // a single flat color; genuinely blank page gaps are rare enough that a
-    // single re-capture is cheap insurance.
     const blank = bitmapLooksBlank(bitmap);
-    // Setting canvas.width resets (clears) the canvas — only set it once.
     if (!this.widthSet && bitmap.width > 0) {
       canvas.width = bitmap.width;
-      // Fill with an opaque white background so any 1 px rounding gaps between
-      // slices render as white rather than transparent (which appears gray in
-      // most image viewers).
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       this.widthSet = true;
     }
-    // For element capture the canvas is element-sized, so slices are drawn
-    // relative to the element's document top (baseScrollCss).
-    const rel = scrollYCss - this.baseScrollCss;
-    const drawHeight = drawHeightFor(rel, this.pageHeightCss, this.dpr, bitmap.height);
-    const y = Math.round(rel * this.dpr);
+    const y = this.nextY;
+    const canvasBottom = canvas.height;
+    const remaining = Math.max(0, canvasBottom - y);
+    if (remaining <= 0) { bitmap.close(); return { blank }; }
+    const drawHeight = Math.min(bitmap.height, remaining);
     if (drawHeight > 0) {
       ctx.drawImage(bitmap, 0, 0, bitmap.width, drawHeight, 0, y, bitmap.width, drawHeight);
+      this.nextY = y + drawHeight;
     }
     bitmap.close();
     return { blank };

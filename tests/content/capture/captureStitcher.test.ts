@@ -71,6 +71,7 @@ function installCaptureStubs(
 
 describe("DefaultCaptureStitcher", () => {
   afterEach(() => {
+    document.querySelectorAll("canvas").forEach((c) => c.remove());
     vi.unstubAllGlobals();
   });
 
@@ -113,10 +114,10 @@ describe("DefaultCaptureStitcher", () => {
     await stitcher.addSlice(PNG_DATA_URL, 900);
 
     expect(drawImage).toHaveBeenCalledTimes(2);
-    // rel = 500 → y = 1000 device px; remaining height 500*2 = 1000 → full slice height 800.
-    expect(drawImage).toHaveBeenNthCalledWith(1, expect.anything(), 0, 0, 800, 800, 0, 1000, 800, 800);
-    // rel = 900 → y = 1800; remaining height (1000-900)*2 = 200 → clipped to 200.
-    expect(drawImage).toHaveBeenNthCalledWith(2, expect.anything(), 0, 0, 800, 200, 0, 1800, 800, 200);
+    // Slice 1: nextY=0, drawHeight=min(800, 2000)=800.
+    expect(drawImage).toHaveBeenNthCalledWith(1, expect.anything(), 0, 0, 800, 800, 0, 0, 800, 800);
+    // Slice 2: nextY=800, remaining=2000-800=1200, drawHeight=min(800, 1200)=800.
+    expect(drawImage).toHaveBeenNthCalledWith(2, expect.anything(), 0, 0, 800, 800, 0, 800, 800, 800);
     stitcher.dispose();
   });
 
@@ -134,7 +135,9 @@ describe("DefaultCaptureStitcher", () => {
 
     // First slice sets the width to 800; the second must not reset it to 400.
     expect(canvas?.width).toBe(800);
-    expect(drawImage).toHaveBeenNthCalledWith(2, expect.anything(), 0, 0, 400, 800, 0, 100, 400, 800);
+    // Slice 1: nextY=0, drawHeight=min(800, 1000)=800.
+    // Slice 2: nextY=800, remaining=1000-800=200, drawHeight=min(800, 200)=200.
+    expect(drawImage).toHaveBeenNthCalledWith(2, expect.anything(), 0, 0, 400, 200, 0, 800, 400, 200);
     stitcher.dispose();
   });
 
