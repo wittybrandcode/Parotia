@@ -251,11 +251,20 @@ export class ElementCaptureIsolator {
  * browser never started fetching fires no event. Each pending image is kicked
  * with `img.decode()` (which forces the fetch+decode regardless of the page's
  * loading/content-visibility hints) and re-checked until complete.
+ *
+ * On X/Twitter the avatar `<img>` starts with a tiny placeholder `src` and is
+ * swapped for the real URL by JavaScript *after* our initial scan. A
+ * MutationObserver watches for `src` / `srcset` / `loading` attribute changes
+ * so the deadline is extended and the new image is re-kicked.
+ *
+ * After the image wait finishes, two `requestAnimationFrame` ticks ensure the
+ * browser has composited the newly-loaded images into the frame so that
+ * `captureVisibleTab` captures them.
  */
 export async function waitForElementRendering(element: HTMLElement, timeoutMs = 4000): Promise<void> {
-  const imgs = () => {
+  const collect = (): HTMLImageElement[] => {
     const all = element instanceof HTMLImageElement ? [element] : Array.from(element.querySelectorAll("img"));
-    return all.filter((img) => !img.complete);
+    return all.filter((img) => !img.complete || img.naturalWidth === 0);
   };
   const kick = (images: HTMLImageElement[]) => {
     for (const img of images) {
@@ -267,16 +276,47 @@ export async function waitForElementRendering(element: HTMLElement, timeoutMs = 
     }
   };
 
-  kick(imgs());
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline && imgs().length > 0) {
-    await sleep(120);
-    kick(imgs());
+  // Watch for new images or src/srcset changes inside the element. X/Twitter
+  // swaps placeholder avatar URLs for real ones via JS; each swap resets the
+  // wait deadline so the new image has time to load and paint.
+  let sawChange = false;
+  const observer = new MutationObserver(() => {
+    sawChange = true;
+  });
+  try {
+    observer.observe(element, {
+      childList: true,
+      subtree: true,
+      attributeFilter: ["src", "srcset", "loading"],
+    });
+  } catch {
+    // MutationObserver may not be available — best effort.
   }
+
+  kick(collect());
+  let deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline && collect().length > 0) {
+    await sleep(120);
+    if (sawChange) {
+      // Extend the deadline so the newly-swapped image has time to load.
+      deadline = Math.max(deadline, Date.now() + timeoutMs);
+      sawChange = false;
+    }
+    kick(collect());
+  }
+
+  observer.disconnect();
 
   try {
     await Promise.race([document.fonts.ready, sleep(1000)]);
   } catch {
     // Font loading is best effort.
   }
+
+  // Two animation frames so the browser composites the newly-loaded images
+  // into the frame. Without this, captureVisibleTab may capture the previous
+  // paint state where the avatar was still a blank placeholder.
+  await new Promise<void>((r) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => r())),
+  );
 }
