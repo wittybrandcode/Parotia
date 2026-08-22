@@ -54,34 +54,33 @@ function buildCleanupEngine(): DefaultCleanupEngine {
     // commands as the toolbar, so state, counts, and Undo stay consistent.
     inspectorActionHandlers: {
       onDelete: () => {
-        void handleCommand({
+        handleCommand({
           type: "DELETE_ELEMENT",
           payload: { sessionId: session?.id ?? "", elementId: cleanup?.selected?.id ?? "" },
-        });
+        }).catch(() => {});
       },
       onHide: () => {
-        void handleCommand({
+        handleCommand({
           type: "HIDE_ELEMENT",
           payload: { sessionId: session?.id ?? "", elementId: cleanup?.selected?.id ?? "" },
-        });
+        }).catch(() => {});
       },
       onShow: () => {
-        void handleCommand({
+        handleCommand({
           type: "SHOW_ELEMENT",
           payload: { sessionId: session?.id ?? "", elementId: cleanup?.selected?.id ?? "" },
-        });
+        }).catch(() => {});
       },
       isHidden: () => (cleanup?.selected ? cleanup.isHidden(cleanup.selected) : false),
       onDeleteSimilar: () => {
-        void handleCommand({
+        handleCommand({
           type: "DELETE_MATCHING",
           payload: {
             sessionId: session?.id ?? "",
             elementId: cleanup?.selected?.id ?? "",
-            // A pending preview means this click is the confirmation.
             ...(deleteSimilarToken ? { confirm: true, token: deleteSimilarToken } : {}),
           },
-        });
+        }).catch(() => {});
       },
       // CAPTURE is orchestrated by the Service Worker, so unlike the cleanup
       // actions above this one goes straight to the extension (not the local
@@ -89,10 +88,10 @@ function buildCleanupEngine(): DefaultCleanupEngine {
       onCapture: () => {
         const ref = cleanup?.selected;
         if (!ref) return;
-        void chrome.runtime.sendMessage({
+        chrome.runtime.sendMessage({
           type: "CAPTURE",
           payload: { sessionId: session?.id ?? "", mode: "ELEMENT", elementId: ref.id },
-        } satisfies BackgroundCommand);
+        } satisfies BackgroundCommand).catch(() => {});
       },
     },
   });
@@ -164,10 +163,10 @@ function ensureRuntime(): void {
       hasSelection: cleanup?.selected !== null,
     }),
     dispatch: (command) => {
-      void handleCommand({
+      handleCommand({
         ...command,
         payload: { ...command.payload, sessionId: session?.id ?? "" },
-      } as BackgroundCommand);
+      } as BackgroundCommand).catch(() => {});
     },
   });
   shortcuts.start();
@@ -305,7 +304,7 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
   if (!isBackgroundCommand(message)) return false;
   const command = message as BackgroundCommand;
   const id = (message as { id?: string }).id ?? "";
-  void handleCommand(command).then(
+  handleCommand(command).then(
     (data) => sendResponse({ id, success: true, data }),
     (error: Error) => {
       console.error("[parotia] command failed", command.type, error);

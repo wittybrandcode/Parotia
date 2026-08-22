@@ -71,7 +71,7 @@ chrome.runtime.onMessage.addListener(
     }
 
     const cmd = message as BackgroundCommand;
-    void dispatch(cmd, sender, id).then(
+    dispatch(cmd, sender, id).then(
       (response) => sendResponse(response),
       (error: Error) =>
         sendResponse({

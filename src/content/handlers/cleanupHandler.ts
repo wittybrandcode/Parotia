@@ -28,15 +28,17 @@ export async function handleCleanupCommand(
       return { active: false };
 
     case "DELETE_ELEMENT": {
-      const ref = ctx.cleanup ? ctx.cleanup.selected : null;
-      const ok = ref !== null && ctx.cleanup ? ctx.cleanup.deleteTarget(ref) : false;
+      const c = ctx.cleanup;
+      const ref = c?.selected ?? null;
+      const ok = ref !== null && c != null && c.deleteTarget(ref);
       ctx.broadcastState();
       return { success: ok };
     }
 
     case "HIDE_ELEMENT": {
-      const ref = ctx.cleanup ? ctx.cleanup.selected : null;
-      const ok = ref !== null && ctx.cleanup ? ctx.cleanup.hideTarget(ref) : false;
+      const c = ctx.cleanup;
+      const ref = c?.selected ?? null;
+      const ok = ref !== null && c != null && c.hideTarget(ref);
       ctx.broadcastState();
       return { success: ok };
     }

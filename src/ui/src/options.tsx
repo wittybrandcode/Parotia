@@ -124,7 +124,7 @@ const FEATURES: Feature[] = [
 export function OptionsApp() {
   const [lang, setLang] = useState<Lang>("en");
   const [tab, setTab] = useState<Tab>("about");
-  const tx = t[lang] as Record<TK, string>;
+  const tx = t[lang];
   const isRtl = lang === "ar";
   const version = getVersion();
 

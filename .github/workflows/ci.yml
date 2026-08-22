@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        check: [typecheck, lint, test, build]
+    name: ${{ matrix.check }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: typecheck
+        if: matrix.check == 'typecheck'
+        run: npm run typecheck
+      - name: lint
+        if: matrix.check == 'lint'
+        run: npm run lint
+      - name: test
+        if: matrix.check == 'test'
+        run: npm run test
+      - name: build
+        if: matrix.check == 'build'
+        run: npm run build

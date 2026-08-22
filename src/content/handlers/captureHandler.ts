@@ -94,8 +94,9 @@ export async function handleCaptureCommand(
       }
 
       ctx.stitcher?.dispose();
-      ctx.stitcher = new DefaultCaptureStitcher();
-      ctx.stitcher.start(finalMetrics.elementHeightCss, finalMetrics.dpr, finalMetrics.elementDocTop);
+      const newStitcher = new DefaultCaptureStitcher();
+      newStitcher.start(finalMetrics.elementHeightCss, finalMetrics.dpr, finalMetrics.elementDocTop);
+      ctx.stitcher = newStitcher;
       return { success: true, ...finalMetrics };
     }
 
@@ -197,8 +198,9 @@ export async function handleCaptureCommand(
       ctx.fixedHeaders.reset();
       const fixedHeaderCount = ctx.fixedHeaders.detect();
       ctx.stitcher?.dispose();
-      ctx.stitcher = new DefaultCaptureStitcher();
-      ctx.stitcher.start(pageHeightCss, dpr);
+      const newStitcher = new DefaultCaptureStitcher();
+      newStitcher.start(pageHeightCss, dpr);
+      ctx.stitcher = newStitcher;
       return {
         success: true,
         metrics: { pageHeightCss, viewportHeightCss, dpr, scrollY, fixedHeaders: fixedHeaderCount },
