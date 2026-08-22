@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { stableSelector } from "@shared/utils/selector";
 import {
   DefaultExtractionEngine,
   confidenceForScore,
-  cssSelectorOf,
   elementReferenceOf,
 } from "@content/extraction/extractionEngine";
 
@@ -44,23 +44,27 @@ describe("DefaultExtractionEngine", () => {
   });
 });
 
-describe("cssSelectorOf / elementReferenceOf", () => {
+describe("stableSelector / elementReferenceOf", () => {
   it("prefers id, then classes, then the bare tag", () => {
     const withId = document.createElement("div");
     withId.id = "story";
-    expect(cssSelectorOf(withId)).toBe("#story");
+    document.body.appendChild(withId);
+    expect(stableSelector(withId)).toBe("#story");
 
     const withClass = document.createElement("div");
     withClass.className = "post-body narrow";
-    expect(cssSelectorOf(withClass)).toBe("div.post-body.narrow");
+    document.body.appendChild(withClass);
+    expect(stableSelector(withClass)).toBe("div.post-body.narrow");
 
     const bare = document.createElement("article");
-    expect(cssSelectorOf(bare)).toBe("article");
+    document.body.appendChild(bare);
+    expect(stableSelector(bare)).toBe("body > article:nth-of-type(1)");
   });
 
   it("builds a stable element reference", () => {
     const el = document.createElement("main");
     el.id = "content";
+    document.body.appendChild(el);
     expect(elementReferenceOf(el, "cand-1")).toEqual({
       id: "cand-1",
       tagName: "main",

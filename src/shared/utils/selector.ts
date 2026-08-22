@@ -1,6 +1,6 @@
 /**
  * Selector generation and validation. Selector priority:
- * `Stable ID → unique class → semantic attribute → tag + stable attrs → structural`.
+ * `Stable ID → data-testid → unique class → structural nth-of-type path`.
  * Single-element selectors must resolve uniquely.
  */
 
@@ -34,71 +34,48 @@ export function validateSelector(root: ParentNode, selector: string): SelectorVa
   return { ok: true, matchCount: matches.length };
 }
 
+const MAX_STABLE_CLASSES = 3;
+
 /** Stable, shortest reasonable selector for a single element. */
-export function generateSelector(element: Element): string {
-  if (element.id) {
-    const byId = `#${escapeForSelector(element.id)}`;
+export function stableSelector(element: Element): string {
+  const uniqueMatch = (candidate: string): string | null => {
     try {
-      if (document.querySelectorAll(byId).length === 1) return byId;
+      const matches = document.querySelectorAll(candidate);
+      return matches.length === 1 && matches[0] === element ? candidate : null;
     } catch {
-      /* fall through */
+      return null;
     }
+  };
+
+  if (element.id) {
+    const byId = uniqueMatch(`#${CSS.escape(element.id)}`);
+    if (byId) return byId;
   }
-
-  const classes = Array.from(element.classList).filter((c) => /^[a-zA-Z_-][\w-]*$/.test(c));
-  for (let i = classes.length; i > 0; i--) {
-    // Try the most specific class combinations first.
-    const combos = combinations(classes, i);
-    for (const combo of combos) {
-      const candidate = `${element.tagName.toLowerCase()}.${combo.map(escapeForSelector).join(".")}`;
-      try {
-        if (document.querySelectorAll(candidate).length === 1) return candidate;
-      } catch {
-        /* continue */
-      }
-    }
+  if (element.hasAttribute("data-testid")) {
+    const byTestId = uniqueMatch(
+      `[data-testid="${CSS.escape(element.getAttribute("data-testid") ?? "")}"]`,
+    );
+    if (byTestId) return byTestId;
   }
-
-  const tag = element.tagName.toLowerCase();
-  try {
-    if (document.querySelectorAll(tag).length === 1) return tag;
-  } catch {
-    /* continue */
+  if (element.classList.length > 0) {
+    const byClass = uniqueMatch(
+      `${element.tagName.toLowerCase()}${Array.from(element.classList)
+        .slice(0, MAX_STABLE_CLASSES)
+        .map((c) => `.${CSS.escape(c)}`)
+        .join("")}`,
+    );
+    if (byClass) return byClass;
   }
-
-  return structuralSelector(element);
-}
-
-function escapeForSelector(token: string): string {
-  return token.replace(/[:.#[\],]/g, (ch) => `\\${ch}`);
-}
-
-function combinations<T>(items: T[], size: number): T[][] {
-  if (size === 0) return [[]];
-  if (items.length < size) return [];
-  const [head, ...tail] = items;
-  if (head === undefined) return combinations(tail, size);
-  return [...combinations(tail, size - 1).map((c) => [head, ...c]), ...combinations(tail, size)];
-}
-
-/** Structural selector with minimal `nth-child` depth — a last resort. */
-function structuralSelector(element: Element): string {
-  const path: string[] = [];
+  const parts: string[] = [];
   let node: Element | null = element;
-  while (node && node.nodeType === Node.ELEMENT_NODE) {
-    if (node.id) {
-      path.unshift(`#${escapeForSelector(node.id)}`);
-      break;
-    }
+  while (node && node !== document.body && node !== document.documentElement) {
     const parent: Element | null = node.parentElement;
-    if (!parent || parent === document.documentElement) {
-      path.unshift(node.tagName.toLowerCase());
-      break;
-    }
-    const siblings = Array.from(parent.children).filter((s) => s.tagName === node?.tagName);
+    if (!parent) break;
+    const siblings = Array.from(parent.children).filter((c) => c.tagName === node?.tagName);
     const index = siblings.indexOf(node) + 1;
-    path.unshift(siblings.length > 1 ? `${node.tagName.toLowerCase()}:nth-child(${index})` : node.tagName.toLowerCase());
+    parts.unshift(`${node.tagName.toLowerCase()}:nth-of-type(${index})`);
     node = parent;
   }
-  return path.join(" > ");
+  parts.unshift("body");
+  return parts.join(" > ");
 }

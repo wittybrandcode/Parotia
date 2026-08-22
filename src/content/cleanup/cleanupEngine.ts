@@ -1,5 +1,4 @@
-import type { CleanupState, CleanupRule, ElementReference } from "@shared/types";
-import type { ExtractionEngine } from "../extraction/extractionEngine";
+import type { CleanupRule, CleanupState, ElementReference } from "@shared/types";
 import type { Inspector, InspectorActionHandlers } from "../inspector/inspector";
 import { DefaultInspector } from "../inspector/inspector";
 import type { MutationEngine } from "../mutation/mutationEngine";
@@ -59,7 +58,6 @@ export class DefaultCleanupEngine implements CleanupEngine {
 
   constructor(
     private readonly mutations: MutationEngine,
-    private readonly extraction: ExtractionEngine,
     options?: CleanupEngineOptions,
   ) {
     // Selection mode: remember the element; the toolbar decides the action

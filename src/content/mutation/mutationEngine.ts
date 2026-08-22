@@ -1,5 +1,6 @@
 import type { CleanupAction, CleanupAfterState, CleanupOperation, CleanupSource, ElementReference, ElementSnapshot } from "@shared/types";
 import { createId } from "@shared/utils/id";
+import { elementSignature } from "@shared/utils/signature";
 import type { Command, HistoryEngine } from "./history";
 import { DefaultMatchEngine, type MatchEngine } from "../matching/matchEngine";
 
@@ -24,7 +25,6 @@ export interface MutationEngine {
   hideElement(ref: ElementReference): CleanupOperation | null;
   showElement(ref: ElementReference): boolean;
   isHidden(ref: ElementReference): boolean;
-  restoreElement(ref: ElementReference): boolean;
   /** Undo the last command; returns the number of elements it affected. */
   undo(): number;
   /** Redo the last undone command; returns the number of elements affected. */
@@ -33,8 +33,6 @@ export interface MutationEngine {
   canUndo(): boolean;
   /** The next command that Undo would revert, if any. */
   peekUndo(): Command | null;
-  /** The next command that Redo would replay, if any. */
-  peekRedo(): Command | null;
   reset(): number;
   /** Installs a guard that re-applies deletions/hides to re-rendered elements. */
   startRegenerationGuard(): void;
@@ -52,7 +50,7 @@ interface ResolvedTarget {
 const MAX_REGUARD_PER_SIGNATURE = 20;
 
 export class DefaultMutationEngine implements MutationEngine {
-  private readonly registry = new Map<string, { operation: CleanupOperation; hidden: boolean; signature?: string }>();
+  private readonly registry = new Map<string, { operation: CleanupOperation; hidden: boolean; signature?: string | null }>();
   /** Signature → guard behavior, plus a re-guard counter to bound loops. */
   private readonly guardedSignatures = new Map<string, { hidden: boolean; reGuards: number }>();
   /** Nodes the engine itself re-inserted (Undo/Redo/Reset) — never re-guarded. */
@@ -74,7 +72,7 @@ export class DefaultMutationEngine implements MutationEngine {
       label: `Delete ${ref.tagName}`,
       affectedCount: 1,
       execute: () => {
-        const signature = signatureOf(target.element);
+        const signature = elementSignature(target.element);
         this.registry.set(ref.id, { operation: op, hidden: false, signature });
         if (signature) this.guardedSignatures.set(signature, { hidden: false, reGuards: 0 });
         target.element.remove();
@@ -105,7 +103,7 @@ export class DefaultMutationEngine implements MutationEngine {
       element,
       parent: element.parentElement,
       nextSibling: element.nextSibling,
-      signature: signatureOf(element),
+      signature: elementSignature(element),
     }));
 
     const op = this.buildOperation(ref, "DELETE");
@@ -118,7 +116,7 @@ export class DefaultMutationEngine implements MutationEngine {
           if (entry.signature) this.guardedSignatures.set(entry.signature, { hidden: false, reGuards: 0 });
           entry.element.remove();
         }
-        this.registry.set(ref.id, { operation: op, hidden: false, signature: signatureOf(target) });
+        this.registry.set(ref.id, { operation: op, hidden: false, signature: elementSignature(target) });
       },
       undo: () => {
         // Restore in reverse document order so sibling order is preserved.
@@ -153,13 +151,13 @@ export class DefaultMutationEngine implements MutationEngine {
    * (batch operations). Unresolvable, already-handled, or duplicate targets are skipped.
    */
   deleteMany(refs: ElementReference[], source: CleanupSource = "USER"): number {
-    const resolved: { ref: ElementReference; target: ResolvedTarget; signature: string }[] = [];
+    const resolved: { ref: ElementReference; target: ResolvedTarget; signature: string | null }[] = [];
     for (const ref of refs) {
       if (this.registry.has(ref.id)) continue;
       const target = this.resolve(ref);
       if (!target) continue;
       if (resolved.some((r) => r.target.element === target.element)) continue;
-      resolved.push({ ref, target, signature: signatureOf(target.element) });
+      resolved.push({ ref, target, signature: elementSignature(target.element) });
     }
     if (resolved.length === 0) return 0;
 
@@ -200,7 +198,7 @@ export class DefaultMutationEngine implements MutationEngine {
       label: `Hide ${ref.tagName}`,
       affectedCount: 1,
       execute: () => {
-        const signature = signatureOf(target.element);
+        const signature = elementSignature(target.element);
         this.registry.set(ref.id, { operation: op, hidden: true, signature });
         if (signature) this.guardedSignatures.set(signature, { hidden: true, reGuards: 0 });
         (target.element as HTMLElement).style.setProperty("display", "none", "important");
@@ -258,18 +256,6 @@ export class DefaultMutationEngine implements MutationEngine {
     return true;
   }
 
-  restoreElement(ref: ElementReference): boolean {
-    const recorded = this.registry.get(ref.id);
-    if (!recorded) return false;
-    if (recorded.hidden) {
-      const target = this.resolve(ref);
-      if (target) (target.element as HTMLElement).style.removeProperty("display");
-    }
-    if (recorded.signature) this.guardedSignatures.delete(recorded.signature);
-    this.registry.delete(ref.id);
-    return true;
-  }
-
   undo(): number {
     return this.history.undo()?.affectedCount ?? 0;
   }
@@ -284,10 +270,6 @@ export class DefaultMutationEngine implements MutationEngine {
 
   peekUndo(): Command | null {
     return this.history.peekUndo();
-  }
-
-  peekRedo(): Command | null {
-    return this.history.peekRedo();
   }
 
   /** Undo every cleanup command in order; returns the number of undone ops. */
@@ -330,7 +312,7 @@ export class DefaultMutationEngine implements MutationEngine {
    */
   private guardAddedNode(node: Node): void {
     if (!(node instanceof Element) || this.legitBack.has(node)) return;
-    const signature = signatureOf(node);
+    const signature = elementSignature(node);
     if (!signature) return;
     const guarded = this.guardedSignatures.get(signature);
     if (!guarded) return;
@@ -390,24 +372,6 @@ export class DefaultMutationEngine implements MutationEngine {
       document.documentElement.appendChild(target.element);
     }
   }
-}
-
-/**
- * Structural identity of an element: tag + id + classes + data-* attributes.
- * Used to detect a re-rendered copy of a deleted/hidden element. Empty when the
- * element has no distinguishing attributes — such elements are never guarded.
- */
-function signatureOf(element: Element): string {
-  const parts = [element.tagName.toLowerCase()];
-  if (element.id) parts.push(`#${element.id}`);
-  if (typeof element.className === "string" && element.className.trim()) {
-    parts.push(`.${element.className.trim().split(/\s+/).join(".")}`);
-  }
-  for (const attr of element.attributes) {
-    if (attr.name.startsWith("data-")) parts.push(`${attr.name}=${attr.value}`);
-  }
-  if (parts.length === 1) return "";
-  return parts.join("|");
 }
 
 function snapshotOf(element: Element | null, selector: string): ElementSnapshot {

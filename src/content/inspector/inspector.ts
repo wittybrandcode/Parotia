@@ -1,5 +1,6 @@
 import type { ElementReference } from "@shared/types";
 import { createId } from "@shared/utils/id";
+import { stableSelector } from "@shared/utils/selector";
 import { isNewsCleanUi } from "../overlay/overlay";
 
 /**
@@ -429,47 +430,3 @@ export function elementReferenceOf(element: HTMLElement): ElementReference {
   };
 }
 
-function stableSelector(element: HTMLElement): string {
-  const uniqueMatch = (candidate: string): string | null => {
-    try {
-      const matches = document.querySelectorAll(candidate);
-      return matches.length === 1 && matches[0] === element ? candidate : null;
-    } catch {
-      return null;
-    }
-  };
-
-  if (element.id) {
-    const byId = uniqueMatch(`#${CSS.escape(element.id)}`);
-    if (byId) return byId;
-  }
-  if (element.hasAttribute("data-testid")) {
-    const byTestId = uniqueMatch(
-      `[data-testid="${CSS.escape(element.getAttribute("data-testid") ?? "")}"]`,
-    );
-    if (byTestId) return byTestId;
-  }
-  if (element.classList.length > 0) {
-    const byClass = uniqueMatch(
-      `${element.tagName.toLowerCase()}${Array.from(element.classList)
-        .slice(0, 3)
-        .map((c) => `.${CSS.escape(c)}`)
-        .join("")}`,
-    );
-    if (byClass) return byClass;
-  }
-  // Structural nth-of-type path from root — uniquely identifies this element
-  // even when many siblings share the same data-testid/classes (e.g. tweets).
-  const parts: string[] = [];
-  let node: HTMLElement | null = element;
-  while (node && node !== document.body && node !== document.documentElement) {
-    const parent: HTMLElement | null = node.parentElement;
-    if (!parent) break;
-    const siblings = Array.from(parent.children).filter((c) => c.tagName === node?.tagName);
-    const index = siblings.indexOf(node) + 1;
-    parts.unshift(`${node.tagName.toLowerCase()}:nth-of-type(${index})`);
-    node = parent;
-  }
-  parts.unshift("body");
-  return parts.join(" > ");
-}

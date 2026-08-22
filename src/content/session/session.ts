@@ -1,6 +1,5 @@
 import type {
   CleanupState,
-  FreezeState,
   InspectionState,
   NewsCleanSession,
   PageContext,
@@ -50,6 +49,3 @@ export function transitionSession(session: NewsCleanSession, next: SessionStatus
   return true;
 }
 
-export function updateFreeze(session: NewsCleanSession, freeze: FreezeState): void {
-  session.freeze = freeze;
-}

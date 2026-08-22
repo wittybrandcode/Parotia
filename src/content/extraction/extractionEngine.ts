@@ -7,6 +7,7 @@ import type {
 } from "@shared/types";
 import { CONFIDENCE_THRESHOLDS } from "@shared/constants";
 import { createId } from "@shared/utils/id";
+import { stableSelector } from "@shared/utils/selector";
 
 /**
  * Extraction Engine — discovers and scores article candidates on the frozen
@@ -105,17 +106,6 @@ export function elementReferenceOf(element: HTMLElement, id: string): ElementRef
   return {
     id,
     tagName: element.tagName.toLowerCase(),
-    selector: cssSelectorOf(element),
+    selector: stableSelector(element),
   };
-}
-
-export function cssSelectorOf(element: HTMLElement): string {
-  if (element.id) return `#${CSS.escape(element.id)}`;
-  if (element.classList.length > 0) {
-    return `${element.tagName.toLowerCase()}${Array.from(element.classList)
-      .slice(0, 2)
-      .map((c) => `.${CSS.escape(c)}`)
-      .join("")}`;
-  }
-  return element.tagName.toLowerCase();
 }

@@ -11,6 +11,9 @@
  * are taller than the viewport are captured in full instead of being cut off.
  */
 
+import { sleep, loadBitmap, canvasToPngDataUrl } from "@shared/utils/imageCodec";
+import { kickImages, waitForFonts } from "@shared/utils/media";
+
 export interface CaptureRect {
   left: number;
   top: number;
@@ -61,16 +64,7 @@ const ELEMENT_CAPTURE_CSS = `
   }
 `;
 
-export function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** Loads a data-URL image as a bitmap for cropping. */
-export async function loadBitmap(dataUrl: string): Promise<ImageBitmap> {
-  const response = await fetch(dataUrl);
-  const blob = await response.blob();
-  return createImageBitmap(blob);
-}
+export { sleep, loadBitmap } from "@shared/utils/imageCodec";
 
 /** Crops a data-URL image to a device-pixel region and re-encodes it as a PNG. */
 export async function cropDataUrlToPng(
@@ -85,18 +79,7 @@ export async function cropDataUrlToPng(
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Canvas 2D context unavailable");
     ctx.drawImage(bitmap, region.x, region.y, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
-    return await new Promise((resolve, reject) => {
-      canvas.toBlob((blob) => {
-        if (!blob) {
-          reject(new Error("Failed to encode element PNG"));
-          return;
-        }
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(new Error("Failed to read element PNG"));
-        reader.readAsDataURL(blob);
-      }, "image/png");
-    });
+    return await canvasToPngDataUrl(canvas);
   } finally {
     bitmap.close();
   }
@@ -320,15 +303,6 @@ export async function waitForElementRendering(element: HTMLElement, timeoutMs = 
     const all = element instanceof HTMLImageElement ? [element] : Array.from(element.querySelectorAll("img"));
     return all.filter((img) => !img.complete || img.naturalWidth === 0);
   };
-  const kick = (images: HTMLImageElement[]) => {
-    for (const img of images) {
-      try {
-        img.decode().catch(() => undefined);
-      } catch {
-        // Image is not decodable yet (no src, or not connected) — skip it.
-      }
-    }
-  };
 
   // Watch for new images or src/srcset changes inside the element. X/Twitter
   // swaps placeholder avatar URLs for real ones via JS; each swap resets the
@@ -347,7 +321,7 @@ export async function waitForElementRendering(element: HTMLElement, timeoutMs = 
     // MutationObserver may not be available — best effort.
   }
 
-  kick(collect());
+  kickImages(collect());
   let deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline && collect().length > 0) {
     await sleep(120);
@@ -356,16 +330,12 @@ export async function waitForElementRendering(element: HTMLElement, timeoutMs = 
       deadline = Math.max(deadline, Date.now() + timeoutMs);
       sawChange = false;
     }
-    kick(collect());
+    kickImages(collect());
   }
 
   observer.disconnect();
 
-  try {
-    await Promise.race([document.fonts.ready, sleep(1000)]);
-  } catch {
-    // Font loading is best effort.
-  }
+  await waitForFonts();
 
   // Two animation frames so the browser composites the newly-loaded images
   // into the frame. Without this, captureVisibleTab may capture the previous

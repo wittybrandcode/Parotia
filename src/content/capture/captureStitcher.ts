@@ -1,3 +1,4 @@
+import { loadBitmap, canvasToPngDataUrl } from "@shared/utils/imageCodec";
 import { canvasHeightFor } from "./sliceMath";
 
 /**
@@ -72,23 +73,9 @@ export class DefaultCaptureStitcher implements CaptureStitcher {
   }
 
   finalize(): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const canvas = this.canvas;
-      if (!canvas) {
-        reject(new Error("Stitcher not started"));
-        return;
-      }
-      canvas.toBlob((blob) => {
-        if (!blob) {
-          reject(new Error("Failed to encode PNG"));
-          return;
-        }
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(new Error("Failed to read PNG"));
-        reader.readAsDataURL(blob);
-      }, "image/png");
-    });
+    const canvas = this.canvas;
+    if (!canvas) return Promise.reject(new Error("Stitcher not started"));
+    return canvasToPngDataUrl(canvas);
   }
 
   dispose(): void {
@@ -99,11 +86,6 @@ export class DefaultCaptureStitcher implements CaptureStitcher {
   }
 }
 
-async function loadBitmap(dataUrl: string): Promise<ImageBitmap> {
-  const response = await fetch(dataUrl);
-  const blob = await response.blob();
-  return createImageBitmap(blob);
-}
 
 /** Probe sample size (px) used by bitmapLooksBlank. */
 const BLANK_PROBE_SIZE = 32;

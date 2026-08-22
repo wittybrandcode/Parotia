@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { generateSelector, isSelectorSyntaxValid, validateSelector } from "@shared/utils/selector";
+import { isSelectorSyntaxValid, stableSelector, validateSelector } from "@shared/utils/selector";
 
 /** happy-dom's selector parser is lenient, so simulate a strict browser. */
 function makeQuerySelectorThrow(...selectors: string[]) {
@@ -55,35 +55,46 @@ describe("validateSelector", () => {
   });
 });
 
-describe("generateSelector", () => {
+describe("stableSelector", () => {
   it("prefers a unique id", () => {
     document.body.innerHTML = DOM;
     const el = document.getElementById("hero") as HTMLElement;
-    expect(generateSelector(el)).toBe("#hero");
+    expect(stableSelector(el)).toBe("#hero");
   });
 
   it("escapes special characters in ids", () => {
     document.body.innerHTML = DOM;
     const el = document.getElementById("weird:name[id]") as HTMLElement;
-    expect(generateSelector(el)).toBe("#weird\\:name\\[id\\]");
+    expect(stableSelector(el)).toBe("#weird\\:name\\[id\\]");
+  });
+
+  it("uses data-testid when unique", () => {
+    document.body.innerHTML = `
+      <div data-testid="promo-banner">A</div>
+      <div class="other">B</div>
+    `;
+    const el = document.querySelector("[data-testid]") as HTMLElement;
+    expect(stableSelector(el)).toBe('[data-testid="promo-banner"]');
   });
 
   it("uses the shortest unique class combination", () => {
     document.body.innerHTML = DOM;
     const el = document.querySelector(".tag.promo") as HTMLElement;
-    expect(generateSelector(el)).toBe("span.tag.promo");
+    expect(stableSelector(el)).toBe("span.tag.promo");
   });
 
-  it("falls back to a structural selector for duplicates", () => {
+  it("falls back to a structural nth-of-type selector for duplicates", () => {
     document.body.innerHTML = DOM;
-    const els = document.querySelectorAll(".card p");
+    const els = document.querySelectorAll(".card");
     const el = els[1] as HTMLElement;
-    expect(generateSelector(el)).toBe("body > div:nth-child(3) > p");
+    const selector = stableSelector(el);
+    expect(selector).toContain("nth-of-type");
+    expect(selector).toContain("body");
   });
 
-  it("falls back to the bare tag when it is unique", () => {
+  it("falls back to structural nth-of-type when no id/class/testid", () => {
     document.body.innerHTML = `<main><h2>only</h2></main>`;
     const el = document.querySelector("h2") as HTMLElement;
-    expect(generateSelector(el)).toBe("h2");
+    expect(stableSelector(el)).toBe("body > main:nth-of-type(1) > h2:nth-of-type(1)");
   });
 });

@@ -2,7 +2,6 @@ export * from "./element";
 export * from "./page";
 export * from "./extraction";
 export * from "./cleanup";
-export * from "./history";
 export * from "./freeze";
 export * from "./inspection";
 export * from "./capture";
