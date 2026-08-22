@@ -77,18 +77,3 @@ export interface CaptureState {
   result?: CaptureResult;
 }
 
-/** Generated asset produced by the Capture Engine, delivered by the Export layer. */
-export interface ExportAsset {
-  id: string;
-  type: "PNG";
-  blob: Blob;
-  filename: string;
-  width: number;
-  height: number;
-  sizeBytes: number;
-  createdAt: number;
-}
-
-export type CaptureScale =
-  | { type: "DEVICE" }
-  | { type: "FIXED"; value: number };

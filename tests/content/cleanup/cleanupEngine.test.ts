@@ -1,15 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ElementReference } from "@shared/types";
 import { DefaultCleanupEngine } from "@content/cleanup/cleanupEngine";
-import type { ExtractionEngine } from "@content/extraction/extractionEngine";
 import { HistoryEngine } from "@content/mutation/history";
 import { DefaultMutationEngine } from "@content/mutation/mutationEngine";
 import { elementReferenceOf } from "@content/inspector/inspector";
-
-const fakeExtraction: ExtractionEngine = {
-  run: async () => ({ status: "SUCCESS" as const, confidence: "HIGH" as const, candidates: [] }),
-  getState: () => ({ status: "NOT_RUN" as const }),
-};
 
 /** Tracks the latest engine so `afterEach` can tear down its window listeners. */
 let engine: DefaultCleanupEngine | null = null;
@@ -17,7 +11,7 @@ let engine: DefaultCleanupEngine | null = null;
 function setup() {
   const history = new HistoryEngine();
   const mutations = new DefaultMutationEngine(history);
-  const cleanup = new DefaultCleanupEngine(mutations, fakeExtraction);
+  const cleanup = new DefaultCleanupEngine(mutations);
   engine = cleanup;
   return { cleanup, mutations, history };
 }

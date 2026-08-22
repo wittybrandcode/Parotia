@@ -49,7 +49,3 @@ export interface ExtractionState {
   status: ExtractionStatus;
   result?: ExtractionResult;
 }
-
-export interface PageType {
-  type: "ARTICLE" | "ARTICLE_LIST" | "UNKNOWN";
-}

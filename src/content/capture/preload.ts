@@ -9,67 +9,10 @@
  * images to eager, (b) force-decode every pending image, and (c) pre-roll the
  * page once bottom-to-top so the browser schedules the fetches.
  */
-import { sleep } from "./elementCapture";
+import { sleep } from "@shared/utils/imageCodec";
+import { forceEagerImages, waitForImagesReady } from "@shared/utils/media";
 
-/** Highest-per-<source> candidate in a srcset: the first URL is the largest. */
-function firstSrcsetUrl(srcset: string): string | undefined {
-  return srcset.split(",")[0]?.trim().split(/\s+/)[0];
-}
-
-/**
- * Promotes lazy-loaded images so the browser fetches them immediately:
- * - `loading="lazy"` → `loading="eager"`
- * - `data-src` / `data-srcset` placeholders get their real URL assigned
- * - `<picture>` `<source>` candidates are resolved onto the sibling `<img>`
- */
-export function forceEagerImages(root: ParentNode = document): void {
-  const imgs = Array.from(root.querySelectorAll<HTMLImageElement>("img"));
-  for (const img of imgs) {
-    img.setAttribute("loading", "eager");
-    if (img.dataset.src && !img.src) img.src = img.dataset.src;
-    if (img.dataset.srcset && !img.srcset) img.srcset = img.dataset.srcset;
-  }
-  const sources = root.querySelectorAll<HTMLSourceElement>("picture > source");
-  for (const source of sources) {
-    const srcset = source.getAttribute("srcset");
-    if (!srcset) continue;
-    const firstUrl = firstSrcsetUrl(srcset);
-    const img = source.parentElement?.querySelector<HTMLImageElement>("img");
-    if (firstUrl && img && !img.src) img.src = firstUrl;
-  }
-}
-
-/**
- * Waits (bounded) until every image under the root has actually painted.
- * `img.decode()` forces the fetch+decode regardless of the page's loading or
- * content-visibility hints; pending images are re-kicked until complete or the
- * deadline passes. Fonts get a short best-effort wait afterwards.
- */
-export async function waitForImagesReady(root: ParentNode = document, timeoutMs = 4000): Promise<void> {
-  const imgs = () => Array.from(root.querySelectorAll<HTMLImageElement>("img")).filter((img) => !img.complete);
-  const kick = (images: HTMLImageElement[]) => {
-    for (const img of images) {
-      try {
-        img.decode().catch(() => undefined);
-      } catch {
-        // Image is not decodable yet (no src, or not connected) — skip it.
-      }
-    }
-  };
-
-  kick(imgs());
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline && imgs().length > 0) {
-    await sleep(120);
-    kick(imgs());
-  }
-
-  try {
-    await Promise.race([document.fonts.ready, sleep(1000)]);
-  } catch {
-    // Font loading is best effort.
-  }
-}
+export { forceEagerImages, waitForImagesReady };
 
 /** Cap on pre-roll steps so very long pages (or infinite feeds) stay bounded. */
 const MAX_PREROLL_STEPS = 60;

@@ -5,14 +5,33 @@ import { OptionsApp } from "@ui/src/options";
 describe("options page", () => {
   afterEach(cleanup);
 
-  it("renders the hero section with title and tagline", () => {
+  it("renders the hero section with title, tagline and version badge", () => {
     render(<OptionsApp />);
     expect(screen.getByText("PAROTIA")).toBeInTheDocument();
     expect(screen.getByText("Clean the stage. Keep the story.")).toBeInTheDocument();
+    expect(screen.getByText("v1.4.0")).toBeInTheDocument();
   });
 
-  it("renders the toolbar guide with all buttons", () => {
+  it("renders tabs and defaults to the About panel", () => {
     render(<OptionsApp />);
+    const aboutTab = screen.getByRole("tab", { name: "About" });
+    const guideTab = screen.getByRole("tab", { name: "How It Works" });
+    expect(aboutTab).toHaveAttribute("aria-selected", "true");
+    expect(guideTab).toHaveAttribute("aria-selected", "false");
+
+    expect(screen.getByText("What Parotia can do")).toBeInTheDocument();
+    expect(screen.getByText("Freeze the page")).toBeInTheDocument();
+    expect(screen.getByText("Pick any element")).toBeInTheDocument();
+    expect(screen.getByText("Capture it clean")).toBeInTheDocument();
+    expect(screen.getByText("Select a region")).toBeInTheDocument();
+
+    expect(screen.queryByText("Toolbar Guide")).not.toBeInTheDocument();
+  });
+
+  it("shows the toolbar guide when switching to the How It Works tab", () => {
+    render(<OptionsApp />);
+    fireEvent.click(screen.getByRole("tab", { name: "How It Works" }));
+
     expect(screen.getByText("Toolbar Guide")).toBeInTheDocument();
     expect(screen.getByText("Freeze / Unfreeze")).toBeInTheDocument();
     expect(screen.getByText("Pick")).toBeInTheDocument();
@@ -24,15 +43,19 @@ describe("options page", () => {
     expect(screen.getByText("Undo")).toBeInTheDocument();
     expect(screen.getByText("Redo")).toBeInTheDocument();
     expect(screen.getByText("Reset")).toBeInTheDocument();
-    expect(screen.getByText("Settings")).toBeInTheDocument();
     expect(screen.getByText("Close")).toBeInTheDocument();
+    expect(screen.queryByText("Settings")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "About" }));
+    expect(screen.getByText("What Parotia can do")).toBeInTheDocument();
+    expect(screen.queryByText("Toolbar Guide")).not.toBeInTheDocument();
   });
 
-  it("renders keyboard shortcuts section", () => {
+  it("does not render a keyboard shortcuts section", () => {
     render(<OptionsApp />);
-    expect(screen.getByText("Keyboard Shortcuts")).toBeInTheDocument();
-    expect(screen.getByText("Shift + Alt + F")).toBeInTheDocument();
-    expect(screen.getByText("Shift + Alt + P")).toBeInTheDocument();
+    expect(screen.queryByText("Keyboard Shortcuts")).not.toBeInTheDocument();
+    expect(screen.queryByText("Shift + Alt + F")).not.toBeInTheDocument();
+    expect(screen.queryByText("Shift + Alt + P")).not.toBeInTheDocument();
   });
 
   it("toggles language to Arabic and back", () => {
@@ -42,8 +65,16 @@ describe("options page", () => {
     fireEvent.click(langBtn);
 
     expect(screen.getByText("نظّف المسرح. احتفظ بالقصة.")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "كيف يعمل" })).toBeInTheDocument();
+    expect(screen.getByText("تجميد الصفحة")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "كيف يعمل" }));
     expect(screen.getByText("دليل الأزرار")).toBeInTheDocument();
     expect(screen.getByText("تجميد / إلغاء التجميد")).toBeInTheDocument();
+
+    const backBtn = screen.getByRole("button", { name: /Switch to English/i });
+    fireEvent.click(backBtn);
+    expect(screen.getByText("Clean the stage. Keep the story.")).toBeInTheDocument();
   });
 
   it("renders footer", () => {

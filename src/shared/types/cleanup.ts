@@ -41,15 +41,6 @@ export interface CleanupAfterState {
   status: "DELETED" | "HIDDEN";
 }
 
-/** One logical bulk operation ("Delete Similar") — undoable as a single unit. */
-export interface BatchCleanupOperation {
-  id: string;
-  timestamp: number;
-  source: CleanupSource;
-  action: CleanupAction;
-  targets: ElementReference[];
-}
-
 /** Session-scoped cleanup state owned by the Cleanup Engine. */
 export interface CleanupState {
   removedCount: number;

@@ -1,5 +1,6 @@
 import type { BackgroundCommand, BackgroundNotification, CaptureProgress, MessageResponse } from "@shared/types";
 import { isBackgroundCommand } from "@shared/types";
+import { sleep } from "@shared/utils/imageCodec";
 import { sanitizeFilenamePart, timestampPart } from "@shared/utils/filename";
 import { MAX_CANVAS_DIMENSION, exceedsCanvasLimit, planSlices } from "@content/capture/sliceMath";
 
@@ -400,7 +401,6 @@ async function captureFullPage(tabId: number | undefined, command: CaptureComman
           ? String((startData as { error?: { message?: string } }).error?.message ?? "")
           : "");
       const raw = startRes === undefined ? " (no response from content script)" : "";
-      console.error("[parotia] CAPTURE_STITCH_START failed", startRes);
       throw new Error(`Could not measure the page${detail ? `: ${detail}` : ""}${raw}`);
     }
     steps.push(`measured ${Math.round(metrics.pageHeightCss)}px`);
@@ -443,6 +443,9 @@ async function captureFullPage(tabId: number | undefined, command: CaptureComman
       };
     }
 
+    const maxScroll = Math.max(0, metrics.pageHeightCss - metrics.viewportHeightCss);
+    const scrollYs = planSlices(metrics.pageHeightCss, metrics.viewportHeightCss);
+
     const scrollTo = async (y: number): Promise<number> => {
       const res = (await chrome.tabs.sendMessage(tabId, {
         type: "CAPTURE_SCROLL",
@@ -453,33 +456,21 @@ async function captureFullPage(tabId: number | undefined, command: CaptureComman
       return typeof res?.data?.actualScrollY === "number" ? res.data.actualScrollY : y;
     };
 
-    const maxScroll = Math.max(0, metrics.pageHeightCss - metrics.viewportHeightCss);
-    const scrollYs = planSlices(metrics.pageHeightCss, metrics.viewportHeightCss);
-    pushProgress(tabId, sessionId, { current: 0, total: scrollYs.length, phase: "PREPARING" });
-    for (const [index, y] of scrollYs.entries()) {
-      const actualY = await scrollTo(Math.min(y, maxScroll));
-      await sleep(PAINT_SETTLE_MS);
-      let dataUrl = await captureSliceWithRetry(tab.windowId);
-      let sliceRes = (await chrome.tabs.sendMessage(tabId, {
-        type: "CAPTURE_SLICE",
-        payload: { sessionId, dataUrl, scrollYCss: actualY },
-      } satisfies BackgroundCommand)) as
-        | MessageResponse<{ success?: boolean; blank?: boolean }>
-        | undefined;
-      // The content script flagged a likely-blank slice (viewport captured
-      // mid-paint). Re-capture that same viewport once before moving on.
-      if (sliceRes?.data?.blank) {
-        await sleep(PAINT_SETTLE_MS);
-        dataUrl = await captureSliceWithRetry(tab.windowId);
-        sliceRes = (await chrome.tabs.sendMessage(tabId, {
+    await captureSliceLoop(
+      tabId, sessionId, tab.windowId,
+      scrollYs.map((y) => Math.min(y, maxScroll)),
+      scrollTo,
+      async (dataUrl, scrollY) => {
+        const res = (await chrome.tabs.sendMessage(tabId, {
           type: "CAPTURE_SLICE",
-          payload: { sessionId, dataUrl, scrollYCss: actualY },
+          payload: { sessionId, dataUrl, scrollYCss: scrollY },
         } satisfies BackgroundCommand)) as
           | MessageResponse<{ success?: boolean; blank?: boolean }>
           | undefined;
-      }
-      pushProgress(tabId, sessionId, { current: index + 1, total: scrollYs.length, phase: "RENDERING" });
-    }
+        return res?.data?.blank === true;
+      },
+      (current, total) => pushProgress(tabId, sessionId, { current, total, phase: "RENDERING" }),
+    );
     steps.push(`captured ${scrollYs.length} slices`);
 
     const result = (await chrome.tabs.sendMessage(tabId, {
@@ -645,30 +636,22 @@ async function captureElement(tabId: number | undefined, command: CaptureCommand
     };
 
     const relYs = planSlices(elementHeightCss, viewportHeightCss);
-    pushProgress(tabId, sessionId, { current: 0, total: relYs.length, phase: "PREPARING" });
-    for (const [index, rel] of relYs.entries()) {
-      const actualY = await scrollTo(elementDocTop + rel);
-      await sleep(PAINT_SETTLE_MS);
-      let dataUrl = await captureSliceWithRetry(tab.windowId);
-      let sliceRes = (await chrome.tabs.sendMessage(tabId, {
-        type: "CAPTURE_ELEMENT_SLICE",
-        payload: { sessionId, dataUrl, scrollYCss: actualY },
-      } satisfies BackgroundCommand)) as
-        | MessageResponse<{ success?: boolean; blank?: boolean }>
-        | undefined;
-      // Same blank-slice guard as full-page capture: re-capture once.
-      if (sliceRes?.data?.blank) {
-        await sleep(PAINT_SETTLE_MS);
-        dataUrl = await captureSliceWithRetry(tab.windowId);
-        sliceRes = (await chrome.tabs.sendMessage(tabId, {
+
+    await captureSliceLoop(
+      tabId, sessionId, tab.windowId,
+      relYs.map((rel) => elementDocTop + rel),
+      scrollTo,
+      async (dataUrl, scrollY) => {
+        const res = (await chrome.tabs.sendMessage(tabId, {
           type: "CAPTURE_ELEMENT_SLICE",
-          payload: { sessionId, dataUrl, scrollYCss: actualY },
+          payload: { sessionId, dataUrl, scrollYCss: scrollY },
         } satisfies BackgroundCommand)) as
           | MessageResponse<{ success?: boolean; blank?: boolean }>
           | undefined;
-      }
-      pushProgress(tabId, sessionId, { current: index + 1, total: relYs.length, phase: "RENDERING" });
-    }
+        return res?.data?.blank === true;
+      },
+      (current, total) => pushProgress(tabId, sessionId, { current, total, phase: "RENDERING" }),
+    );
     steps.push(`captured ${relYs.length} slice(s)`);
 
     const result = (await chrome.tabs.sendMessage(tabId, {
@@ -787,10 +770,6 @@ async function scrollTab(tabId: number, y: number, sessionId = ""): Promise<void
   }
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 /** Number of capture attempts before giving up on a single viewport. */
 const MAX_CAPTURE_ATTEMPTS = 3;
 
@@ -810,6 +789,36 @@ async function captureSliceWithRetry(windowId: number): Promise<string> {
     if (attempt < MAX_CAPTURE_ATTEMPTS) await sleep(PAINT_SETTLE_MS * attempt);
   }
   throw new Error(`Capture failed after ${MAX_CAPTURE_ATTEMPTS} attempts — try again`);
+}
+
+/**
+ * Shared slice-capture loop used by both full-page and element capture.
+ * Scrolls the page to each planned Y position, captures the viewport, sends
+ * the slice to the content script for stitching, and re-captures once if the
+ * content script flags the slice as blank (mid-paint).
+ */
+async function captureSliceLoop(
+  tabId: number,
+  sessionId: string,
+  windowId: number,
+  scrollYs: number[],
+  scrollToY: (y: number) => Promise<number>,
+  sendSlice: (dataUrl: string, scrollY: number) => Promise<boolean>,
+  sendProgress: (current: number, total: number) => void,
+): Promise<void> {
+  pushProgress(tabId, sessionId, { current: 0, total: scrollYs.length, phase: "PREPARING" });
+  for (const [index, y] of scrollYs.entries()) {
+    const actualY = await scrollToY(y);
+    await sleep(PAINT_SETTLE_MS);
+    let dataUrl = await captureSliceWithRetry(windowId);
+    const blank = await sendSlice(dataUrl, actualY);
+    if (blank) {
+      await sleep(PAINT_SETTLE_MS);
+      dataUrl = await captureSliceWithRetry(windowId);
+      await sendSlice(dataUrl, actualY);
+    }
+    sendProgress(index + 1, scrollYs.length);
+  }
 }
 
 async function routeToTab(tabId: number | undefined, command: BackgroundCommand) {

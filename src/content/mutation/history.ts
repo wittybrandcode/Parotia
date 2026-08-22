@@ -57,11 +57,6 @@ export class HistoryEngine {
     return this.undoStack.at(-1)?.command ?? null;
   }
 
-  /** The next command that Redo would replay, if any. */
-  peekRedo(): Command | null {
-    return this.redoStack.at(-1)?.command ?? null;
-  }
-
   undo(): Command | null {
     const entry = this.undoStack.pop();
     if (!entry) return null;

@@ -15,16 +15,6 @@ export interface ElementReference {
   path?: string;
 }
 
-/**
- * A selector is a resolution mechanism, not an identity guarantee.
- * Resolution happens against the current DOM. When a reference cannot be
- * resolved safely, callers must report `STALE_REFERENCE` rather than silently
- * acting on a different element.
- */
-export interface ElementResolver {
-  resolve(reference: ElementReference): Element | null;
-}
-
 /** Lightweight descriptive snapshot of an element — never the DOM itself. */
 export interface ElementSnapshot {
   tagName: string;
@@ -41,8 +31,3 @@ export interface Rect {
   width: number;
   height: number;
 }
-
-/** Outcome of attempting to resolve a reference. */
-export type ResolveResult =
-  | { kind: "RESOLVED"; element: Element }
-  | { kind: "STALE_REFERENCE" };

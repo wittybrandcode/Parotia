@@ -8,12 +8,6 @@ import type { Rect } from "./element";
  * before execution. Avoid generic untyped messages like `{ action: "doSomething" }`.
  */
 
-export interface MessageEnvelope<T = unknown> {
-  id: string;
-  type: string;
-  payload: T;
-}
-
 export interface MessageResponse<T = unknown> {
   id: string;
   success: boolean;

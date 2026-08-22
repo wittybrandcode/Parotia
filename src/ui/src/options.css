@@ -54,8 +54,13 @@ body {
 /* ── Hero ── */
 .opt-hero {
   text-align: center;
-  margin-bottom: 64px;
+  margin-bottom: 48px;
   position: relative;
+}
+
+@keyframes opt-glow-pulse {
+  0%, 100% { opacity: 0.7; transform: translateX(-50%) scale(1); }
+  50% { opacity: 1; transform: translateX(-50%) scale(1.08); }
 }
 
 .opt-hero-glow {
@@ -69,13 +74,14 @@ body {
   background: radial-gradient(circle, rgba(193, 232, 153, 0.1) 0%, transparent 65%);
   pointer-events: none;
   filter: blur(50px);
+  animation: opt-glow-pulse 6s ease-in-out infinite;
 }
 
 .opt-hero-logo {
   position: relative;
-  width: 64px;
-  height: 64px;
-  border-radius: 18px;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
   background: #fff;
   display: grid;
   place-items: center;
@@ -85,8 +91,8 @@ body {
 }
 
 .opt-hero-logo svg {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
 }
 
 .opt-hero-brand {
@@ -102,10 +108,25 @@ body {
 .opt-hero-title {
   position: relative;
   margin: 0;
-  font-size: 40px;
+  font-size: 36px;
   font-weight: 800;
   letter-spacing: 6px;
   color: #fff;
+}
+
+.opt-version {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 20px;
+  border: 1px solid rgba(193, 232, 153, 0.25);
+  background: rgba(193, 232, 153, 0.06);
+  color: #c1e899;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: "SF Mono", "Fira Code", monospace;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
 }
 
 .opt-hero-sub {
@@ -126,13 +147,61 @@ body {
   color: #64748b;
 }
 
-/* ── Sections ── */
-.opt-section {
-  margin-bottom: 56px;
+/* ── Tab bar ── */
+.opt-tabs {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 36px;
 }
 
+.opt-tab {
+  appearance: none;
+  padding: 12px 4px 14px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: #475569;
+  cursor: pointer;
+  transition: color 0.3s ease, border-color 0.3s ease;
+}
+
+.opt-tab:hover {
+  color: #94a3b8;
+}
+
+.opt-tab-active,
+.opt-tab-active:hover {
+  color: #c1e899;
+}
+
+.opt-tab-indicator {
+  position: absolute;
+  bottom: -1px;
+  height: 2px;
+  background: #c1e899;
+  border-radius: 1px;
+  transition: left 0.3s ease, width 0.3s ease;
+}
+
+.opt-panel {
+  animation: opt-panel-in 0.3s ease;
+}
+
+@keyframes opt-panel-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Sections ── */
 .opt-section-title {
-  margin: 0 0 12px;
+  margin: 0 0 20px;
   font-size: 20px;
   font-weight: 700;
   color: #f1f5f9;
@@ -154,7 +223,7 @@ body {
 .opt-rtl .opt-section-title::before { order: -1; }
 
 .opt-section-desc {
-  margin: 0 0 28px;
+  margin: -8px 0 28px;
   font-size: 14px;
   line-height: 1.7;
   color: #475569;
@@ -167,6 +236,52 @@ body {
   padding-right: 14px;
   border-left: none;
   border-right: 2px solid rgba(255, 255, 255, 0.05);
+}
+
+/* ── Feature cards (About tab) ── */
+.opt-features {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.opt-feature-card {
+  padding: 22px 20px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.opt-feature-card:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
+  transform: translateY(-2px);
+}
+
+.opt-feature-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  margin-bottom: 14px;
+  flex-shrink: 0;
+}
+
+.opt-feature-title {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.opt-feature-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.65;
+  color: #475569;
 }
 
 /* ── Guide (toolbar buttons) ── */
@@ -188,7 +303,7 @@ body {
 }
 
 .opt-guide-row:hover {
-  background: rgba(255, 255, 255, 0.045);
+  background: rgba(255, 255, 255, 0.04);
   border-color: rgba(255, 255, 255, 0.07);
 }
 
@@ -201,19 +316,6 @@ body {
   border-radius: 10px;
   flex-shrink: 0;
   color: inherit;
-}
-
-/* Brand logo in guide — white bg like toolbar .nc-logo */
-.opt-guide-logo {
-  background: #fff;
-  color: #0f141a;
-  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.25);
-}
-
-.opt-guide-logo svg {
-  width: 22px;
-  height: 22px;
-  fill: currentColor;
 }
 
 .opt-guide-text {
@@ -232,40 +334,6 @@ body {
 .opt-guide-desc {
   font-size: 12.5px;
   line-height: 1.5;
-  color: #475569;
-}
-
-/* ── Keyboard Shortcuts ── */
-.opt-kb {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.opt-kb-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 10px 16px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.04);
-}
-
-.opt-kb-keys {
-  font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 4px 10px;
-  border-radius: 6px;
-  background: rgba(193, 232, 153, 0.08);
-  color: #c1e899;
-  white-space: nowrap;
-  border: 1px solid rgba(193, 232, 153, 0.15);
-}
-
-.opt-kb-desc {
-  font-size: 13px;
   color: #475569;
 }
 
@@ -312,6 +380,14 @@ body {
   color: #a3d67c;
 }
 
+/* ── Responsive ── */
+@media (max-width: 640px) {
+  .opt-features {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 520px) {
-  .opt-hero-title { font-size: 28px; letter-spacing: 4px; }
+  .opt-hero-title { font-size: 26px; letter-spacing: 4px; }
+  .opt-hero-brand { flex-wrap: wrap; }
 }
