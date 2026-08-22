@@ -78,18 +78,18 @@ export function startFreeSelect(): Promise<FreeSelectResult | null> {
       "data-newsclean-freeselect-capture": "true",
       "aria-label": "Capture this region",
       title: "Capture this region",
-      style: `display:inline-flex;align-items:center;justify-content:center;width:30px;height:28px;border:none;border-radius:4px;background:#2196F3;color:#fff;cursor:pointer;font-size:14px;line-height:1;padding:0;`,
+      style: `display:inline-flex;align-items:center;justify-content:center;width:30px;height:28px;border:none;border-radius:4px;background:#2196F3;color:#fff;cursor:pointer;padding:0;`,
     });
-    captureBtn.textContent = "\u{1F4F7}";
+    captureBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>`;
     bar.append(captureBtn);
 
     const cancelBtn = el("button", {
       "data-newsclean-freeselect-cancel": "true",
       "aria-label": "Cancel selection",
       title: "Cancel selection (Esc)",
-      style: `display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:none;border-radius:4px;background:#444;color:#ccc;cursor:pointer;font-size:14px;line-height:1;padding:0;`,
+      style: `display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:none;border-radius:4px;background:#444;color:#ccc;cursor:pointer;padding:0;`,
     });
-    cancelBtn.textContent = "\u2715";
+    cancelBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`;
     bar.append(cancelBtn);
 
     document.documentElement.append(dim, sel, label, bar, ...handles);
@@ -311,9 +311,16 @@ export function startFreeSelect(): Promise<FreeSelectResult | null> {
 
     function positionBar(r: Rect): void {
       bar.style.display = "flex";
-      const bw = 72; // approximate bar width
-      const bx = r.x + r.width / 2 - bw / 2;
-      const by = r.y + r.height + 8;
+      const bw = bar.offsetWidth || 72;
+      const bh = bar.offsetHeight || 36;
+      const margin = 8;
+      let bx = r.x + r.width / 2 - bw / 2;
+      let by = r.y + r.height + margin;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      if (by + bh > vh) by = r.y - bh - margin;
+      if (by < 0) by = margin;
+      bx = Math.max(margin, Math.min(bx, vw - bw - margin));
       Object.assign(bar.style, { left: `${bx}px`, top: `${by}px` });
     }
 
