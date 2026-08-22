@@ -20,7 +20,7 @@ const SEMANTIC_DATA_ATTRS = [
 ] as const;
 
 export function elementSignature(element: Element): string | null {
-  const classes = Array.from(element.classList).sort().join(".");
+  const classes = Array.from(element.classList).sort((a, b) => a.localeCompare(b)).join(".");
   const dataAttrs: string[] = [];
   for (const name of SEMANTIC_DATA_ATTRS) {
     const value = element.getAttribute(name);

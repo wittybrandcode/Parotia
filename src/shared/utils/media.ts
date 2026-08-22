@@ -34,11 +34,7 @@ export function forceEagerImages(root: ParentNode = document): void {
  */
 export function kickImages(images: HTMLImageElement[]): void {
   for (const img of images) {
-    try {
-      img.decode().catch(() => undefined);
-    } catch {
-      // Image is not decodable yet (no src, or not connected) — skip it.
-    }
+    void img.decode().catch(() => undefined);
   }
 }
 
