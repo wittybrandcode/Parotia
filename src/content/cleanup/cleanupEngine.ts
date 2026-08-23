@@ -129,8 +129,12 @@ export class DefaultCleanupEngine implements CleanupEngine {
   confirmDeleteSimilar(ref: ElementReference, expectedSignatures: string[]): number {
     const current = this.previewSimilarTargets(ref);
     if (!current) return 0;
-    const currentSignatures = current.signatures.sort().join("\u0000");
-    const expected = [...expectedSignatures].sort().join("\u0000");
+    const compareSignatures = (left: string, right: string): number => left.localeCompare(right);
+    current.signatures.sort(compareSignatures);
+    const sortedExpectedSignatures = [...expectedSignatures];
+    sortedExpectedSignatures.sort(compareSignatures);
+    const currentSignatures = current.signatures.join("\u0000");
+    const expected = sortedExpectedSignatures.join("\u0000");
     if (currentSignatures !== expected) return 0;
     return this.deleteSimilarTargets(ref);
   }
