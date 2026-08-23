@@ -131,7 +131,7 @@ describe("ui toolbar App", () => {
   it("ignores a STATE broadcast that does not come from the hosting page window", async () => {
     installSendMessage(statefulHandler);
     render(<App />);
-    await waitFor(() => expect(screen.getByText("Removed 0 elements")).toBeInTheDocument());
+    expect(await screen.findByText("Removed 0 elements")).toBeInTheDocument();
 
     window.dispatchEvent(
       new MessageEvent("message", {
@@ -149,7 +149,7 @@ describe("ui toolbar App", () => {
   it("ignores a STATE broadcast from an unexpected origin even when the sender is the parent", async () => {
     installSendMessage(statefulHandler);
     render(<App />);
-    await waitFor(() => expect(screen.getByText("Removed 0 elements")).toBeInTheDocument());
+    expect(await screen.findByText("Removed 0 elements")).toBeInTheDocument();
 
     window.dispatchEvent(
       new MessageEvent("message", {
