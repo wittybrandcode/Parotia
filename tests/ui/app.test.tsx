@@ -71,10 +71,12 @@ function statefulHandler(message: { type: string }) {
 describe("ui toolbar App", () => {
   beforeEach(() => {
     vi.mocked(chrome.runtime.sendMessage).mockReset();
+    window.history.replaceState({}, "", "#%7B%22sessionId%22%3A%22s0%22%2C%22parentOrigin%22%3A%22https%3A%2F%2Fpage.example%22%7D");
   });
 
   afterEach(() => {
     cleanup();
+    window.history.replaceState({}, "", "/");
   });
 
   it("boots a session on mount and renders the toolbar shell", async () => {

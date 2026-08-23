@@ -1,6 +1,6 @@
-import { STABILITY_WINDOW_MS } from "@shared/constants";
+import { MAX_FREEZE_WAIT_MS, STABILITY_WINDOW_MS } from "@shared/constants";
 import type { FreezeDiagnostics, FreezeState, FreezeStrategy } from "@shared/types";
-import { isNewsCleanUi } from "../overlay/overlay";
+import { isParotiaUi } from "../overlay/overlay";
 
 /**
  * Freeze Engine — stabilizes a dynamic page into a controlled working DOM.
@@ -43,12 +43,10 @@ export class DefaultFreezeEngine implements FreezeEngine {
   private observer: MutationObserver | null = null;
   private observerBlocked = false;
   private stabilityTimer: number | null = null;
+  private hardDeadlineTimer: number | null = null;
   private mutationsObserved = 0;
   private pausedMedia: HTMLMediaElement[] = [];
-  private frozenFrames: HTMLIFrameElement[] = [];
-  private timerPatchInstalled = false;
-  private restoreTimerFns: (() => void) | null = null;
-  private readonly patchedIntervals = new Set<number>();
+  private frozenFrames: Array<{ frame: HTMLIFrameElement; value: string; priority: string }> = [];
 
   freeze(mode: FreezeStrategy = "SOFT_FREEZE"): Promise<FreezeResult> {
     if (this.state.status === "FROZEN") {
@@ -70,24 +68,41 @@ export class DefaultFreezeEngine implements FreezeEngine {
 
     this.injectFreezeStyles();
     this.pauseMedia();
-    this.neutralizeTimers();
     this.freezeFrames();
 
     return new Promise((resolve) => {
       let installed = false;
-      try {
-        this.installStabilityMonitor(() => {
-          const durationMs = Math.round(performance.now() - started);
-          this.state = { status: "FROZEN", startedAt: Date.now(), strategy: mode };
-          resolve({
-            success: true,
-            strategy: mode,
-            stabilityReached: true,
-            durationMs,
-            mutationsObserved: this.mutationsObserved,
-            degraded: false,
-          });
+      let settled = false;
+      const finish = (stabilityReached: boolean, degraded: boolean): void => {
+        if (settled) return;
+        settled = true;
+        if (this.hardDeadlineTimer !== null) window.clearTimeout(this.hardDeadlineTimer);
+        this.hardDeadlineTimer = null;
+        if (!stabilityReached) {
+          if (typeof this.observer?.disconnect === "function") this.observer.disconnect();
+          this.observer = null;
+        }
+        const durationMs = Math.round(performance.now() - started);
+        this.state = {
+          status: degraded ? "DEGRADED" : "FROZEN",
+          startedAt: Date.now(),
+          strategy: mode,
+        };
+        resolve({
+          success: true,
+          strategy: mode,
+          stabilityReached,
+          durationMs,
+          mutationsObserved: this.mutationsObserved,
+          degraded,
         });
+      };
+      try {
+        this.installStabilityMonitor(() => finish(true, false));
+        this.hardDeadlineTimer = window.setTimeout(
+          () => finish(false, true),
+          MAX_FREEZE_WAIT_MS,
+        );
         installed = true;
       } catch {
         // The page prevented the MutationObserver from installing (e.g. a
@@ -96,16 +111,7 @@ export class DefaultFreezeEngine implements FreezeEngine {
         this.observerBlocked = true;
       }
       if (!installed) {
-        const durationMs = Math.round(performance.now() - started);
-        this.state = { status: "DEGRADED", startedAt: Date.now(), strategy: mode };
-        resolve({
-          success: true,
-          strategy: mode,
-          stabilityReached: false,
-          durationMs,
-          mutationsObserved: 0,
-          degraded: true,
-        });
+        finish(false, true);
       }
     });
   }
@@ -115,6 +121,8 @@ export class DefaultFreezeEngine implements FreezeEngine {
     this.observer = null;
     if (this.stabilityTimer !== null) window.clearTimeout(this.stabilityTimer);
     this.stabilityTimer = null;
+    if (this.hardDeadlineTimer !== null) window.clearTimeout(this.hardDeadlineTimer);
+    this.hardDeadlineTimer = null;
 
     this.styleElement?.remove();
     this.styleElement = null;
@@ -124,14 +132,11 @@ export class DefaultFreezeEngine implements FreezeEngine {
     }
     this.pausedMedia = [];
 
-    for (const frame of this.frozenFrames) {
-      frame.style.removeProperty("pointer-events");
+    for (const record of this.frozenFrames) {
+      if (record.value === "") record.frame.style.removeProperty("pointer-events");
+      else record.frame.style.setProperty("pointer-events", record.value, record.priority);
     }
     this.frozenFrames = [];
-
-    this.restoreTimerFns?.();
-    this.restoreTimerFns = null;
-    this.timerPatchInstalled = false;
 
     this.state = { status: "UNFROZEN" };
     this.observerBlocked = false;
@@ -169,43 +174,17 @@ export class DefaultFreezeEngine implements FreezeEngine {
     for (const media of this.pausedMedia) media.pause();
   }
 
-  /**
-   * Stops repeating timers while frozen. Carousels, ad tickers, and refresh
-   * loops are driven by setInterval — the most common source of motion that the
-   * CSS freeze cannot stop (it only covers CSS animations/transitions). The
-   * patch cancels new intervals the page schedules and is fully restored on
-   * unfreeze. One-shot setTimeout and requestAnimationFrame are left alone:
-   * blocking them can break a page's core rendering, and they don't repeat.
-   */
-  private neutralizeTimers(): void {
-    if (this.timerPatchInstalled) return;
-    const win = window as unknown as Record<string, unknown>;
-    const origSetInterval = window.setInterval;
-    const origClearInterval = window.clearInterval;
-
-    const patchedSetInterval = ((handler: TimerHandler, timeout?: number, ...args: unknown[]): number => {
-      const id = origSetInterval(handler, timeout, ...args);
-      this.patchedIntervals.add(id);
-      origClearInterval(id);
-      return id;
-    }) as typeof setInterval;
-
-    win.setInterval = patchedSetInterval;
-    this.timerPatchInstalled = true;
-    this.restoreTimerFns = () => {
-      win.setInterval = origSetInterval;
-      win.clearInterval = origClearInterval;
-      this.patchedIntervals.clear();
-    };
-  }
-
   /** Blocks interaction with embedded frames so they can't re-render or move. */
   private freezeFrames(): void {
-    this.frozenFrames = Array.from(document.querySelectorAll<HTMLIFrameElement>("iframe")).filter(
-      (frame) => !isNewsCleanUi(frame),
-    );
-    for (const frame of this.frozenFrames) {
-      frame.style.setProperty("pointer-events", "none", "important");
+    this.frozenFrames = Array.from(document.querySelectorAll<HTMLIFrameElement>("iframe"))
+      .filter((frame) => !isParotiaUi(frame))
+      .map((frame) => ({
+        frame,
+        value: frame.style.getPropertyValue("pointer-events"),
+        priority: frame.style.getPropertyPriority("pointer-events"),
+      }));
+    for (const record of this.frozenFrames) {
+      record.frame.style.setProperty("pointer-events", "none", "important");
     }
   }
 

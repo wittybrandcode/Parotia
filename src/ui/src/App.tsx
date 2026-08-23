@@ -5,7 +5,9 @@ import type {
   CaptureProgress,
   CleanupState,
   FreezeState,
+  MessageResponse,
 } from "@shared/types";
+import { CONTENT_MESSAGE_SOURCE, LEGACY_CONTENT_MESSAGE_SOURCE } from "@shared/constants";
 import {
   BoxSelect,
   Camera,
@@ -107,6 +109,15 @@ function progressLabel(progress: CaptureProgress): string {
 }
 
 export function App() {
+  const bootstrapSessionId = (() => {
+    try {
+      const value = window.location.hash.slice(1);
+      const parsed = value ? JSON.parse(decodeURIComponent(value)) as { sessionId?: unknown } : {};
+      return typeof parsed.sessionId === "string" ? parsed.sessionId : "";
+    } catch {
+      return "";
+    }
+  })();
   const [state, setState] = useState<ToolbarState>({
     sessionId: null,
     status: "CREATED",
@@ -175,7 +186,7 @@ export function App() {
       // arriving from an external window is spoofed and ignored.
       if (event.source !== window.parent) return;
       const broadcast = event.data;
-      if (broadcast?.source !== "newsclean-content") return;
+      if (broadcast?.source !== CONTENT_MESSAGE_SOURCE && broadcast?.source !== LEGACY_CONTENT_MESSAGE_SOURCE) return;
       if (broadcast.type === "PROGRESS") {
         if (!broadcast.progress) return;
         // A capture started: show live progress and keep STATE broadcasts
@@ -196,12 +207,18 @@ export function App() {
     // Bootstrap: the toolbar starts its own session so every button works
     // immediately, without requiring a separate click on the extension icon.
     void (async () => {
-      const res = (await sendCommand({ type: "START_SESSION", payload: {} })) as StateResponse | undefined;
-      applyState(res?.data);
+      if (!bootstrapSessionId) return;
+      const res = (await sendCommand({
+        type: "START_SESSION",
+        payload: { sessionId: bootstrapSessionId },
+      })) as { data?: MessageResponse<ToolbarState> | ToolbarState } | undefined;
+      const data = res?.data;
+      if (data && "success" in data) applyState(data.data);
+      else applyState(data);
     })();
 
     return () => window.removeEventListener("message", onMessage);
-  }, [applyState]);
+  }, [applyState, bootstrapSessionId]);
 
   const freezeStatus = state.freeze?.status ?? "UNFROZEN";
   const frozen = freezeStatus !== "UNFROZEN";

@@ -13,7 +13,7 @@ Freeze, inspect, clean and capture news pages as broadcast-ready PNGs.
 [![Chrome Extension](https://img.shields.io/badge/Chrome-Extension-blue?logo=googlechrome)](https://developer.chrome.com/docs/extensions/)
 [![MV3](https://img.shields.io/badge/MV3-Support-green)](https://developer.chrome.com/docs/extensions/mv3/)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](#license)
-[![Tests](https://img.shields.io/badge/Tests-237%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/Tests-314%20passing-brightgreen)](#testing)
 
 </div>
 
@@ -45,11 +45,14 @@ Export the cleaned page as a PNG in multiple modes:
 |------|-------------|
 | **Full Page** | Viewport slicing + stitching for long articles |
 | **Visible Area** | Capture what's currently visible |
-| **Element** | Isolate and capture a specific element with zoom |
+| **Element** | Pixel-crop exactly as rendered, then export a safe high-quality 2× PNG; stitch only when needed |
 | **Free Select** | Draw a custom region on the frozen page |
 
 ### Live Progress
 Watch capture progress in real-time — the toolbar shows `Capture rendering 2/4 (50%)` while it works.
+
+### Local Editor
+Annotate, crop and adjust a capture with one ordered Undo/Redo history, then copy, share or save it through a one-time tab-bound capability.
 
 ### Keyboard Shortcuts
 
@@ -102,7 +105,7 @@ Then in Chrome:
 ```
 src/
 ├── shared/          Types, constants, pure utilities
-├── background/      MV3 service worker (no DOM access)
+├── background/      MV3 router, session registry, capture coordination, tickets/storage
 ├── content/         Page runtime (content script)
 │   ├── freeze/      Stability monitor + page locking
 │   ├── inspector/   Element highlighting + picking
@@ -114,7 +117,7 @@ src/
 │   ├── selection/   Free-select region capture
 │   ├── keyboard/    Shortcut management
 │   └── overlay/     UI overlay management
-├── ui/              React toolbar + options page (Vite)
+├── ui/              React toolbar, options page and Konva image editor (Vite)
 scripts/             Build tooling (esbuild, icons, manifest)
 tests/               Vitest suites (happy-dom) + Playwright E2E
 ```
@@ -122,9 +125,9 @@ tests/               Vitest suites (happy-dom) + Playwright E2E
 ### Security
 
 - **Command allowlist** — only typed commands are accepted
-- **Payload validation** — Zod schemas at every boundary
+- **Payload validation** — typed allowlists and runtime guards at every boundary
 - **Origin check** — `postMessage` restricted to extension origin
-- **Minimal permissions** — uses `activeTab`, `scripting`, `storage`, `downloads`
+- **Minimal permissions** — uses `activeTab`, `scripting`, `storage`, `tabs`, `unlimitedStorage`, `downloads`
 - **No network activity** — everything runs locally
 
 ---
@@ -148,11 +151,11 @@ npm run dev:ui         # Vite dev server for toolbar UI
 | Framework | Purpose |
 |-----------|---------|
 | **Vitest** | Unit & integration tests (happy-dom) |
-| **Playwright** | E2E smoke test (real Chromium extension) |
+| **Playwright** | Built-extension and real editor flow in Chromium |
 | **v8 coverage** | Enforced thresholds (lines ≥80%, branches ≥75%) |
 
 ```bash
-npm run test           # 237 tests across 24 files
+npm run test           # 314 tests across 36 files
 npm run test:coverage  # With coverage report
 npm run test:e2e       # Requires build first
 ```
@@ -165,7 +168,7 @@ npm run test:e2e       # Requires build first
 - **React 18** — toolbar UI
 - **Vite** — UI bundler
 - **esbuild** — content/background bundler
-- **Zod** — runtime validation
+- **Runtime guards** — command and payload validation
 - **Lucide React** — icons
 - **Vitest** — testing
 - **Playwright** — E2E testing

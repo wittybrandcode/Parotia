@@ -1,171 +1,53 @@
-# Testing Strategy
+# Testing strategy
 
-Parotia uses a three-tier testing approach: unit/integration tests with Vitest, E2E smoke tests with Playwright, and enforced coverage thresholds.
-
----
-
-## Test Frameworks
-
-| Framework | Version | Purpose | Environment |
-|-----------|---------|---------|-------------|
-| Vitest | 2.1.9 | Unit & integration tests | happy-dom |
-| Playwright | 1.49.1 | E2E smoke test | Real Chromium |
-| @testing-library/react | 16.3.2 | React component testing | happy-dom |
-
----
-
-## Running Tests
+## Commands
 
 ```bash
-npm run test            # Run all Vitest tests (237 tests)
-npm run test:watch      # Watch mode
-npm run test:coverage   # Run with coverage report + threshold enforcement
-npm run test:e2e        # Playwright E2E (builds first via pretest:e2e)
+npm run typecheck
+npm run lint
+npm run test
+npm run test:coverage
+npm run build
+npm run test:e2e
 ```
 
----
+`test:coverage` is the canonical unit/integration gate. It runs Vitest once, writes text/HTML/JSON reports, enforces the global thresholds, then runs `scripts/check-critical-coverage.mjs`.
 
-## Test Structure
+## Enforced thresholds
 
-```
-tests/
-├── setup.ts                          # Global chrome.* stubs
-├── background/
-│   └── service-worker.test.ts        # 26 tests — dispatch, validation, capture
-├── content/
-│   ├── contentIndex.test.ts          # 14 tests — command hub, lifecycle
-│   ├── session/
-│   │   └── session.test.ts           # 4 tests — creation, transitions
-│   ├── inspector/
-│   │   └── inspector.test.ts         # 14 tests — picker, overlay, action bar
-│   ├── selection/
-│   │   └── freeSelect.test.ts        # 11 tests — drawing, resize, capture
-│   ├── freeze/
-│   │   └── freezeEngine.test.ts      # 9 tests — freeze, stability, degraded
-│   ├── overlay/
-│   │   └── overlay.test.ts           # 4 tests — shadow DOM, iframe
-│   ├── extraction/
-│   │   ├── extractionEngine.test.ts  # 5 tests — scoring, candidates
-│   │   └── score.test.ts             # 3 tests — text/link density
-│   ├── cleanup/
-│   │   └── cleanupEngine.test.ts     # 28 tests — delete/hide/undo/redo
-│   ├── mutation/
-│   │   ├── mutationEngine.test.ts    # 16 tests — DOM mutations, undo, regen guard
-│   │   └── history.test.ts           # 11 tests — LIFO stack, undoTo
-│   ├── matching/
-│   │   └── matchEngine.test.ts       # 7 tests — similarity, signatures
-│   ├── keyboard/
-│   │   └── shortcuts.test.ts         # 6 tests — freeze/pick/delete/escape
-│   └── capture/
-│       ├── sliceMath.test.ts         # 6 tests — slice planning
-│       ├── fixedHeaders.test.ts      # 10 tests — detection, hide/restore
-│       ├── elementCapture.test.ts    # 8 tests — isolation, eager images
-│       ├── preload.test.ts           # 7 tests — eager images, pre-roll
-│       └── captureStitcher.test.ts   # 12 tests — canvas stitching, blank checks
-├── shared/
-│   ├── id.test.ts                    # 3 tests — uniqueness
-│   └── utils/
-│       ├── filename.test.ts          # 8 tests — sanitization, traversal
-│       └── selector.test.ts          # 10 tests — validation, generation
-├── ui/
-│   ├── app.test.tsx                  # 10 tests — toolbar, buttons, state
-│   └── options.test.tsx              # 5 tests — options page, i18n
-└── e2e/
-    └── smoke.spec.ts                 # Playwright — extension load, SW start
-```
+| Scope | Lines | Statements | Functions | Branches |
+|---|---:|---:|---:|---:|
+| Global | 80% | 80% | 80% | 75% |
+| `captureHandler.ts` | 85% | — | 85% | 75% |
+| `AnnotationLayer.ts` | 85% | — | 85% | 75% |
+| `editorModal.ts` | 85% | — | 85% | 75% |
+| `sessionRegistry.ts` | 85% | — | 85% | 75% |
+| `editorTickets.ts` | 90% | — | 90% | 80% |
+| `captureCoordinator.ts` | 90% | — | 90% | 80% |
 
----
+Thresholds are release constraints and must not be lowered to pass a change.
 
-## Coverage Thresholds
+## What the suites prove
 
-Enforced in `vitest.config.ts`:
+- Coordinate stitching: overlap, out-of-order input, non-zero base scroll, clamped final viewport and gap rejection.
+- DOM transactions: exact style priority and attribute presence after success/failure/re-entry.
+- Media readiness: lazy images, browser-owned picture selection, SVG, CSS background, poster and open Shadow DOM with timeout diagnostics.
+- Session/security: worker hydration, closed tabs, sender mismatch, exact editor URL/tab, expiry and concurrent replay.
+- Editor: direct Konva annotation behavior, bounded mixed-operation history, operation errors, real Chromium draw/save ticket consumption.
+- Freeze/cleanup: continuous mutation deadline, iframe/fixed-header priority restore, regenerated descendants and original `display!important`.
 
-| Metric | Threshold |
-|--------|-----------|
-| Statements | ≥ 80% |
-| Functions | ≥ 80% |
-| Lines | ≥ 80% |
-| Branches | ≥ 75% |
+The deterministic browser fixture is `tests/fixtures/capture-matrix.html`. It contains article, long checker pattern, Twitter-like avatar, RTL content, canvas, picture, SVG, video poster, CSS background, hidden content and open Shadow DOM. Add `?dynamic=1` to create continuous mutations.
 
-Coverage exclusions:
-- Barrel re-exports (`index.ts`)
-- Type-only modules (no runtime code)
+## Playwright
 
----
+Playwright loads the actual `dist/` extension in Chromium. It verifies worker boot, extension storage, navigation survival, restricted-page resilience, and a real editor flow that stages a PNG, draws on Konva, saves and consumes its capability. Capture mode orchestration is exhaustively exercised at the worker/content boundary because Chromium headless does not expose a reliable automation primitive for clicking a native extension action and granting `activeTab`.
 
-## Chrome API Mocking
+CI builds `dist/` once, uploads it, downloads the same artifact in the E2E job and uploads Playwright traces/screenshots on failure.
 
-All `chrome.*` APIs are mocked in `tests/setup.ts`:
+## Regression rules
 
-```typescript
-// Global stubs available in every test
-globalThis.chrome = {
-  runtime: { sendMessage, onMessage, getURL, lastError },
-  tabs: { query, get, sendMessage, captureVisibleTab, getZoom, setZoom },
-  storage: { local: { get, set, remove } },
-  action: { onClicked },
-  scripting: { executeScript },
-  downloads: { download },
-};
-```
-
-Each test file can override specific methods for its scenario.
-
----
-
-## Test Categories
-
-### Unit Tests
-Test individual functions in isolation:
-- `score.test.ts` — `scoreCandidate()` pure function
-- `sliceMath.test.ts` — `planSlices()` pure math
-- `filename.test.ts` — `sanitizeFilenamePart()` pure function
-- `id.test.ts` — `createId()` pure function
-
-### Integration Tests
-Test engine interactions within a single context:
-- `cleanupEngine.test.ts` — Cleanup + Mutation + History working together
-- `inspector.test.ts` — Inspector + DOM interactions
-- `contentIndex.test.ts` — Full command routing through the hub
-
-### End-to-End Tests
-Playwright boots the real extension in Chromium:
-- Loads `dist/` as unpacked extension
-- Verifies service worker registers
-- Navigates to options page
-- Confirms `chrome.storage` interaction
-
----
-
-## Writing New Tests
-
-### Convention
-
-```typescript
-import { describe, it, expect, vi, beforeEach } from "vitest";
-
-describe("moduleName", () => {
-  beforeEach(() => {
-    // Reset state between tests
-  });
-
-  it("does something specific", () => {
-    // Arrange
-    const input = createTestElement();
-    
-    // Act
-    const result = module.function(input);
-    
-    // Assert
-    expect(result).toBe(expected);
-  });
-});
-```
-
-### Best Practices
-
-1. **Test behavior, not implementation** — Don't assert internal state; assert observable outcomes.
-2. **Use `beforeEach`** — Reset shared state between tests.
-3. **Mock minimally** — Only mock what's outside the test boundary.
-4. **Test edge cases** — Empty inputs, boundary values, error paths.
-5. **Keep tests fast** — Unit tests should complete in milliseconds.
+1. Reproduce a defect with an invariant-focused test before changing production behavior.
+2. Assert pixels/coordinates/DOM restoration/ownership, not only mock call counts.
+3. Include failure injection for any new storage, messaging, decode, canvas or download boundary.
+4. Use fake timers for deadlines, and assert observer/listener/style cleanup.
+5. Keep legacy `data-newsclean-*` fixtures until the documented compatibility migration ends.

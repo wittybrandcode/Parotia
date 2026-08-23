@@ -1,4 +1,4 @@
-import { OVERLAY_ROOT_ID, OVERLAY_ROOT_MARKER } from "@shared/constants";
+import { LEGACY_UI_MESSAGE_SOURCE, OVERLAY_ROOT_ID, OVERLAY_ROOT_MARKER, UI_MESSAGE_SOURCE } from "@shared/constants";
 
 const SPLASH_SPINS = 3;
 const SPLASH_SPIN_SEC = SPLASH_SPINS * 1.15;
@@ -79,8 +79,8 @@ function showSplash(): void {
 }
 
 /**
- * Overlay Runtime. The NewsClean UI lives inside a Shadow DOM root so that
- * website CSS cannot affect NewsClean controls and NewsClean CSS cannot leak
+ * Overlay Runtime. The Parotia UI lives inside a Shadow DOM root so that
+ * website CSS cannot affect Parotia controls and Parotia CSS cannot leak
  * into the page. The root is a normal-flow block inserted at the top of the
  * page: it pushes the article down instead of floating over it. The root is
  * marked so inspection never selects it.
@@ -92,12 +92,15 @@ export interface OverlayInstance {
   setVisible(visible: boolean): void;
 }
 
-export function isNewsCleanUi(target: Element | null): boolean {
+export function isParotiaUi(target: Element | null): boolean {
   if (!target) return false;
   return target.closest(`[${OVERLAY_ROOT_MARKER}]`) !== null;
 }
 
-export function createOverlay(): OverlayInstance {
+/** @deprecated Keep the old export during the selector compatibility window. */
+export const isNewsCleanUi = isParotiaUi;
+
+export function createOverlay(sessionId?: string): OverlayInstance {
   // ── Splash animation: logo spins and fades in the centre of the page ──
   showSplash();
 
@@ -120,7 +123,11 @@ export function createOverlay(): OverlayInstance {
   // The React toolbar runs in an isolated iframe (web-accessible resource),
   // which gives full DOM/script isolation and keeps the page bundle small.
   const frame = document.createElement("iframe");
-  frame.src = chrome.runtime.getURL("ui/index.html");
+  const toolbarParams = encodeURIComponent(JSON.stringify({
+    sessionId,
+    parentOrigin: window.location.origin,
+  }));
+  frame.src = `${chrome.runtime.getURL("ui/index.html")}#${toolbarParams}`;
   frame.setAttribute("data-newsclean-frame", "true");
   frame.style.display = "block";
   frame.style.width = "100%";
@@ -140,7 +147,7 @@ export function createOverlay(): OverlayInstance {
     if (event.source !== frame.contentWindow) return;
     if (event.origin !== extensionOrigin) return;
     const data = event.data;
-    if (data?.source !== "newsclean-ui" || data.type !== "RESIZE") return;
+    if ((data?.source !== UI_MESSAGE_SOURCE && data?.source !== LEGACY_UI_MESSAGE_SOURCE) || data.type !== "RESIZE") return;
     const height = typeof data.height === "number" && data.height > 0 ? data.height : 0;
     frame.style.height = height > 0 ? `${height}px` : "";
   };

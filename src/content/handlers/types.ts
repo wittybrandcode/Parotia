@@ -1,4 +1,4 @@
-import type { BackgroundCommand, NewsCleanSession } from "@shared/types";
+import type { BackgroundCommand, ParotiaSession } from "@shared/types";
 import type { DefaultCleanupEngine } from "../cleanup/cleanupEngine";
 import type { CaptureStitcher } from "../capture/captureStitcher";
 import type { ElementCaptureIsolator } from "../capture/elementCapture";
@@ -11,7 +11,7 @@ import type { OverlayInstance } from "../overlay/overlay";
 
 /** Shared mutable context threaded through every command handler. */
 export interface HandlerContext {
-  session: NewsCleanSession | null;
+  session: ParotiaSession | null;
   overlay: OverlayInstance | null;
   cleanup: DefaultCleanupEngine | null;
   stitcher: CaptureStitcher | null;

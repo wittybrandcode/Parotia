@@ -46,15 +46,39 @@ interface ResolvedTarget {
   nextSibling: Node | null;
 }
 
+interface InlineDisplaySnapshot {
+  value: string;
+  priority: string;
+}
+
+function displaySnapshot(element: HTMLElement): InlineDisplaySnapshot {
+  return {
+    value: element.style.getPropertyValue("display"),
+    priority: element.style.getPropertyPriority("display"),
+  };
+}
+
+function restoreDisplay(element: HTMLElement, snapshot: InlineDisplaySnapshot): void {
+  if (snapshot.value === "") element.style.removeProperty("display");
+  else element.style.setProperty("display", snapshot.value, snapshot.priority);
+}
+
 /** Cap on how many times one signature is re-guarded before giving up (safety valve against page/guard loops). */
 const MAX_REGUARD_PER_SIGNATURE = 20;
+const MAX_GUARD_SCAN_ELEMENTS = 1000;
 
 export class DefaultMutationEngine implements MutationEngine {
-  private readonly registry = new Map<string, { operation: CleanupOperation; hidden: boolean; signature?: string | null }>();
+  private readonly registry = new Map<string, {
+    operation: CleanupOperation;
+    hidden: boolean;
+    signature?: string | null;
+    display?: InlineDisplaySnapshot;
+  }>();
   /** Signature → guard behavior, plus a re-guard counter to bound loops. */
   private readonly guardedSignatures = new Map<string, { hidden: boolean; reGuards: number }>();
   /** Nodes the engine itself re-inserted (Undo/Redo/Reset) — never re-guarded. */
   private readonly legitBack = new WeakSet<Element>();
+  private readonly regeneratedHidden = new Map<HTMLElement, { signature: string; display: InlineDisplaySnapshot }>();
   private guardObserver: MutationObserver | null = null;
 
   constructor(
@@ -79,7 +103,7 @@ export class DefaultMutationEngine implements MutationEngine {
       },
       undo: () => {
         const recorded = this.registry.get(ref.id);
-        if (recorded?.signature) this.guardedSignatures.delete(recorded.signature);
+        if (recorded?.signature) this.releaseGuard(recorded.signature);
         this.restoreNode(target);
         this.registry.delete(ref.id);
       },
@@ -121,7 +145,7 @@ export class DefaultMutationEngine implements MutationEngine {
       undo: () => {
         // Restore in reverse document order so sibling order is preserved.
         for (const entry of [...targets].reverse()) {
-          if (entry.signature) this.guardedSignatures.delete(entry.signature);
+          if (entry.signature) this.releaseGuard(entry.signature);
           this.restoreNode(entry);
         }
         this.registry.delete(ref.id);
@@ -178,7 +202,7 @@ export class DefaultMutationEngine implements MutationEngine {
       undo: () => {
         // Restore in reverse document order so sibling order is preserved.
         for (const { target, signature } of [...resolved].reverse()) {
-          if (signature) this.guardedSignatures.delete(signature);
+          if (signature) this.releaseGuard(signature);
           this.restoreNode(target);
         }
         for (const { ref } of resolved) this.registry.delete(ref.id);
@@ -191,6 +215,8 @@ export class DefaultMutationEngine implements MutationEngine {
   hideElement(ref: ElementReference): CleanupOperation | null {
     const target = this.resolve(ref);
     if (!target) return null;
+    const element = target.element as HTMLElement;
+    const originalDisplay = displaySnapshot(element);
 
     const op = this.buildOperation(ref, "HIDE");
     const command: Command = {
@@ -199,14 +225,14 @@ export class DefaultMutationEngine implements MutationEngine {
       affectedCount: 1,
       execute: () => {
         const signature = elementSignature(target.element);
-        this.registry.set(ref.id, { operation: op, hidden: true, signature });
+        this.registry.set(ref.id, { operation: op, hidden: true, signature, display: originalDisplay });
         if (signature) this.guardedSignatures.set(signature, { hidden: true, reGuards: 0 });
-        (target.element as HTMLElement).style.setProperty("display", "none", "important");
+        element.style.setProperty("display", "none", "important");
       },
       undo: () => {
         const recorded = this.registry.get(ref.id);
-        if (recorded?.signature) this.guardedSignatures.delete(recorded.signature);
-        (target.element as HTMLElement).style.removeProperty("display");
+        if (recorded?.signature) this.releaseGuard(recorded.signature);
+        restoreDisplay(element, originalDisplay);
         this.registry.delete(ref.id);
       },
     };
@@ -214,7 +240,7 @@ export class DefaultMutationEngine implements MutationEngine {
     return op;
   }
 
-  /** Whether the element is currently hidden by NewsClean (registry-backed). */
+  /** Whether the element is currently hidden by Parotia (registry-backed). */
   isHidden(ref: ElementReference): boolean {
     return this.registry.get(ref.id)?.hidden ?? false;
   }
@@ -228,25 +254,29 @@ export class DefaultMutationEngine implements MutationEngine {
     if (!recorded?.hidden) return false;
     const target = this.resolve(ref);
     if (!target) return false;
+    const element = target.element as HTMLElement;
+    const originalDisplay = recorded.display ?? { value: "", priority: "" };
 
     const command: Command = {
       id: createId("cmd"),
       label: `Show ${ref.tagName}`,
       affectedCount: 1,
       execute: () => {
-        (target.element as HTMLElement).style.removeProperty("display");
+        restoreDisplay(element, originalDisplay);
         this.registry.set(ref.id, {
           operation: recorded.operation,
           hidden: false,
+          display: originalDisplay,
           ...(recorded.signature ? { signature: recorded.signature } : {}),
         });
-        if (recorded.signature) this.guardedSignatures.delete(recorded.signature);
+        if (recorded.signature) this.releaseGuard(recorded.signature);
       },
       undo: () => {
-        (target.element as HTMLElement).style.setProperty("display", "none", "important");
+        element.style.setProperty("display", "none", "important");
         this.registry.set(ref.id, {
           operation: recorded.operation,
           hidden: true,
+          display: originalDisplay,
           ...(recorded.signature ? { signature: recorded.signature } : {}),
         });
         if (recorded.signature) this.guardedSignatures.set(recorded.signature, { hidden: true, reGuards: 0 });
@@ -280,6 +310,8 @@ export class DefaultMutationEngine implements MutationEngine {
     }
     this.registry.clear();
     this.guardedSignatures.clear();
+    for (const [element, record] of this.regeneratedHidden) restoreDisplay(element, record.display);
+    this.regeneratedHidden.clear();
     return commands.length;
   }
 
@@ -312,6 +344,12 @@ export class DefaultMutationEngine implements MutationEngine {
    */
   private guardAddedNode(node: Node): void {
     if (!(node instanceof Element) || this.legitBack.has(node)) return;
+    const candidates = [node, ...Array.from(node.querySelectorAll("*")).slice(0, MAX_GUARD_SCAN_ELEMENTS - 1)];
+    for (const candidate of candidates) this.guardElement(candidate);
+  }
+
+  private guardElement(node: Element): void {
+    if (this.legitBack.has(node)) return;
     const signature = elementSignature(node);
     if (!signature) return;
     const guarded = this.guardedSignatures.get(signature);
@@ -322,9 +360,22 @@ export class DefaultMutationEngine implements MutationEngine {
     }
     guarded.reGuards += 1;
     if (guarded.hidden) {
-      (node as HTMLElement).style.setProperty("display", "none", "important");
+      const element = node as HTMLElement;
+      if (!this.regeneratedHidden.has(element)) {
+        this.regeneratedHidden.set(element, { signature, display: displaySnapshot(element) });
+      }
+      element.style.setProperty("display", "none", "important");
     } else {
       node.remove();
+    }
+  }
+
+  private releaseGuard(signature: string): void {
+    this.guardedSignatures.delete(signature);
+    for (const [element, record] of this.regeneratedHidden) {
+      if (record.signature !== signature) continue;
+      restoreDisplay(element, record.display);
+      this.regeneratedHidden.delete(element);
     }
   }
 

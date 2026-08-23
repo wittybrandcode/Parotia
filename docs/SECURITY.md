@@ -1,156 +1,61 @@
-# Security Model
+# Security model
 
-Parotia follows a defense-in-depth security architecture. Every boundary between execution contexts validates input before any side effect occurs.
+Parotia performs capture and editing locally. It has no analytics, remote API or remote code path.
 
----
+## Trust boundaries
 
-## Principles
+| Boundary | Required checks |
+|---|---|
+| Runtime message -> worker | command allowlist, shared payload shape, finite/positive geometry, PNG signature/size, verified session owner |
+| Worker -> content | exact tab resolved from persisted session; content revalidates payload and page-owned session |
+| Page -> toolbar iframe | exact extension origin, exact iframe window, accepted Parotia/legacy source discriminator |
+| Editor -> worker | exact extension origin and pathname, ticket-owning tab, 48-hex capability, expiry and single consumption |
 
-1. **Zero trust at every boundary** — Commands are validated at the Service Worker, Content Runtime, and UI layers independently.
-2. **No remote code** — CSP restricts to `script-src 'self'; object-src 'self'`. No inline scripts, no eval, no remote resources.
-3. **Minimal permissions** — Only the permissions required for core functionality. No `webRequest`, no `cookies`, no `<all_urls>`.
-4. **No data exfiltration** — Zero network activity. All processing is local to the browser.
-5. **Session-scoped identifiers** — Element IDs are session-scoped (`createId` uses timestamp + random). Never persisted across sessions.
+Unknown commands fail with `UNKNOWN_COMMAND`; malformed commands fail before side effects. A page session is never recovered through the currently active tab. `chrome.storage.session` ownership records are checked against live tabs after an MV3 worker restart.
 
----
+## One-time editor capabilities
 
-## Validation Layers
+Captured PNGs are staged as `editor-image:<token>` with an `editor-ticket:<token>` record containing owner tab, session and expiry. The token has 192 random bits. A result is accepted only from the exact `ui/editor.html` path and the recorded tab.
 
-### Layer 1: Command Type Allowlist
+The manager uses an explicit in-memory consuming set and removes the ticket/image before download, so concurrent or later replay fails even when download itself fails. Cleanup runs:
 
-Every incoming message is checked against a hardcoded allowlist before any processing:
+- on worker startup;
+- lazily before staging/consuming;
+- when the owner tab closes;
+- when an expired or malformed ticket is encountered.
 
-```typescript
-// src/shared/types/messages.ts
-export const BACKGROUND_COMMAND_TYPES = [
-  "START_SESSION", "FREEZE_PAGE", "UNFREEZE_PAGE",
-  "INSPECT_START", "INSPECT_STOP", "DELETE_ELEMENT",
-  "HIDE_ELEMENT", "SHOW_ELEMENT", "DELETE_MATCHING",
-  "UNDO", "REDO", "UNDO_TO", "RESET",
-  "CAPTURE", "PREPARE_CAPTURE", "RESTORE_CAPTURE",
-  // ... 28 total
-] as const;
+PNG result validation requires a correctly formed base64 data URL, PNG signature prefix and decoded size no larger than 25 MiB. Filenames are NFKC-normalized, stripped of path separators/control characters and bounded before `chrome.downloads.download`.
 
-export function isBackgroundCommand(value: unknown): value is BackgroundCommand {
-  // Runtime type guard — validates type against allowlist
-}
-```
+## DOM and capture safety
 
-Unknown commands are rejected with `UNKNOWN_COMMAND` error. No code path executes for unrecognized types.
+- Temporary style/attribute changes use `DomPatchLedger` and preserve CSS priority and missing-vs-present attribute state.
+- Capture geometry rejects NaN/infinite/non-positive dimensions and clamps crop rectangles to decoded bitmap bounds.
+- Canvas dimensions are capped at Chromium's supported limit.
+- Slice finalization rejects missing painted intervals instead of silently exporting gaps.
+- Media and MutationObserver waits have hard deadlines and observers are disconnected in cleanup paths.
+- Closed shadow roots and cross-origin iframe DOM are never traversed.
 
-### Layer 2: Payload Validation
+## postMessage policy
 
-At the Service Worker boundary (`service-worker.ts:validatePayload()`), every command's payload is validated:
+No production `postMessage` call uses `"*"`. Toolbar bootstrap carries a trusted parent origin in the iframe hash. Receivers validate both `event.origin` and `event.source`. The `newsclean-*` source strings are accepted only as a documented 1.x compatibility alias; new senders emit `parotia-*`.
 
-- Required fields present
-- Enum values match expected sets
-- String lengths within bounds
-- Numeric values are finite and positive
-- Session ID format validated
+## Storage lifecycle
 
-At the Content Runtime boundary (`content/index.ts:validatePayload()`), session mismatch is rejected:
+`chrome.storage.session` contains only tab/session ownership. `chrome.storage.local` contains preferences and short-lived base64 capture/editor data. Capture staging keys are removed after transfer, and stale/orphaned records are purged best-effort. `unlimitedStorage` prevents legitimate long captures from failing quota checks; it does not make staged data persistent.
 
-```typescript
-if (payload.sessionId !== session.id) {
-  return { success: false, error: { code: "SESSION_NOT_FOUND", ... } };
-}
-```
-
-### Layer 3: Origin Checks
-
-**Toolbar iframe resize messages** (`overlay.ts`):
-```typescript
-if (event.origin !== extensionOrigin) return;
-if (event.source !== frame.contentWindow) return;
-```
-
-**State broadcasts** (`App.tsx`):
-```typescript
-if (event.source !== window.parent) return;
-if (broadcast.source !== "newsclean-content") return;
-```
-
-**postMessage targets** — Never `"*"`. Always `chrome.runtime.getURL().origin`:
-```typescript
-// content/index.ts
-const targetOrigin = chrome.runtime.getURL().split("/").slice(0, 3).join("/");
-iframe.contentWindow.postMessage(broadcast, targetOrigin);
-```
-
----
-
-## UI Isolation
-
-| Mechanism | Purpose |
-|-----------|---------|
-| Shadow DOM | Toolbar immune to page CSS injection |
-| `data-newsclean-root` | Marks extension root for inspection exclusion |
-| `data-newsclean-highlight` | Marks hover overlays for capture exclusion |
-| `isNewsCleanUi()` | Prevents inspector from selecting own elements |
-| `CAPTURE_ATTR` | Marks isolated elements during capture |
-
----
-
-## Filename Sanitization
-
-All exported PNG filenames pass through `sanitizeFilenamePart()`:
-
-1. **NFKC normalization** — Unicode compatibility normalization (canonical + compatibility decomposition, then canonical composition)
-2. **Forbidden char removal** — `\ / : * ? " < > |` replaced with `-`
-3. **Control char removal** — All C0/C1 control characters removed
-4. **Whitespace collapse** — Whitespace runs collapsed into a single `-`
-5. **Dot stripping** — Leading/trailing dots removed (prevents `..` path traversal)
-6. **Length cap** — 80 characters max, falls back to `"article"` if empty
-
----
-
-## Stale Reference Defense
-
-When the DOM mutates between reference creation and resolution:
-
-```
-ElementReference created → DOM mutation → resolve() fails → STALE_REFERENCE error
-```
-
-The system never acts on an element it cannot resolve. This prevents:
-- Acting on wrong elements after DOM changes
-- Exploiting timing between reference creation and action
-- Cascading errors from stale references
-
----
-
-## Capture Security
-
-- **Canvas size limits** — `MAX_CANVAS_DIMENSION = 32767` enforced before any capture
-- **White fill** — Prevents transparent pixel data leakage
-- **ImageBitmap** — Efficient drawing without data URL intermediaries
-- **Stale data cleanup** — `purgeStaleCaptureData()` runs on SW startup to clean orphaned base64 data from killed workers
-
----
-
-## Data Lifecycle
-
-```
-chrome.storage.local
-├── Staged capture data (temporary, cleaned after download)
-├── Page context (session-scoped, cleaned on session end)
-└── Purged on SW startup (orphaned data from crashed workers)
-```
-
-No persistent user data is stored. No analytics, no telemetry, no cookies.
-
----
-
-## Threat Model
+## Threat summary
 
 | Threat | Mitigation |
-|--------|------------|
-| XSS via page scripts | Shadow DOM isolation, no `innerHTML` with user content |
-| CSS injection | Shadow DOM, `isNewsCleanUi()` exclusion |
-| Stale session hijacking | Session ID validation at every command |
-| Path traversal | `sanitizeFilenamePart()` dot stripping |
-| Remote code execution | CSP `script-src 'self'` |
-| Data exfiltration | Zero network activity, no `fetch()` to external URLs |
-| Canvas data leakage | White fill, controlled capture pipeline |
-| Extension UI spoofing | `data-newsclean-root` exclusion, origin checks |
-| DOM mutation during capture | Stability window, MutationObserver monitoring |
+|---|---|
+| Cross-tab command routing | persisted one-tab ownership, sender mismatch rejection, no active-tab fallback |
+| Forged/replayed editor save | exact URL+tab capability, expiry, consume-before-download |
+| Malformed capture payload | centralized discriminated validation and finite geometry |
+| Path traversal | sanitized basename and fixed `.png` extension |
+| Page CSS/script interference | Shadow DOM, CSP, UI exclusion markers, isolated content world |
+| DOM leakage after capture | transactional exact restoration and `finally` cleanup |
+| Orphaned large payloads | startup/lazy/tab-close cleanup |
+| Remote code or exfiltration | self-only CSP and no network integration |
+
+## Reporting
+
+Do not include captured page content or stored data URLs in public reports. Provide extension version, Chrome version, command/mode and a minimal synthetic fixture.

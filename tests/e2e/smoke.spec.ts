@@ -45,7 +45,7 @@ test("4.1 built extension boots: service worker registers and options page rende
 
     const page = context.pages()[0] ?? (await context.newPage());
     await page.goto(`chrome-extension://${extensionId}/ui/options.html`);
-    await expect(page.getByRole("heading", { name: "PAROTIA" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "PAROTIA", exact: true })).toBeVisible({ timeout: 15_000 });
   } finally {
     await context.close();
   }
@@ -60,7 +60,7 @@ test("4.2 extension storage API works from options page", async () => {
 
     const page = context.pages()[0] ?? (await context.newPage());
     await page.goto(`chrome-extension://${extensionId}/ui/options.html`);
-    await expect(page.getByRole("heading", { name: "PAROTIA" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "PAROTIA", exact: true })).toBeVisible({ timeout: 15_000 });
 
     const result = await page.evaluate(() =>
       new Promise<Record<string, unknown>>((resolve) => {
@@ -104,6 +104,75 @@ test("4.4 navigating to chrome:// does not crash the service worker", async () =
     await page.waitForLoadState("domcontentloaded");
 
     expect(sw.url()).toBe(swUrl);
+  } finally {
+    await context.close();
+  }
+});
+
+test("4.5 staged capture opens in the real editor, draws, and consumes its save ticket", async () => {
+  const context = await launchContext();
+  try {
+    const sw = await waitForSW(context);
+    const extensionId = new URL(sw.url()).host;
+    const page = context.pages()[0] ?? (await context.newPage());
+    const editorUrl = `chrome-extension://${extensionId}/ui/editor.html`;
+    // Stage from a different extension page so the editor's first document
+    // load already contains the capability hash (a hash-only navigation would
+    // correctly keep the existing React document alive).
+    await page.goto(`chrome-extension://${extensionId}/ui/options.html`);
+
+    const token = "e".repeat(48);
+    const imageKey = `editor-image:${token}`;
+    const ticketKey = `editor-ticket:${token}`;
+    const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR42mP8z8AARAwMjDAGCAMAAP//AwA0AAH9lQZsAAAAAElFTkSuQmCC";
+    const tabId = await page.evaluate(async () => {
+      const tab = await chrome.tabs.getCurrent();
+      if (tab.id === undefined) throw new Error("Editor tab id unavailable");
+      return tab.id;
+    });
+    await page.evaluate(async ({ key, ticket, image, tab, tokenValue }) => {
+      await chrome.storage.local.set({
+        [key]: image,
+        [ticket]: {
+          imageKey: key,
+          tabId: tab,
+          sessionId: "e2e-editor",
+          expiresAt: Date.now() + 60_000,
+        },
+      });
+      return tokenValue;
+    }, { key: imageKey, ticket: ticketKey, image: png, tab: tabId, tokenValue: token });
+
+    const params = encodeURIComponent(JSON.stringify({
+      imageKey,
+      filename: "e2e-editor.png",
+      editorToken: token,
+      parentOrigin: `chrome-extension://${extensionId}`,
+    }));
+    await page.goto(`${editorUrl}#${params}`);
+    await expect(page.getByText("Parotia Editor")).toBeVisible();
+    await page.waitForTimeout(250);
+    if (await page.getByRole("button", { name: /save/i }).isDisabled()) {
+      const loadingError = await page.locator(".nc-editor-loading").textContent();
+      throw new Error(`Editor failed to load staged PNG: ${loadingError ?? "unknown error"}`);
+    }
+    await expect(page.getByRole("button", { name: /save/i })).toBeEnabled();
+
+    await page.getByText("Draw", { exact: true }).click();
+    await page.getByTitle("Rectangle").click();
+    const surface = page.locator(".konvajs-content");
+    await expect(surface).toBeVisible();
+    const box = await surface.boundingBox();
+    if (!box) throw new Error("Konva surface has no bounds");
+    await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.8);
+    await page.mouse.up();
+
+    await page.getByRole("button", { name: /save/i }).click();
+    await expect(page.getByRole("button", { name: /saved/i })).toBeDisabled();
+    const leftovers = await page.evaluate(async (key) => chrome.storage.local.get(key), ticketKey);
+    expect(leftovers[ticketKey]).toBeUndefined();
   } finally {
     await context.close();
   }

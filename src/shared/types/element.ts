@@ -1,5 +1,5 @@
 /**
- * Element reference model — NewsClean never persists or stores raw DOM nodes.
+ * Element reference model — Parotia never persists or stores raw DOM nodes.
  * An {@link ElementReference} is an identity + a resolution mechanism.
  */
 

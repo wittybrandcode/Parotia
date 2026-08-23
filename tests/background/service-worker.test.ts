@@ -38,6 +38,11 @@ interface ChromeStub {
   };
   downloads: { download: ReturnType<typeof vi.fn> };
   storage: {
+    session: {
+      get: ReturnType<typeof vi.fn>;
+      set: ReturnType<typeof vi.fn>;
+      remove: ReturnType<typeof vi.fn>;
+    };
     local: {
       get: ReturnType<typeof vi.fn>;
       set: ReturnType<typeof vi.fn>;
@@ -51,7 +56,7 @@ interface ChromeStub {
   };
 }
 
-function makeChromeStub(): ChromeStub {
+function makeChromeStub(sessionSeed: Record<string, { sessionId: string; createdAt: number }> = {}): ChromeStub {
   const captured: ChromeStub["captured"] = {};
   return {
     runtime: {
@@ -66,7 +71,7 @@ function makeChromeStub(): ChromeStub {
     },
     tabs: {
       query: vi.fn(),
-      get: vi.fn(),
+      get: vi.fn(async (tabId: number) => ({ id: tabId, windowId: 1 })),
       sendMessage: vi.fn(),
       captureVisibleTab: vi.fn(),
       getZoom: vi.fn(),
@@ -92,6 +97,11 @@ function makeChromeStub(): ChromeStub {
     },
     downloads: { download: vi.fn() },
     storage: {
+      session: {
+        get: vi.fn().mockResolvedValue({ "parotia:tab-sessions:v1": sessionSeed }),
+        set: vi.fn().mockResolvedValue(undefined),
+        remove: vi.fn().mockResolvedValue(undefined),
+      },
       local: { get: vi.fn(), set: vi.fn(), remove: vi.fn() },
     },
     captured,
@@ -102,9 +112,9 @@ function makeChromeStub(): ChromeStub {
 let chromeStub: ChromeStub;
 let sw: typeof ServiceWorkerModule;
 
-async function loadWorker(): Promise<void> {
+async function loadWorker(sessionSeed: Record<string, { sessionId: string; createdAt: number }> = {}): Promise<void> {
   vi.resetModules();
-  chromeStub = makeChromeStub();
+  chromeStub = makeChromeStub(sessionSeed);
   vi.stubGlobal("chrome", chromeStub);
   sw = await import("@background/service-worker");
 }
@@ -140,15 +150,118 @@ describe("service-worker", () => {
     expect(res.error?.code).toBe("UNKNOWN_COMMAND");
   });
 
+  it("rejects editor downloads from a sender other than the editor page", async () => {
+    const token = "a".repeat(48);
+    const res = await invokeOnMessage({
+      type: "DOWNLOAD_EDITOR_RESULT",
+      payload: { token, editorToken: token, dataUrl: "data:image/png;base64,iVBORw0KGgo=", filename: "capture.png" },
+    }, { url: "https://attacker.invalid/editor.html" });
+
+    expect(res.success).toBe(false);
+    expect(res.error?.code).toBe("INVALID_PAYLOAD");
+    expect(chromeStub.downloads.download).not.toHaveBeenCalled();
+  });
+
+  it("consumes a valid editor capability before downloading its PNG", async () => {
+    const token = "b".repeat(48);
+    chromeStub.runtime.getURL = (path) => `chrome-extension://test-extension/${path}`;
+    chromeStub.storage.local.get.mockImplementation(async (key: string) => ({
+      [key]: { imageKey: `editor-image:${token}`, tabId: 3, sessionId: "sess-editor", expiresAt: Date.now() + 60_000 },
+    }));
+    chromeStub.downloads.download.mockResolvedValue(7);
+
+    const res = await invokeOnMessage({
+      type: "DOWNLOAD_EDITOR_RESULT",
+      payload: { editorToken: token, dataUrl: "data:image/png;base64,iVBORw0KGgo=", filename: "unsafe/../capture.png" },
+    }, { url: "chrome-extension://test-extension/ui/editor.html#session", tab: { id: 3 } });
+
+    expect(res.success).toBe(true);
+    expect(chromeStub.storage.local.remove).toHaveBeenCalledWith([`editor-ticket:${token}`, `editor-image:${token}`]);
+    expect(chromeStub.downloads.download).toHaveBeenCalledWith(expect.objectContaining({ filename: "unsafe-..-capture.png" }));
+  });
+
+  it("rejects malformed PNG data before reading or consuming a capability", async () => {
+    const token = "c".repeat(48);
+    chromeStub.runtime.getURL = (path) => `chrome-extension://test-extension/${path}`;
+    const res = await invokeOnMessage({
+      type: "DOWNLOAD_EDITOR_RESULT",
+      payload: { editorToken: token, dataUrl: "data:image/png;base64,AAAA", filename: "capture.png" },
+    }, { url: "chrome-extension://test-extension/ui/editor.html", tab: { id: 3 } });
+
+    expect(res.success).toBe(false);
+    expect(res.error?.code).toBe("INVALID_PAYLOAD");
+    expect(chromeStub.downloads.download).not.toHaveBeenCalled();
+  });
+
+  it("requires exact editor path and the tab that owns the capability", async () => {
+    const token = "d".repeat(48);
+    const ticketKey = `editor-ticket:${token}`;
+    chromeStub.runtime.getURL = (path) => `chrome-extension://test-extension/${path}`;
+    chromeStub.storage.local.get.mockImplementation(async (key: string | null) => key === null ? {} : ({
+      [ticketKey]: { imageKey: `editor-image:${token}`, tabId: 3, sessionId: "sess-editor", expiresAt: Date.now() + 60_000 },
+    }));
+
+    const wrongPath = await invokeOnMessage({
+      type: "DISCARD_EDITOR_RESULT", payload: { editorToken: token },
+    }, { url: "chrome-extension://test-extension/ui/editor.html.attacker", tab: { id: 3 } });
+    expect(wrongPath.success).toBe(false);
+
+    const wrongTab = await invokeOnMessage({
+      type: "DISCARD_EDITOR_RESULT", payload: { editorToken: token },
+    }, { url: "chrome-extension://test-extension/ui/editor.html#state", tab: { id: 9 } });
+    expect(wrongTab.success).toBe(false);
+    expect(wrongTab.error?.message).toMatch(/does not own/i);
+  });
+
+  it("removes expired editor capabilities together with their staged image", async () => {
+    const token = "e".repeat(48);
+    const ticketKey = `editor-ticket:${token}`;
+    const imageKey = `editor-image:${token}`;
+    chromeStub.runtime.getURL = (path) => `chrome-extension://test-extension/${path}`;
+    chromeStub.storage.local.get.mockImplementation(async (key: string | null) => key === null ? {} : ({
+      [ticketKey]: { imageKey, tabId: 3, sessionId: "sess-editor", expiresAt: Date.now() - 1 },
+    }));
+
+    const res = await invokeOnMessage({
+      type: "DISCARD_EDITOR_RESULT", payload: { editorToken: token },
+    }, { url: "chrome-extension://test-extension/ui/editor.html", tab: { id: 3 } });
+    expect(res.success).toBe(false);
+    expect(chromeStub.storage.local.remove).toHaveBeenCalledWith([ticketKey, imageKey]);
+  });
+
+  it("rejects concurrent replay while an editor capability is being consumed", async () => {
+    const token = "f".repeat(48);
+    const ticketKey = `editor-ticket:${token}`;
+    chromeStub.runtime.getURL = (path) => `chrome-extension://test-extension/${path}`;
+    let releaseTicket!: (value: Record<string, unknown>) => void;
+    const delayedTicket = new Promise<Record<string, unknown>>((resolve) => { releaseTicket = resolve; });
+    chromeStub.storage.local.get.mockImplementation((key: string | null) => {
+      if (key === null) return Promise.resolve({});
+      return delayedTicket;
+    });
+    const message = { type: "DISCARD_EDITOR_RESULT", payload: { editorToken: token } };
+    const sender = { url: "chrome-extension://test-extension/ui/editor.html", tab: { id: 3 } };
+
+    const first = invokeOnMessage(message, sender);
+    await Promise.resolve();
+    const replay = await invokeOnMessage(message, sender);
+    expect(replay.success).toBe(false);
+    expect(replay.error?.message).toMatch(/already being consumed/i);
+
+    releaseTicket({
+      [ticketKey]: { imageKey: `editor-image:${token}`, tabId: 3, sessionId: "sess-editor", expiresAt: Date.now() + 60_000 },
+    });
+    expect((await first).success).toBe(true);
+  });
+
   it("injects the content script and records the session on START_SESSION", async () => {
-    chromeStub.tabs.query.mockResolvedValue([{ id: 42 }]);
     chromeStub.scripting.executeScript.mockResolvedValue([]);
     chromeStub.tabs.sendMessage.mockImplementation(async (_tabId: number, message: { type: string }) => {
       if (message.type === "PING") throw new Error("content script not injected");
       return okResponse({ sessionId: "sess-1" });
     });
 
-    const res = await invokeOnMessage({ type: "START_SESSION", payload: {} }, {});
+    const res = await invokeOnMessage({ type: "START_SESSION", payload: {} }, { tab: { id: 42 } });
 
     expect(chromeStub.scripting.executeScript).toHaveBeenCalledWith({
       target: { tabId: 42 },
@@ -158,8 +271,7 @@ describe("service-worker", () => {
     expect(sw.tabSessions.get(42)).toBe("sess-1");
   });
 
-  it("reports an internal error when there is no active tab", async () => {
-    chromeStub.tabs.query.mockResolvedValue([]);
+  it("rejects START_SESSION when no sender tab or stored owner is verified", async () => {
     const res = await invokeOnMessage({ type: "START_SESSION", payload: {} }, {});
     expect(res.success).toBe(false);
     expect(res.error?.code).toBe("INTERNAL");
@@ -188,13 +300,11 @@ describe("service-worker", () => {
     expect(chromeStub.tabs.sendMessage).not.toHaveBeenCalled();
   });
 
-  it("recovers a session after a worker restart and routes with the fresh id", async () => {
-    // Worker restarted: tabSessions is empty. The content script still owns
-    // the session, so the worker re-registers it and retries the command.
-    chromeStub.tabs.query.mockResolvedValue([{ id: 42 }]);
-    chromeStub.tabs.sendMessage.mockImplementation(async (_tabId: number, message: { type: string }) => {
-      if (message.type === "PING") throw new Error("content script not injected");
-      if (message.type === "START_SESSION") return okResponse({ sessionId: "sess-live" });
+  it("hydrates the exact session owner after a worker restart without using the active tab", async () => {
+    await loadWorker({
+      "42": { sessionId: "sess-stale", createdAt: Date.now() },
+    });
+    chromeStub.tabs.sendMessage.mockImplementation(async (_tabId: number) => {
       return okResponse({ success: true });
     });
 
@@ -203,12 +313,12 @@ describe("service-worker", () => {
       {},
     );
 
-    expect(sw.tabSessions.get(42)).toBe("sess-live");
+    expect(sw.tabSessions.get(42)).toBe("sess-stale");
     expect(chromeStub.tabs.sendMessage).toHaveBeenCalledWith(
       42,
       expect.objectContaining({
         type: "UNDO",
-        payload: expect.objectContaining({ sessionId: "sess-live" }),
+        payload: expect.objectContaining({ sessionId: "sess-stale" }),
       }),
     );
     expect(res.success).toBe(true);
@@ -259,7 +369,7 @@ describe("service-worker", () => {
     expect(res.success).toBe(true);
   });
 
-  it("captures the visible area, hides the toolbar, and downloads a PNG", async () => {
+  it("captures the visible area, hides the toolbar, and opens the editor", async () => {
     vi.useFakeTimers();
     sw.tabSessions.set(3, "sess-c");
     chromeStub.tabs.get.mockResolvedValue({ id: 3, windowId: 11 });
@@ -283,12 +393,15 @@ describe("service-worker", () => {
       3,
       expect.objectContaining({ type: "RESTORE_CAPTURE" }),
     );
-    expect(chromeStub.downloads.download).toHaveBeenCalledWith(
-      expect.objectContaining({ filename: expect.stringMatching(/^parotia-/) }),
+    // Editor mode: image stored in chrome.storage.local and OPEN_EDITOR sent
+    expect(chromeStub.storage.local.set).toHaveBeenCalled();
+    expect(chromeStub.tabs.sendMessage).toHaveBeenCalledWith(
+      3,
+      expect.objectContaining({ type: "OPEN_EDITOR" }),
     );
-    const data = res.data as { success?: boolean; filename?: string };
+    const data = res.data as { success?: boolean; filename?: string; editor?: boolean };
     expect(data.success).toBe(true);
-    expect(data.filename).toMatch(/^parotia-article-\d{8}-\d{6}\.png$/);
+    expect(data.editor).toBe(true);
     // Live progress is pushed to the toolbar during the capture.
     expect(chromeStub.tabs.sendMessage).toHaveBeenCalledWith(
       3,
@@ -296,11 +409,15 @@ describe("service-worker", () => {
     );
   });
 
-  it("rejects capture gracefully when download fails", async () => {
+  it("rejects capture gracefully when editor and download both fail", async () => {
     vi.useFakeTimers();
     sw.tabSessions.set(3, "sess-d");
     chromeStub.tabs.get.mockResolvedValue({ id: 3, windowId: 11 });
-    chromeStub.tabs.sendMessage.mockResolvedValue(okResponse({}));
+    // Make OPEN_EDITOR fail so it falls back to download, which also fails
+    chromeStub.tabs.sendMessage.mockImplementation(async (_tabId: number, message: { type: string }) => {
+      if (message.type === "OPEN_EDITOR") throw new Error("Editor unavailable");
+      return okResponse({});
+    });
     chromeStub.tabs.captureVisibleTab.mockResolvedValue("data:image/png;base64,AAAA");
     chromeStub.downloads.download.mockRejectedValue(new Error("Disk full"));
 
@@ -372,7 +489,7 @@ describe("service-worker", () => {
     expect(chromeStub.storage.local.remove).toHaveBeenCalledWith("capture:sess-f");
   });
 
-  it("captures a selected element at 2x zoom and crops it", async () => {
+  it("captures a visible selected element in one native frame without changing zoom", async () => {
     vi.useFakeTimers();
     sw.tabSessions.set(5, "sess-e");
     chromeStub.tabs.get.mockResolvedValue({ id: 5, windowId: 13 });
@@ -392,10 +509,10 @@ describe("service-worker", () => {
             elementDocTop: 0,
             elementHeightCss: 100,
             viewportHeightCss: 800,
+            viewportWidthCss: 1200,
+            fullyVisible: true,
           });
-        case "CAPTURE_ELEMENT_SCROLL":
-          return okResponse({ success: true, actualScrollY: message.payload?.scrollYCss ?? 0 });
-        case "CAPTURE_ELEMENT_FINALIZE":
+        case "CAPTURE_ELEMENT_CROP":
           return okResponse({ success: true });
         default:
           return okResponse({});
@@ -409,11 +526,104 @@ describe("service-worker", () => {
     await vi.advanceTimersByTimeAsync(4000);
     const res = await pending;
 
-    expect(chromeStub.tabs.setZoom).toHaveBeenCalledWith(5, 2);
+    expect(chromeStub.tabs.setZoom).not.toHaveBeenCalled();
+    expect(chromeStub.tabs.captureVisibleTab).toHaveBeenCalledTimes(1);
+    expect(chromeStub.tabs.sendMessage).toHaveBeenCalledWith(
+      5,
+      expect.objectContaining({
+        type: "CAPTURE_ELEMENT_CROP",
+        payload: expect.objectContaining({
+          dpr: 1,
+          rect: { left: 0, top: 0, width: 100, height: 100 },
+        }),
+      }),
+    );
     expect(chromeStub.storage.local.remove).toHaveBeenCalledWith("elementcapture:sess-e");
     const data = res.data as { success?: boolean; filename?: string };
     expect(data.success).toBe(true);
     expect(data.filename).toMatch(/^parotia-element-/);
+  });
+
+  it("stitches an offscreen element at native zoom and restores the original scroll", async () => {
+    vi.useFakeTimers();
+    sw.tabSessions.set(5, "sess-long-element");
+    chromeStub.tabs.get.mockResolvedValue({ id: 5, windowId: 13 });
+    chromeStub.tabs.captureVisibleTab.mockResolvedValue("data:image/png;base64,AAAA");
+    chromeStub.storage.local.get.mockResolvedValue({
+      "elementcapture:sess-long-element": "data:image/png;base64,CCCC",
+    });
+    chromeStub.storage.local.remove.mockResolvedValue(undefined);
+    chromeStub.tabs.sendMessage.mockImplementation(async (_tabId: number, message: { type: string; payload?: Record<string, unknown> }) => {
+      switch (message.type) {
+        case "PREPARE_ELEMENT_CAPTURE":
+          return okResponse({
+            success: true,
+            dpr: 1,
+            rect: { left: 10, top: 0, width: 300, height: 1000 },
+            elementDocTop: 100,
+            elementHeightCss: 1000,
+            viewportHeightCss: 600,
+            viewportWidthCss: 1200,
+            fullyVisible: false,
+          });
+        case "CAPTURE_ELEMENT_SCROLL":
+          return okResponse({ success: true, actualScrollY: message.payload?.scrollYCss });
+        case "CAPTURE_ELEMENT_SLICE":
+          return okResponse({ success: true, blank: false });
+        case "CAPTURE_ELEMENT_FINALIZE":
+          return okResponse({ success: true });
+        default:
+          return okResponse({});
+      }
+    });
+
+    const pending = invokeOnMessage(
+      { type: "CAPTURE", payload: { sessionId: "sess-long-element", mode: "ELEMENT", elementId: "el-long" } },
+      {},
+    );
+    await vi.advanceTimersByTimeAsync(5000);
+    const res = await pending;
+
+    expect(res.success).toBe(true);
+    expect(chromeStub.tabs.setZoom).not.toHaveBeenCalled();
+    expect(chromeStub.tabs.captureVisibleTab).toHaveBeenCalledTimes(2);
+    expect(chromeStub.tabs.sendMessage).toHaveBeenCalledWith(5, expect.objectContaining({ type: "CAPTURE_ELEMENT_FINALIZE" }));
+    expect(chromeStub.tabs.sendMessage).toHaveBeenCalledWith(5, expect.objectContaining({ type: "CAPTURE_ELEMENT_RESTORE" }));
+  });
+
+  it("fails cleanly when the single-frame element crop cannot be staged", async () => {
+    vi.useFakeTimers();
+    sw.tabSessions.set(5, "sess-crop-fail");
+    chromeStub.tabs.get.mockResolvedValue({ id: 5, windowId: 13 });
+    chromeStub.tabs.captureVisibleTab.mockResolvedValue("data:image/png;base64,AAAA");
+    chromeStub.tabs.sendMessage.mockImplementation(async (_tabId: number, message: { type: string }) => {
+      if (message.type === "PREPARE_ELEMENT_CAPTURE") {
+        return okResponse({
+          success: true,
+          dpr: 1,
+          rect: { left: 10, top: 10, width: 100, height: 100 },
+          elementDocTop: 10,
+          elementHeightCss: 100,
+          viewportHeightCss: 800,
+          viewportWidthCss: 1200,
+          fullyVisible: true,
+        });
+      }
+      if (message.type === "CAPTURE_ELEMENT_CROP") return okResponse({ success: false, error: "storage quota" });
+      return okResponse({});
+    });
+
+    const pending = invokeOnMessage(
+      { type: "CAPTURE", payload: { sessionId: "sess-crop-fail", mode: "ELEMENT", elementId: "el-9" } },
+      {},
+    );
+    await vi.advanceTimersByTimeAsync(3000);
+    const res = await pending;
+
+    expect(res.success).toBe(false);
+    expect(res.error?.message).toMatch(/storage quota/i);
+    expect(chromeStub.tabs.sendMessage).toHaveBeenCalledWith(5, expect.objectContaining({ type: "CAPTURE_ELEMENT_RESTORE" }));
+    expect(chromeStub.tabs.sendMessage).toHaveBeenCalledWith(5, expect.objectContaining({ type: "RESTORE_CAPTURE" }));
   });
 
   it("rejects element capture without an elementId at the boundary", async () => {
@@ -490,12 +700,15 @@ describe("service-worker", () => {
       expect.objectContaining({ type: "CAPTURE_REGION_CROP" }),
     );
     expect(chromeStub.storage.local.remove).toHaveBeenCalledWith("regioncapture:sess-r");
-    expect(chromeStub.downloads.download).toHaveBeenCalledWith(
-      expect.objectContaining({ filename: expect.stringMatching(/^parotia-region-/) }),
+    // Editor mode: image stored and OPEN_EDITOR sent
+    expect(chromeStub.storage.local.set).toHaveBeenCalled();
+    expect(chromeStub.tabs.sendMessage).toHaveBeenCalledWith(
+      8,
+      expect.objectContaining({ type: "OPEN_EDITOR" }),
     );
-    const data = res.data as { success?: boolean; filename?: string };
+    const data = res.data as { success?: boolean; filename?: string; editor?: boolean };
     expect(data.success).toBe(true);
-    expect(data.filename).toMatch(/^parotia-region-/);
+    expect(data.editor).toBe(true);
   });
 
   it("returns cancelled when the user escapes the free selection", async () => {

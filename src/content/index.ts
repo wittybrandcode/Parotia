@@ -3,9 +3,11 @@ import type {
   BackgroundCommand,
   CleanupState,
   FreezeState,
-  NewsCleanSession,
+  ParotiaSession,
 } from "@shared/types";
-import { isBackgroundCommand, isBackgroundNotification } from "@shared/types";
+import { isBackgroundCommand, isBackgroundNotification, validateBackgroundCommandShape } from "@shared/types";
+import { CONTENT_MESSAGE_SOURCE } from "@shared/constants";
+import { logger } from "@shared/utils/logger";
 import { createOverlay, type OverlayInstance } from "./overlay/overlay";
 import { currentPageContext, createSession, transitionSession } from "./session/session";
 import { HistoryEngine } from "./mutation/history";
@@ -20,6 +22,7 @@ import { KeyboardShortcuts } from "./keyboard/shortcuts";
 import { handleCleanupCommand } from "./handlers/cleanupHandler";
 import { handleCaptureCommand } from "./handlers/captureHandler";
 import type { HandlerContext } from "./handlers/types";
+import { createEditorModal, type EditorModal } from "./editor/editorModal";
 
 /**
  * Content Runtime entry. Wires the session, engines, and overlay together and
@@ -27,7 +30,7 @@ import type { HandlerContext } from "./handlers/types";
  * touched through the engines — never directly here.
  */
 
-let session: NewsCleanSession | null = null;
+let session: ParotiaSession | null = null;
 let overlay: OverlayInstance | null = null;
 let cleanup: DefaultCleanupEngine | null = null;
 let stitcher: CaptureStitcher | null = null;
@@ -47,6 +50,7 @@ const elementCapture = new ElementCaptureIsolator();
 const deleteSimilarPreviews = new Map<string, { signatures: string[]; expires: number }>();
 let deleteSimilarToken: string | null = null;
 let shortcuts: KeyboardShortcuts | null = null;
+let editorModal: EditorModal | null = null;
 
 function buildCleanupEngine(): DefaultCleanupEngine {
   return new DefaultCleanupEngine(mutations, {
@@ -141,19 +145,20 @@ function broadcastState(): void {
     actionLog: actionLogState(),
     history: historyState(),
   };
-  postToToolbar({ source: "newsclean-content", type: "STATE", state });
+  postToToolbar({ source: CONTENT_MESSAGE_SOURCE, type: "STATE", state });
 }
 
 /** Relays Service Worker progress (capture) to the toolbar iframe. */
 function broadcastProgress(progress: { current: number; total: number; phase: string }): void {
-  postToToolbar({ source: "newsclean-content", type: "PROGRESS", progress });
+  postToToolbar({ source: CONTENT_MESSAGE_SOURCE, type: "PROGRESS", progress });
 }
 
 function ensureRuntime(): void {
-  if (session && overlay && cleanup && shortcuts) return;
+  if (session && overlay && cleanup && shortcuts && editorModal) return;
   const page = currentPageContext();
   session = createSession(page);
-  overlay = createOverlay();
+  overlay = createOverlay(session.id);
+  editorModal = createEditorModal(overlay.shadow);
   cleanup = buildCleanupEngine();
   // Keyboard shortcuts reuse the exact same command pipeline as the toolbar.
   shortcuts = new KeyboardShortcuts({
@@ -202,9 +207,10 @@ const CLEANUP_TYPES = new Set<string>([
 
 const CAPTURE_TYPES = new Set<string>([
   "CAPTURE", "PREPARE_CAPTURE", "RESTORE_CAPTURE",
-  "PREPARE_ELEMENT_CAPTURE", "CAPTURE_ELEMENT_SCROLL",
+  "PREPARE_ELEMENT_CAPTURE", "CAPTURE_ELEMENT_CROP", "CAPTURE_ELEMENT_SCROLL",
   "CAPTURE_ELEMENT_SLICE", "CAPTURE_ELEMENT_FINALIZE", "CAPTURE_ELEMENT_RESTORE",
   "FREE_SELECT", "CAPTURE_REGION_CROP",
+  "PREPARE_REGION_CAPTURE", "RESTORE_REGION_CAPTURE",
   "CAPTURE_STITCH_START", "CAPTURE_SCROLL", "CAPTURE_SLICE", "CAPTURE_FINALIZE",
   "SELECT_REGION",
 ]);
@@ -257,10 +263,19 @@ async function handleCommand(command: BackgroundCommand): Promise<unknown> {
       cleanup?.stopInspecting();
       shortcuts?.stop();
       shortcuts = null;
+      editorModal?.destroy();
+      editorModal = null;
       overlay?.destroy();
       overlay = null;
       session = null;
       cleanup = null;
+      return { success: true };
+    }
+
+    case "OPEN_EDITOR": {
+      ensureRuntime();
+      const { imageKey, filename, editorToken } = command.payload;
+      editorModal?.show(imageKey, filename, editorToken);
       return { success: true };
     }
 
@@ -289,6 +304,8 @@ function getSnapshot() {
  * session — and is rejected before any DOM side effect.
  */
 function validatePayload(command: BackgroundCommand): string | null {
+  const shapeError = validateBackgroundCommandShape(command);
+  if (shapeError) return shapeError;
   if (command.type === "START_SESSION") return null;
   const payload = command.payload as { sessionId?: unknown };
   if (typeof payload.sessionId !== "string" || payload.sessionId === "") {
@@ -301,35 +318,30 @@ function validatePayload(command: BackgroundCommand): string | null {
 }
 
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+  // PING keeps injection checks cheap; respond immediately.
+  const ping = message as { type?: string };
+  if (ping?.type === "PING") {
+    sendResponse({ id: "", success: true, data: { injected: true } });
+    return false;
+  }
+
+  // Push notifications are never routed through the command executor.
+  if (isBackgroundNotification(message)) {
+    broadcastProgress(message.payload.progress);
+    return false;
+  }
+
   if (!isBackgroundCommand(message)) return false;
   const command = message as BackgroundCommand;
   const id = (message as { id?: string }).id ?? "";
   handleCommand(command).then(
     (data) => sendResponse({ id, success: true, data }),
     (error: Error) => {
-      console.error("[parotia] command failed", command.type, error);
+      logger.error("content.command_failed", { command: command.type, sessionId: session?.id }, error);
       sendResponse({ id, success: false, error: { code: "INTERNAL", message: error.message } });
     },
   );
-  return true; // async response
-});
-
-// PING keeps injection checks cheap; respond immediately.
-chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
-  const ping = message as { type?: string };
-  if (ping?.type === "PING") {
-    sendResponse({ id: "", success: true, data: { injected: true } });
-    return false;
-  }
-  return false;
-});
-
-// Push notifications from the Service Worker (never commands): relay capture
-// progress to the toolbar so it can render live progress instead of a spinner.
-chrome.runtime.onMessage.addListener((message: unknown) => {
-  if (!isBackgroundNotification(message)) return false;
-  broadcastProgress(message.payload.progress);
-  return false;
+  return true;
 });
 
 export {};

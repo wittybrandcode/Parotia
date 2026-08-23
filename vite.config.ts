@@ -27,6 +27,7 @@ export default defineConfig({
       input: {
         index: path.join(dir, "src/ui/index.html"),
         options: path.join(dir, "src/ui/options.html"),
+        editor: path.join(dir, "src/ui/editor.html"),
       },
     },
   },

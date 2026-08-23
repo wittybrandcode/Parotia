@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Parotia deterministic capture matrix</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 16px/1.45 Arial, sans-serif; color: #182027; background: #fff; }
+    header { position: sticky; top: 0; z-index: 2; height: 56px; padding: 16px; color: white; background: #17324d; }
+    main { width: 720px; max-width: 100%; margin: auto; padding: 24px; }
+    .checker { height: 1201px; background: repeating-linear-gradient(#fff 0 49px, #d8e7f1 50px 99px); }
+    .tweet { display: grid; grid-template-columns: 56px 1fr; gap: 12px; padding: 18px; border: 1px solid #ccd6dd; border-radius: 16px; }
+    .avatar-shell { opacity: 1; width: 48px; height: 48px; }
+    .avatar { width: 48px; height: 48px; border-radius: 50%; }
+    .css-image { width: 160px; height: 90px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='90'%3E%3Crect width='160' height='90' fill='%23c1e899'/%3E%3C/svg%3E"); }
+    .intentionally-hidden { display: none; }
+  </style>
+</head>
+<body>
+  <header data-fixture="sticky">Deterministic header</header>
+  <main dir="ltr">
+    <article data-fixture="article">
+      <h1>Capture contract fixture</h1>
+      <p>Stable text verifies font and DOM rendering without a remote dependency.</p>
+      <section class="tweet" data-fixture="twitter-like">
+        <div class="avatar-shell">
+          <img class="avatar" loading="lazy" alt="profile" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Ccircle cx='24' cy='24' r='24' fill='%231d9bf0'/%3E%3C/svg%3E">
+        </div>
+        <div><strong>Profile avatar contract</strong><p>The avatar and this text must both remain visible.</p></div>
+      </section>
+      <section data-fixture="media-matrix">
+        <picture><source media="(min-width:1px)" srcset="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='80'%3E%3Crect width='200' height='80' fill='%23e7bbff'/%3E%3C/svg%3E"><img alt="picture" width="200" height="80"></picture>
+        <svg width="160" height="90"><image href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='90'%3E%3Crect width='160' height='90' fill='%23ffcc80'/%3E%3C/svg%3E" width="160" height="90"/></svg>
+        <canvas id="fixture-canvas" width="160" height="90"></canvas>
+        <video width="160" height="90" poster="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='90'%3E%3Crect width='160' height='90' fill='%2380cbc4'/%3E%3C/svg%3E"></video>
+        <div class="css-image"></div>
+        <div id="open-shadow"></div>
+        <div class="intentionally-hidden">Must never be forced visible</div>
+      </section>
+    </article>
+    <div class="checker" data-fixture="long-page"></div>
+    <section dir="rtl" data-fixture="rtl">نص ثابت لاختبار اتجاه الكتابة وحدود الالتقاط.</section>
+  </main>
+  <script>
+    const canvas = document.getElementById("fixture-canvas");
+    const context = canvas.getContext("2d");
+    context.fillStyle = "#ef5350";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    const shadow = document.getElementById("open-shadow").attachShadow({ mode: "open" });
+    const image = document.createElement("img");
+    image.alt = "open shadow image";
+    image.width = 160;
+    image.height = 90;
+    image.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='90'%3E%3Crect width='160' height='90' fill='%2390caf9'/%3E%3C/svg%3E";
+    shadow.append(image);
+    if (new URLSearchParams(location.search).has("dynamic")) {
+      setInterval(() => document.body.dataset.tick = String(Date.now()), 50);
+    }
+  </script>
+</body>
+</html>

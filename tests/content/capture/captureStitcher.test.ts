@@ -110,14 +110,14 @@ describe("DefaultCaptureStitcher", () => {
     const stitcher = new DefaultCaptureStitcher();
 
     stitcher.start(1000, 2);
-    await stitcher.addSlice(PNG_DATA_URL, 500);
-    await stitcher.addSlice(PNG_DATA_URL, 900);
+    await stitcher.addSlice(PNG_DATA_URL, 0);
+    await stitcher.addSlice(PNG_DATA_URL, 600);
 
     expect(drawImage).toHaveBeenCalledTimes(2);
-    // Slice 1: nextY=0, drawHeight=min(800, 2000)=800.
+    // Slice 1 starts at document y=0.
     expect(drawImage).toHaveBeenNthCalledWith(1, expect.anything(), 0, 0, 800, 800, 0, 0, 800, 800);
-    // Slice 2: nextY=800, remaining=2000-800=1200, drawHeight=min(800, 1200)=800.
-    expect(drawImage).toHaveBeenNthCalledWith(2, expect.anything(), 0, 0, 800, 800, 0, 800, 800, 800);
+    // Slice 2 is placed from its actual CSS scroll coordinate (600*2).
+    expect(drawImage).toHaveBeenNthCalledWith(2, expect.anything(), 0, 0, 800, 800, 0, 1200, 800, 800);
     stitcher.dispose();
   });
 
@@ -131,12 +131,11 @@ describe("DefaultCaptureStitcher", () => {
     stitcher.start(1000, 1);
     const canvas = document.documentElement.querySelector("canvas");
     await stitcher.addSlice(PNG_DATA_URL, 0);
-    await stitcher.addSlice(PNG_DATA_URL, 100);
+    await stitcher.addSlice(PNG_DATA_URL, 800);
 
     // First slice sets the width to 800; the second must not reset it to 400.
     expect(canvas?.width).toBe(800);
-    // Slice 1: nextY=0, drawHeight=min(800, 1000)=800.
-    // Slice 2: nextY=800, remaining=1000-800=200, drawHeight=min(800, 200)=200.
+    // Slice 2 is clipped at the page bottom.
     expect(drawImage).toHaveBeenNthCalledWith(2, expect.anything(), 0, 0, 400, 200, 0, 800, 400, 200);
     stitcher.dispose();
   });
@@ -150,6 +149,48 @@ describe("DefaultCaptureStitcher", () => {
 
     // rel = 200 - 200 = 0 → drawn at y = 0.
     expect(drawImage).toHaveBeenNthCalledWith(1, expect.anything(), 0, 0, 600, 900, 0, 0, 600, 900);
+    stitcher.dispose();
+  });
+
+  it("crops the source when an element starts below the maximum scroll position", async () => {
+    const { drawImage } = installCaptureStubs([{ width: 600, height: 900, close: () => {} }]);
+    const stitcher = new DefaultCaptureStitcher();
+
+    stitcher.start(500, 1, 700);
+    await stitcher.addSlice(PNG_DATA_URL, 500);
+
+    expect(drawImage).toHaveBeenCalledWith(expect.anything(), 0, 200, 600, 500, 0, 0, 600, 500);
+    await expect(stitcher.finalize()).resolves.toBe(PNG_DATA_URL);
+    stitcher.dispose();
+  });
+
+  it("overwrites an overlapping last viewport at its real coordinate without appending it", async () => {
+    const { drawImage } = installCaptureStubs([
+      { width: 800, height: 600, close: () => {} },
+      { width: 800, height: 600, close: () => {} },
+      { width: 800, height: 600, close: () => {} },
+    ]);
+    const stitcher = new DefaultCaptureStitcher();
+    stitcher.start(1300, 1);
+    await stitcher.addSlice(PNG_DATA_URL, 0);
+    await stitcher.addSlice(PNG_DATA_URL, 600);
+    await stitcher.addSlice(PNG_DATA_URL, 700);
+
+    expect(drawImage).toHaveBeenNthCalledWith(3, expect.anything(), 0, 0, 800, 600, 0, 700, 800, 600);
+    await expect(stitcher.finalize()).resolves.toBe(PNG_DATA_URL);
+    stitcher.dispose();
+  });
+
+  it("rejects finalization when actual scroll positions leave a pixel gap", async () => {
+    installCaptureStubs([
+      { width: 800, height: 500, close: () => {} },
+      { width: 800, height: 400, close: () => {} },
+    ]);
+    const stitcher = new DefaultCaptureStitcher();
+    stitcher.start(1000, 1);
+    await stitcher.addSlice(PNG_DATA_URL, 0);
+    await stitcher.addSlice(PNG_DATA_URL, 600);
+    await expect(stitcher.finalize()).rejects.toThrow("without gaps");
     stitcher.dispose();
   });
 

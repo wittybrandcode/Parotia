@@ -22,6 +22,7 @@ const chromeStub = {
   },
   tabs: {
     query: vi.fn(),
+    get: vi.fn(async (tabId: number) => ({ id: tabId })),
     sendMessage: vi.fn(),
     onRemoved: { addListener: vi.fn() },
     onUpdated: { addListener: vi.fn() },
@@ -30,6 +31,11 @@ const chromeStub = {
   scripting: { executeScript: vi.fn() },
   downloads: { download: vi.fn() as (...args: unknown[]) => Promise<number> },
   storage: {
+    session: {
+      get: vi.fn(async (_keys?: string | string[] | Record<string, unknown> | null) => ({})),
+      set: vi.fn(async (_items: Record<string, unknown>) => undefined),
+      remove: vi.fn(async (_keys: string | string[]) => undefined),
+    },
     local: {
       get: vi.fn(),
       set: vi.fn(),
