@@ -517,7 +517,7 @@ PR-07  real E2E + CI + docs + release
 | ESLint | `npm run lint` ✅، بلا تحذيرات |
 | Security invariants | `npm run check:security` ✅ |
 | Dependency audit | `npm audit` ✅، صفر ثغرات مع تثبيت نظيف `--ignore-scripts` |
-| Vitest | 314/314 عبر 36 ملفاً ✅ |
+| Vitest | 315/315 عبر 36 ملفاً ✅ |
 | Coverage | 90.85% lines/statements، 88.91% functions، 78.66% branches ✅ |
 | Critical-file gates | ستة ملفات: capture/annotation/modal/session/tickets/coordinator ✅ |
 | Production build | content/background/UI/icons/manifest ✅ |

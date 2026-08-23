@@ -146,6 +146,24 @@ describe("ui toolbar App", () => {
     expect(screen.queryByText("Removed 3 elements")).not.toBeInTheDocument();
   });
 
+  it("ignores a STATE broadcast from an unexpected origin even when the sender is the parent", async () => {
+    installSendMessage(statefulHandler);
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("Removed 0 elements")).toBeInTheDocument());
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "newsclean-content", type: "STATE", state: frozenState },
+        source: window.parent,
+        origin: "https://evil.example",
+      }),
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.getByText("Removed 0 elements")).toBeInTheDocument();
+    expect(screen.queryByText("Removed 3 elements")).not.toBeInTheDocument();
+  });
+
   it("shows live capture progress and keeps it while STATE broadcasts arrive mid-capture", async () => {
     installSendMessage(statefulHandler);
     render(<App />);
