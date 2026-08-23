@@ -13,10 +13,20 @@ export interface SliceResult {
   blank?: boolean;
 }
 
+export interface StitchFinalizeResult {
+  dataUrl: string;
+  complete: boolean;
+  capturedHeightCss: number;
+  requestedHeightCss: number;
+  gapCount: number;
+}
+
 export interface CaptureStitcher {
-  start(pageHeightCss: number, dpr: number, baseScrollCss?: number): void;
+  start(pageHeightCss: number, dpr: number, baseScrollCss?: number, viewportHeightCss?: number): void;
   addSlice(dataUrl: string, scrollYCss: number): Promise<SliceResult>;
   finalize(): Promise<string>;
+  /** Full-page capture may export the continuous top portion as a fallback. */
+  finalizeBestEffort?(): Promise<StitchFinalizeResult>;
   dispose(): void;
 }
 
@@ -25,14 +35,18 @@ export class DefaultCaptureStitcher implements CaptureStitcher {
   private ctx: CanvasRenderingContext2D | null = null;
   private pageHeightCss = 0;
   private dpr = 1;
+  private pixelScale = 1;
   private baseScrollCss = 0;
+  private viewportHeightCss = 0;
   private widthSet = false;
   private painted: Array<{ start: number; end: number }> = [];
 
-  start(pageHeightCss: number, dpr: number, baseScrollCss = 0): void {
+  start(pageHeightCss: number, dpr: number, baseScrollCss = 0, viewportHeightCss = 0): void {
     this.pageHeightCss = pageHeightCss;
     this.dpr = dpr || 1;
+    this.pixelScale = this.dpr;
     this.baseScrollCss = baseScrollCss || 0;
+    this.viewportHeightCss = viewportHeightCss > 0 ? viewportHeightCss : 0;
     this.widthSet = false;
     this.painted = [];
     const canvas = document.createElement("canvas");
@@ -54,12 +68,21 @@ export class DefaultCaptureStitcher implements CaptureStitcher {
     const bitmap = await loadBitmap(dataUrl);
     const blank = bitmapLooksBlank(bitmap);
     if (!this.widthSet && bitmap.width > 0) {
+      // captureVisibleTab's real bitmap scale can differ from the page's
+      // devicePixelRatio (notably at fractional tab/OS zoom). Deriving the
+      // vertical scale from the first captured viewport keeps slice positions,
+      // bitmap heights and the destination canvas in the same coordinate space.
+      if (this.viewportHeightCss > 0 && bitmap.height > 0) {
+        const measuredScale = bitmap.height / this.viewportHeightCss;
+        if (Number.isFinite(measuredScale) && measuredScale > 0) this.pixelScale = measuredScale;
+      }
       canvas.width = bitmap.width;
+      canvas.height = canvasHeightFor(this.pageHeightCss, this.pixelScale);
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       this.widthSet = true;
     }
-    const rawY = Math.round((scrollYCss - this.baseScrollCss) * this.dpr);
+    const rawY = Math.round((scrollYCss - this.baseScrollCss) * this.pixelScale);
     const sourceY = Math.max(0, -rawY);
     const y = Math.max(0, rawY);
     const remaining = Math.max(0, canvas.height - y);
@@ -86,11 +109,64 @@ export class DefaultCaptureStitcher implements CaptureStitcher {
     return canvasToPngDataUrl(canvas);
   }
 
+  /**
+   * Returns the complete image whenever possible. If a hostile/dynamic page
+   * still leaves a real gap, export only the continuous portion starting at
+   * the top instead of presenting white holes as if the capture were complete.
+   */
+  async finalizeBestEffort(): Promise<StitchFinalizeResult> {
+    const canvas = this.canvas;
+    if (!canvas) throw new Error("Stitcher not started");
+    const coverage = this.painted[0];
+    const complete = Boolean(
+      coverage && coverage.start <= 0 && coverage.end >= canvas.height && this.painted.length === 1,
+    );
+    if (complete) {
+      return {
+        dataUrl: await canvasToPngDataUrl(canvas),
+        complete: true,
+        capturedHeightCss: this.pageHeightCss,
+        requestedHeightCss: this.pageHeightCss,
+        gapCount: 0,
+      };
+    }
+    if (!coverage || coverage.start > 0 || coverage.end <= 0 || canvas.width <= 0) {
+      throw new Error("Capture slices did not cover the top of the requested image");
+    }
+
+    const capturedHeightPx = Math.min(canvas.height, Math.floor(coverage.end));
+    const partial = document.createElement("canvas");
+    partial.width = canvas.width;
+    partial.height = Math.max(1, capturedHeightPx);
+    const partialCtx = partial.getContext("2d");
+    if (!partialCtx) throw new Error("Could not create a fallback capture canvas");
+    partialCtx.drawImage(
+      canvas,
+      0,
+      0,
+      canvas.width,
+      partial.height,
+      0,
+      0,
+      canvas.width,
+      partial.height,
+    );
+    return {
+      dataUrl: await canvasToPngDataUrl(partial),
+      complete: false,
+      capturedHeightCss: Math.min(this.pageHeightCss, Math.floor(capturedHeightPx / this.pixelScale)),
+      requestedHeightCss: this.pageHeightCss,
+      gapCount: Math.max(1, this.painted.length - 1),
+    };
+  }
+
   dispose(): void {
     this.canvas?.remove();
     this.canvas = null;
     this.ctx = null;
     this.widthSet = false;
+    this.pixelScale = 1;
+    this.viewportHeightCss = 0;
     this.painted = [];
   }
 

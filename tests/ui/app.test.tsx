@@ -214,6 +214,30 @@ describe("ui toolbar App", () => {
     );
   });
 
+  it("shows the explicit warning returned for a partial full-page capture", async () => {
+    const warning = "Only the first 4200px of 8088px could be captured continuously.";
+    installSendMessage((message) => {
+      if (message.type === "START_SESSION" || message.type === "GET_STATE") {
+        return { success: true, data: baseState };
+      }
+      if (message.type === "CAPTURE") {
+        return {
+          success: true,
+          data: { success: true, partial: true, warning, filename: "parotia-fullpage-partial-page.png" },
+        };
+      }
+      return { success: true, data: { success: true } };
+    });
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("Removed 0 elements")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Capture" }));
+
+    const message = await screen.findByText(warning);
+    expect(message).toBeInTheDocument();
+    expect(message.closest(".nc-feedback")).toHaveAttribute("data-feedback-warning", "true");
+  });
+
   it("sends CAPTURE in REGION mode when Select is clicked", async () => {
     installSendMessage(statefulHandler);
     render(<App />);

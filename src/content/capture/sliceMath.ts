@@ -6,6 +6,14 @@
 
 export const MAX_CANVAS_DIMENSION = 32767;
 
+/**
+ * Adjacent viewport captures deliberately overlap by a few CSS pixels. Chrome
+ * can round the captured bitmap height down at fractional DPR/tab zoom while
+ * scroll coordinates round up; without overlap that creates a one-pixel hole
+ * which the stitcher's completeness check correctly rejects.
+ */
+export const CAPTURE_SLICE_OVERLAP_CSS = 8;
+
 export interface PageMetrics {
   scrollHeight: number;
   viewportHeight: number;
@@ -23,10 +31,16 @@ export function canvasHeightFor(pageHeightCss: number, dpr: number): number {
 
 /** Scroll positions (CSS px) to capture, covering the whole page. */
 export function planSlices(pageHeightCss: number, viewportHeightCss: number): number[] {
-  const step = Math.max(1, Math.round(viewportHeightCss));
+  const pageHeight = Math.max(0, Math.round(pageHeightCss));
+  const viewportHeight = Math.max(1, Math.round(viewportHeightCss));
+  const maxScroll = Math.max(0, pageHeight - viewportHeight);
+  if (maxScroll === 0) return [0];
+
+  const overlap = Math.min(CAPTURE_SLICE_OVERLAP_CSS, viewportHeight - 1);
+  const step = Math.max(1, viewportHeight - overlap);
   const scrollYs: number[] = [];
-  for (let y = 0; y < pageHeightCss; y += step) scrollYs.push(y);
-  if (scrollYs.length === 0) scrollYs.push(0);
+  for (let y = 0; y < maxScroll; y += step) scrollYs.push(y);
+  if (scrollYs.at(-1) !== maxScroll) scrollYs.push(maxScroll);
   return scrollYs;
 }
 

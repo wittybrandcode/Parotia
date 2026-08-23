@@ -4,6 +4,19 @@ All notable changes to Parotia are documented here.
 
 ---
 
+## [1.4.1] - 2026-08-24
+
+### Full-page capture reliability
+
+- Full-page slices now overlap by a bounded eight CSS pixels and use only reachable scroll positions, preventing fractional DPR/tab-zoom rounding from leaving one-pixel holes that made the completeness check reject pages such as the reported `8088px` case.
+- The stitcher now calibrates its pixel scale from the first real Chrome viewport bitmap instead of assuming `devicePixelRatio` exactly matches `captureVisibleTab`, eliminating persistent gaps at fractional browser/OS scaling.
+- If a dynamic page still creates an unrepairable gap, Parotia exports only the continuous top portion with a `partial` filename and an explicit captured/requested-height warning instead of failing the entire operation or silently inserting blank pixels.
+- Full-page preparation temporarily disables smooth scrolling, scroll snapping and scroll anchoring, then restores the page exactly after capture.
+- Toolbar broadcasts now wait for a validated extension-origin iframe handshake, eliminating early `postMessage` target-origin errors while the frame is still `about:blank` at the page origin.
+- Added direct coverage for the `8088px` fractional-DPR/real-bitmap-scale assembly path, partial fallback contract and iframe readiness boundary; 323 Vitest tests now pass.
+
+---
+
 ## [1.4.0] - 2026-08-23
 
 ### Capture correctness and page safety

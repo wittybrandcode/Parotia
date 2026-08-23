@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DefaultCaptureStitcher, bitmapLooksBlank } from "@content/capture/captureStitcher";
-import { canvasHeightFor } from "@content/capture/sliceMath";
+import { canvasHeightFor, planSlices } from "@content/capture/sliceMath";
 
 type FakeBitmap = { width: number; height: number; close: () => void };
 
@@ -181,6 +181,40 @@ describe("DefaultCaptureStitcher", () => {
     stitcher.dispose();
   });
 
+  it("assembles an 8088px page at fractional DPR without rounding gaps", async () => {
+    const pageHeight = 8088;
+    const viewportHeight = 1241;
+    const dpr = 1.25;
+    const positions = planSlices(pageHeight, viewportHeight);
+    const bitmapHeight = Math.floor(viewportHeight * dpr);
+    installCaptureStubs(positions.map(() => ({ width: 1600, height: bitmapHeight, close: () => {} })));
+    const stitcher = new DefaultCaptureStitcher();
+
+    stitcher.start(pageHeight, dpr, 0, viewportHeight);
+    for (const position of positions) await stitcher.addSlice(PNG_DATA_URL, position);
+
+    await expect(stitcher.finalize()).resolves.toBe(PNG_DATA_URL);
+    stitcher.dispose();
+  });
+
+  it("uses the captured viewport scale when it differs from the reported DPR", async () => {
+    const pageHeight = 8088;
+    const viewportHeight = 1241;
+    const reportedDpr = 1.25;
+    const actualBitmapHeight = 1365;
+    const positions = planSlices(pageHeight, viewportHeight);
+    installCaptureStubs(positions.map(() => ({ width: 1400, height: actualBitmapHeight, close: () => {} })));
+    const stitcher = new DefaultCaptureStitcher();
+
+    stitcher.start(pageHeight, reportedDpr, 0, viewportHeight);
+    for (const position of positions) await stitcher.addSlice(PNG_DATA_URL, position);
+
+    const canvas = document.documentElement.querySelector("canvas");
+    expect(canvas?.height).toBe(Math.round(pageHeight * (actualBitmapHeight / viewportHeight)));
+    await expect(stitcher.finalize()).resolves.toBe(PNG_DATA_URL);
+    stitcher.dispose();
+  });
+
   it("rejects finalization when actual scroll positions leave a pixel gap", async () => {
     installCaptureStubs([
       { width: 800, height: 500, close: () => {} },
@@ -191,6 +225,26 @@ describe("DefaultCaptureStitcher", () => {
     await stitcher.addSlice(PNG_DATA_URL, 0);
     await stitcher.addSlice(PNG_DATA_URL, 600);
     await expect(stitcher.finalize()).rejects.toThrow("without gaps");
+    stitcher.dispose();
+  });
+
+  it("exports the continuous top portion when a real gap remains", async () => {
+    installCaptureStubs([
+      { width: 800, height: 500, close: () => {} },
+      { width: 800, height: 400, close: () => {} },
+    ]);
+    const stitcher = new DefaultCaptureStitcher();
+    stitcher.start(1000, 1);
+    await stitcher.addSlice(PNG_DATA_URL, 0);
+    await stitcher.addSlice(PNG_DATA_URL, 600);
+
+    await expect(stitcher.finalizeBestEffort()).resolves.toEqual({
+      dataUrl: PNG_DATA_URL,
+      complete: false,
+      capturedHeightCss: 500,
+      requestedHeightCss: 1000,
+      gapCount: 1,
+    });
     stitcher.dispose();
   });
 

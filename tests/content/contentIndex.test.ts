@@ -154,6 +154,11 @@ describe("content/index command pipeline", () => {
     expect(frame).not.toBeNull();
     if (!frame?.contentWindow) return;
 
+    window.dispatchEvent(new MessageEvent("message", {
+      data: { source: "parotia-ui", type: "RESIZE", height: 52 },
+      source: frame.contentWindow,
+      origin: new URL(chrome.runtime.getURL("")).origin,
+    }));
     const postMessage = vi.spyOn(frame.contentWindow, "postMessage");
     await invokeOnMessage({
       type: "CAPTURE_PROGRESS",

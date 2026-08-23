@@ -7,7 +7,7 @@
 | تاريخ التدقيق | 2026-08-23 |
 | الفرع | `master` |
 | أساس Git | `635b6c1` مع تغييرات محلية غير مدمجة |
-| الإصدار الحالي | `1.4.0` |
+| الإصدار الحالي | `1.4.1` |
 | نطاق التدقيق | `src/` و`tests/` و`scripts/` و`.github/` والوثائق |
 | حالة الوثيقة | جاهزة للتنفيذ، وتحل محل النسخة السابقة من خطة الإصلاح |
 
@@ -517,7 +517,7 @@ PR-07  real E2E + CI + docs + release
 | ESLint | `npm run lint` ✅، بلا تحذيرات |
 | Security invariants | `npm run check:security` ✅ |
 | Dependency audit | `npm audit` ✅، صفر ثغرات مع تثبيت نظيف `--ignore-scripts` |
-| Vitest | 315/315 عبر 36 ملفاً ✅ |
+| Vitest | 323/323 عبر 36 ملفاً ✅ |
 | Coverage | 90.85% lines/statements، 88.91% functions، 78.66% branches ✅ |
 | Critical-file gates | ستة ملفات: capture/annotation/modal/session/tickets/coordinator ✅ |
 | Production build | content/background/UI/icons/manifest ✅ |

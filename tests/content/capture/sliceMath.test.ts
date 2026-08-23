@@ -12,12 +12,22 @@ describe("sliceMath", () => {
     expect(planSlices(500, 800)).toEqual([0]);
   });
 
-  it("steps through the page one viewport at a time", () => {
-    expect(planSlices(2500, 800)).toEqual([0, 800, 1600, 2400]);
+  it("covers the page with overlapping, browser-reachable scroll positions", () => {
+    expect(planSlices(2500, 800)).toEqual([0, 792, 1584, 1700]);
   });
 
-  it("covers an exact multiple without an extra slice", () => {
-    expect(planSlices(1600, 800)).toEqual([0, 800]);
+  it("keeps overlap even when the page is an exact viewport multiple", () => {
+    expect(planSlices(1600, 800)).toEqual([0, 792, 800]);
+  });
+
+  it("plans the reported 8088px failure case without uncovered CSS gaps", () => {
+    const viewportHeight = 1241;
+    const positions = planSlices(8088, viewportHeight);
+    expect(positions[0]).toBe(0);
+    expect(positions.at(-1)).toBe(8088 - viewportHeight);
+    for (let index = 1; index < positions.length; index++) {
+      expect((positions[index] ?? 0) - (positions[index - 1] ?? 0)).toBeLessThan(viewportHeight);
+    }
   });
 
   it("clips the last slice to the page bottom", () => {

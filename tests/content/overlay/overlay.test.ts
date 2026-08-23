@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createOverlay } from "@content/overlay/overlay";
 
 describe("createOverlay", () => {
@@ -62,5 +62,27 @@ describe("createOverlay", () => {
       origin: extensionOrigin,
     });
     expect(frame.style.height).toBe("320px");
+  });
+
+  it("does not post until the toolbar proves its extension origin", () => {
+    const frame = overlay.shadow.querySelector("iframe[data-newsclean-frame]") as HTMLIFrameElement | null;
+    expect(frame?.contentWindow).not.toBeNull();
+    if (!frame?.contentWindow) return;
+    const postMessage = vi.spyOn(frame.contentWindow, "postMessage");
+
+    expect(overlay.postToToolbar({ type: "STATE" })).toBe(false);
+    expect(postMessage).not.toHaveBeenCalled();
+
+    window.dispatchEvent(new MessageEvent("message", {
+      data: { source: "parotia-ui", type: "RESIZE", height: 52 },
+      source: frame.contentWindow,
+      origin: new URL(chrome.runtime.getURL("")).origin,
+    }));
+
+    expect(overlay.postToToolbar({ type: "STATE" })).toBe(true);
+    expect(postMessage).toHaveBeenCalledWith(
+      { type: "STATE" },
+      new URL(chrome.runtime.getURL("")).origin,
+    );
   });
 });
