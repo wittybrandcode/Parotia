@@ -33,6 +33,7 @@ All notable changes to Parotia are documented here.
 - Added deterministic media/long-page/Twitter-like fixtures, direct critical-path tests and a real Chromium editor draw/save flow.
 - Global coverage is above 90% lines/statements with critical per-file gates; 314 Vitest tests and 5 Playwright tests pass.
 - Restored the protected-branch check names (`typecheck`, `lint`, `test`, `build`), made clean CI installs ignore dependency lifecycle scripts, and replaced on-demand `npx` execution with lockfile-owned Playwright npm scripts.
+- Updated the official GitHub Actions to their Node 24-native releases, removing runner deprecation annotations from the stable CI baseline.
 - Upgraded Vitest/coverage to patched 3.2.6, Happy DOM to 20.11.6 and esbuild to 0.28.2; a clean `npm audit` now reports zero known vulnerabilities.
 - Split session registry, editor tickets, temporary storage and downloads out of the service worker; added the reversible DOM ledger and capture preparation transaction owner.
 - CI builds the extension once, reuses the artifact for E2E and uploads coverage and failure artifacts.
