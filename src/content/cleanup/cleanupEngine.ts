@@ -130,8 +130,11 @@ export class DefaultCleanupEngine implements CleanupEngine {
     const current = this.previewSimilarTargets(ref);
     if (!current) return 0;
     const compareSignatures = (left: string, right: string): number => left.localeCompare(right);
-    const currentSignatures = current.signatures.sort(compareSignatures).join("\u0000");
-    const expected = [...expectedSignatures].sort(compareSignatures).join("\u0000");
+    current.signatures.sort(compareSignatures);
+    const sortedExpectedSignatures = [...expectedSignatures];
+    sortedExpectedSignatures.sort(compareSignatures);
+    const currentSignatures = current.signatures.join("\u0000");
+    const expected = sortedExpectedSignatures.join("\u0000");
     if (currentSignatures !== expected) return 0;
     return this.deleteSimilarTargets(ref);
   }
