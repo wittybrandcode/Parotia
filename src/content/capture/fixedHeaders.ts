@@ -1,4 +1,4 @@
-import { isNewsCleanUi } from "../overlay/overlay";
+import { isParotiaUi } from "../overlay/overlay";
 
 /**
  * Fixed-header handling for full-page capture. A position:fixed/sticky header
@@ -11,6 +11,7 @@ import { isNewsCleanUi } from "../overlay/overlay";
 export interface FixedHeaderRecord {
   el: HTMLElement;
   visibility: string | null;
+  priority: string;
 }
 
 const TOP_STRIP_MAX = 140;
@@ -53,10 +54,14 @@ export class FixedHeaderManager {
     this.records = [];
     const elements = Array.from(document.querySelectorAll<HTMLElement>("body *"));
     for (const el of elements) {
-      if (isNewsCleanUi(el)) continue;
+      if (isParotiaUi(el)) continue;
       if (hasFixedAncestor(el)) continue;
       if (!isTopFixed(el) && !isTopSticky(el)) continue;
-      this.records.push({ el, visibility: el.style.getPropertyValue("visibility") || null });
+      this.records.push({
+        el,
+        visibility: el.style.getPropertyValue("visibility") || null,
+        priority: el.style.getPropertyPriority("visibility"),
+      });
     }
     return this.records.length;
   }
@@ -74,7 +79,7 @@ export class FixedHeaderManager {
   restoreAll(): void {
     for (const record of this.records) {
       if (record.visibility === null) record.el.style.removeProperty("visibility");
-      else record.el.style.setProperty("visibility", record.visibility);
+      else record.el.style.setProperty("visibility", record.visibility, record.priority);
     }
     this.records = [];
     this.hidden = false;

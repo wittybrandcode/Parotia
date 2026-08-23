@@ -28,7 +28,7 @@ export interface ActionLogEntry {
  * lifecycle but delegates engine logic to the owning engines — it must not
  * become a monolithic class.
  */
-export interface NewsCleanSession {
+export interface ParotiaSession {
   id: string;
   createdAt: number;
 
@@ -41,6 +41,9 @@ export interface NewsCleanSession {
 
   status: SessionStatus;
 }
+
+/** @deprecated Compatibility alias for integrations compiled before 1.4.x. */
+export type NewsCleanSession = ParotiaSession;
 
 /** Valid lifecycle transitions: `CREATED → INITIALIZING → ACTIVE → … → COMPLETED`. */
 export const SESSION_TRANSITIONS: Record<SessionStatus, SessionStatus[]> = {

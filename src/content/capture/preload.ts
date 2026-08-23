@@ -10,9 +10,9 @@
  * page once bottom-to-top so the browser schedules the fetches.
  */
 import { sleep } from "@shared/utils/imageCodec";
-import { forceEagerImages, waitForImagesReady } from "@shared/utils/media";
+import { forceEagerImages, waitForImagesReady, waitForVisualAssets } from "@shared/utils/media";
 
-export { forceEagerImages, waitForImagesReady };
+export { forceEagerImages, waitForImagesReady, waitForVisualAssets };
 
 /** Cap on pre-roll steps so very long pages (or infinite feeds) stay bounded. */
 const MAX_PREROLL_STEPS = 60;

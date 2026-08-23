@@ -1,7 +1,7 @@
 import type {
   CleanupState,
   InspectionState,
-  NewsCleanSession,
+  ParotiaSession,
   PageContext,
   SessionStatus,
 } from "@shared/types";
@@ -17,7 +17,7 @@ const EMPTY_CLEANUP: CleanupState = {
 
 const EMPTY_INSPECTION: InspectionState = { active: false, mode: "IDLE" };
 
-export function createSession(page: PageContext): NewsCleanSession {
+export function createSession(page: PageContext): ParotiaSession {
   return {
     id: createId("nc-session"),
     createdAt: page.startedAt,
@@ -42,10 +42,9 @@ export function currentPageContext(): PageContext {
 }
 
 /** Transition the session to `next`, rejecting invalid moves. */
-export function transitionSession(session: NewsCleanSession, next: SessionStatus): boolean {
+export function transitionSession(session: ParotiaSession, next: SessionStatus): boolean {
   const allowed = SESSION_TRANSITIONS[session.status];
   if (!allowed.includes(next)) return false;
   session.status = next;
   return true;
 }
-

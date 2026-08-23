@@ -1,7 +1,7 @@
 import type { ElementReference } from "@shared/types";
 import { createId } from "@shared/utils/id";
 import { stableSelector } from "@shared/utils/selector";
-import { isNewsCleanUi } from "../overlay/overlay";
+import { isParotiaUi } from "../overlay/overlay";
 
 /**
  * DOM Inspector — picks elements under the cursor like the DevTools picker:
@@ -30,7 +30,7 @@ export interface InspectorActionHandlers {
   onHide: () => void;
   /** Called instead of onHide when the selected element is already hidden. */
   onShow?: () => void;
-  /** Whether the selected element is currently hidden by NewsClean. */
+  /** Whether the selected element is currently hidden by Parotia. */
   isHidden?: () => boolean;
   /** Deletes the selected element together with structurally similar ones. */
   onDeleteSimilar?: () => void;
@@ -275,7 +275,7 @@ export class DefaultInspector implements Inspector {
   private resolvePoint(clientX: number, clientY: number): HTMLElement | null {
     const element = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
     if (!element) return null;
-    if (isNewsCleanUi(element)) return null;
+    if (isParotiaUi(element)) return null;
     if (element === document.body || element === document.documentElement) return null;
     return element;
   }
@@ -429,4 +429,3 @@ export function elementReferenceOf(element: HTMLElement): ElementReference {
     selector: stableSelector(element),
   };
 }
-

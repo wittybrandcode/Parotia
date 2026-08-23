@@ -191,7 +191,7 @@ export class DefaultCleanupEngine implements CleanupEngine {
     return ok;
   }
 
-  /** Whether the currently selected element is hidden by NewsClean. */
+  /** Whether the currently selected element is hidden by Parotia. */
   isHidden(ref: ElementReference): boolean {
     return this.mutations.isHidden(ref);
   }

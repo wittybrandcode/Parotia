@@ -1,10 +1,72 @@
 import type { BackgroundCommand } from "@shared/types";
 import type { HandlerContext } from "./types";
 import { DefaultCaptureStitcher } from "../capture/captureStitcher";
-import { cropDataUrlToPng, loadBitmap, sleep, waitForElementRendering } from "../capture/elementCapture";
-import { exceedsCanvasLimit, MAX_CANVAS_DIMENSION, planSlices } from "../capture/sliceMath";
-import { forceEagerImages, preRollForCapture, waitForImagesReady } from "../capture/preload";
+import { ELEMENT_EXPORT_SCALE, cropDataUrlToPng, loadBitmap, sleep } from "../capture/elementCapture";
+import { exceedsCanvasLimit, MAX_CANVAS_DIMENSION } from "../capture/sliceMath";
+import { forceEagerImages, preRollForCapture, waitForVisualAssets } from "../capture/preload";
+import { collectImages, kickImages, waitForFonts } from "@shared/utils/media";
+import type { DomPatchLedger } from "@shared/utils/domPatchLedger";
 import { startFreeSelect } from "../selection/freeSelect";
+
+/** Owns every capture-preparation mutation and makes restore idempotent. */
+class CapturePreparationTransactions {
+  private regionStyle: HTMLStyleElement | null = null;
+  private regionPatches: DomPatchLedger | null = null;
+  private fullPagePatches: DomPatchLedger | null = null;
+
+  async prepareRegion(): Promise<void> {
+    this.restoreRegion();
+    const style = document.createElement("style");
+    style.textContent = `*, *::before, *::after { content-visibility: visible !important; }`;
+    (document.head ?? document.documentElement).appendChild(style);
+    this.regionStyle = style;
+    this.regionPatches = forceEagerImages(document);
+
+    const imgs = collectImages(document);
+    const visualCandidates = document.querySelectorAll<HTMLElement>(
+      "img, picture, video, canvas, svg, svg image, [style*='background']",
+    );
+    for (const candidate of visualCandidates) {
+      let node: HTMLElement | null = candidate.parentElement;
+      while (node && node !== document.documentElement && node !== document.body) {
+        let opacity = 1;
+        try { opacity = parseFloat(getComputedStyle(node).opacity) || 0; } catch { /* best effort */ }
+        if (opacity === 0) this.regionPatches.setStyle(node, "opacity", "1", "important");
+        node = node.parentElement;
+      }
+    }
+
+    const pending = () => imgs.filter((image) => !image.complete || image.naturalWidth === 0);
+    kickImages(pending());
+    const deadline = Date.now() + 3000;
+    while (Date.now() < deadline && pending().length > 0) {
+      await sleep(100);
+      kickImages(pending());
+    }
+    await waitForFonts();
+    await waitForVisualAssets(document, 1000);
+  }
+
+  restoreRegion(): void {
+    this.regionStyle?.remove();
+    this.regionStyle = null;
+    this.regionPatches?.restore();
+    this.regionPatches = null;
+  }
+
+  async prepareFullPage(): Promise<void> {
+    this.fullPagePatches?.restore();
+    this.fullPagePatches = forceEagerImages(document);
+    await waitForVisualAssets(document);
+  }
+
+  restoreFullPage(): void {
+    this.fullPagePatches?.restore();
+    this.fullPagePatches = null;
+  }
+}
+
+const preparations = new CapturePreparationTransactions();
 
 type CaptureCommand = Extract<
   BackgroundCommand,
@@ -12,9 +74,10 @@ type CaptureCommand = Extract<
       type:
         | "CAPTURE" | "PREPARE_CAPTURE" | "RESTORE_CAPTURE"
         | "PREPARE_ELEMENT_CAPTURE" | "CAPTURE_ELEMENT_SCROLL"
-        | "CAPTURE_ELEMENT_SLICE" | "CAPTURE_ELEMENT_FINALIZE"
+        | "CAPTURE_ELEMENT_CROP" | "CAPTURE_ELEMENT_SLICE" | "CAPTURE_ELEMENT_FINALIZE"
         | "CAPTURE_ELEMENT_RESTORE"
         | "FREE_SELECT" | "CAPTURE_REGION_CROP"
+        | "PREPARE_REGION_CAPTURE" | "RESTORE_REGION_CAPTURE"
         | "CAPTURE_STITCH_START" | "CAPTURE_SCROLL"
         | "CAPTURE_SLICE" | "CAPTURE_FINALIZE"
         | "SELECT_REGION";
@@ -33,11 +96,18 @@ export async function handleCaptureCommand(
       ctx.cleanup?.stopInspecting();
       ctx.overlay?.setVisible(false);
       ctx.broadcastState();
+      // Resolve only after the extension UI has left the compositor frame.
+      // The worker can then capture immediately without a long delay that
+      // would advance videos or animated content unnecessarily.
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
       return { success: true };
 
     case "RESTORE_CAPTURE":
       ctx.overlay?.setVisible(true);
       ctx.fixedHeaders.restoreAll();
+      preparations.restoreFullPage();
       return { success: true };
 
     case "PREPARE_ELEMENT_CAPTURE": {
@@ -55,36 +125,10 @@ export async function handleCaptureCommand(
         return { success: false, error: "Selected element has no visible area" };
       }
 
-      const scroller = document.scrollingElement ?? document.documentElement;
-      const maxScroll = Math.max(
-        0,
-        (scroller.scrollHeight || document.documentElement.scrollHeight) - metrics.viewportHeightCss,
-      );
-      for (const rel of planSlices(metrics.elementHeightCss, metrics.viewportHeightCss)) {
-        const y = Math.min(metrics.elementDocTop + rel, maxScroll);
-        scroller.scrollTop = y;
-        window.scrollTo(0, y);
-        void document.documentElement.getBoundingClientRect();
-        await sleep(120);
-      }
-      await waitForElementRendering(element);
-
-      scroller.scrollTop = metrics.elementDocTop;
-      window.scrollTo(0, metrics.elementDocTop);
-      void document.documentElement.getBoundingClientRect();
-      const rect = element.getBoundingClientRect();
-      const finalMetrics = {
-        dpr: metrics.dpr,
-        rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
-        elementDocTop: metrics.elementDocTop,
-        elementHeightCss: rect.height,
-        viewportHeightCss: metrics.viewportHeightCss,
-      };
-      if (finalMetrics.elementHeightCss <= 0) {
-        ctx.elementCapture.restore();
-        return { success: false, error: "Selected element has no visible area" };
-      }
-      if (exceedsCanvasLimit(finalMetrics.elementHeightCss, finalMetrics.dpr)) {
+      // Deliberately do not scroll, wait for lazy media, force styles, or
+      // re-measure after a layout mutation. The returned rectangle describes
+      // the exact frame currently painted in the viewport.
+      if (exceedsCanvasLimit(metrics.elementHeightCss, metrics.dpr)) {
         ctx.elementCapture.restore();
         return {
           success: false,
@@ -93,11 +137,38 @@ export async function handleCaptureCommand(
         };
       }
 
-      ctx.stitcher?.dispose();
-      const newStitcher = new DefaultCaptureStitcher();
-      newStitcher.start(finalMetrics.elementHeightCss, finalMetrics.dpr, finalMetrics.elementDocTop);
-      ctx.stitcher = newStitcher;
-      return { success: true, ...finalMetrics };
+      // Fully visible elements use a single native viewport screenshot and do
+      // not need a stitcher. This is the lossless path used for visible posts.
+      if (!metrics.fullyVisible) {
+        ctx.stitcher?.dispose();
+        const newStitcher = new DefaultCaptureStitcher();
+        newStitcher.start(metrics.elementHeightCss, metrics.dpr, metrics.elementDocTop);
+        ctx.stitcher = newStitcher;
+      }
+      return { success: true, ...metrics };
+    }
+
+    case "CAPTURE_ELEMENT_CROP": {
+      try {
+        const { dataUrl, rect, dpr } = command.payload;
+        const cropped = await cropDataUrlToPng(dataUrl, {
+          x: rect.left * dpr,
+          y: rect.top * dpr,
+          width: rect.width * dpr,
+          height: rect.height * dpr,
+        }, ELEMENT_EXPORT_SCALE);
+        try {
+          await chrome.storage.local.set({ [`elementcapture:${command.payload.sessionId}`]: cropped });
+          return { success: true };
+        } catch (error) {
+          return {
+            success: false,
+            error: `Failed to stage element image: ${error instanceof Error ? error.message : String(error)}`,
+          };
+        }
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
     }
 
     case "CAPTURE_ELEMENT_SCROLL": {
@@ -130,9 +201,13 @@ export async function handleCaptureCommand(
           bitmap.close();
           const x = Math.max(0, Math.round(rect.left * dpr));
           const width = Math.max(1, Math.min(vpWidth - x, Math.round(rect.width * dpr)));
-          if (x > 0 || width < vpWidth) {
-            dataUrl = await cropDataUrlToPng(dataUrl, { x, y: 0, width, height: vpHeight });
-          }
+          // Always pass through one high-quality render: it performs the
+          // horizontal element crop and safe 2× enlargement together.
+          dataUrl = await cropDataUrlToPng(
+            dataUrl,
+            { x, y: 0, width, height: vpHeight },
+            ELEMENT_EXPORT_SCALE,
+          );
         }
         try {
           await chrome.storage.local.set({ [`elementcapture:${command.payload.sessionId}`]: dataUrl });
@@ -182,12 +257,21 @@ export async function handleCaptureCommand(
       }
     }
 
+    case "PREPARE_REGION_CAPTURE": {
+      await preparations.prepareRegion();
+      return { success: true };
+    }
+
+    case "RESTORE_REGION_CAPTURE": {
+      preparations.restoreRegion();
+      return { success: true };
+    }
+
     case "CAPTURE_STITCH_START": {
       ctx.ensureRuntime();
       const originalScrollY = window.scrollY;
       await preRollForCapture(originalScrollY);
-      forceEagerImages(document);
-      await waitForImagesReady(document);
+      await preparations.prepareFullPage();
       const pageHeightCss = Math.max(
         document.documentElement.scrollHeight,
         document.body?.scrollHeight ?? 0,

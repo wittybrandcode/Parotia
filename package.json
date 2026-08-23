@@ -14,13 +14,15 @@
     "build:manifest": "node scripts/build-manifest.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src tests --max-warnings 0",
+    "check:security": "node scripts/check-security-invariants.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "vitest run --coverage && node scripts/check-critical-coverage.mjs",
     "pretest:e2e": "npm run build",
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "konva": "^10.3.1",
     "lucide-react": "^1.31.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

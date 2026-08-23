@@ -1,0 +1,320 @@
+/* ── Parotia Editor Styles ── */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #0a0a0a;
+  color: #e5e5e5;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+}
+
+.nc-editor-root {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+}
+
+/* ── Top bar ── */
+
+.nc-editor-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 52px;
+  padding: 0 16px;
+  background: #111;
+  border-bottom: 1px solid #222;
+  flex-shrink: 0;
+}
+
+.nc-editor-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.nc-editor-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: #c1e899;
+  white-space: nowrap;
+}
+
+.nc-editor-filename {
+  font-size: 12px;
+  color: #666;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.nc-editor-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.nc-editor-separator {
+  width: 1px;
+  height: 20px;
+  background: #333;
+}
+
+/* ── Buttons ── */
+
+.nc-editor-btn {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: background 0.15s, opacity 0.15s;
+  white-space: nowrap;
+}
+
+.nc-editor-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.nc-editor-btn-primary {
+  background: #c1e899;
+  color: #0a0a0a;
+}
+.nc-editor-btn-primary:hover:not(:disabled) {
+  background: #a8d47a;
+}
+
+.nc-editor-btn-outline {
+  background: transparent;
+  color: #ccc;
+  border: 1px solid #444;
+}
+.nc-editor-btn-outline:hover:not(:disabled) {
+  background: #1a1a1a;
+  border-color: #666;
+}
+
+.nc-editor-btn-ghost {
+  background: transparent;
+  color: #888;
+  padding: 6px 8px;
+}
+.nc-editor-btn-ghost:hover:not(:disabled) {
+  color: #ccc;
+}
+
+.nc-editor-btn-close {
+  background: transparent;
+  color: #666;
+  font-size: 18px;
+  padding: 4px 8px;
+}
+.nc-editor-btn-close:hover {
+  color: #fff;
+}
+
+/* ── Canvas area ── */
+
+.nc-editor-canvas-area {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  background: #0a0a0a;
+  /* Checkerboard background for transparency */
+  background-image:
+    linear-gradient(45deg, #111 25%, transparent 25%),
+    linear-gradient(-45deg, #111 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #111 75%),
+    linear-gradient(-45deg, transparent 75%, #111 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+}
+
+.nc-editor-canvas {
+  max-width: calc(100% - 32px);
+  max-height: calc(100% - 32px);
+  object-fit: contain;
+  border-radius: 4px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Konva annotation container ── */
+
+.nc-editor-konva-container {
+  position: relative;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.nc-editor-konva-container canvas {
+  border-radius: 4px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+.nc-editor-loading {
+  color: #666;
+  font-size: 14px;
+}
+
+.nc-editor-error {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  padding: 8px 12px;
+  border: 1px solid #a94a4a;
+  border-radius: 6px;
+  background: rgba(80, 20, 20, 0.95);
+  color: #ffd0d0;
+  font-size: 12px;
+}
+
+/* ── Bottom toolbar ── */
+
+.nc-editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 56px;
+  padding: 0 16px;
+  background: #111;
+  border-top: 1px solid #222;
+  flex-shrink: 0;
+}
+
+.nc-editor-tool-btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid #333;
+  background: transparent;
+  color: #aaa;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.nc-editor-tool-btn:hover {
+  border-color: #555;
+  color: #ddd;
+}
+
+.nc-editor-tool-btn-active {
+  background: #c1e899;
+  color: #0a0a0a;
+  border-color: #c1e899;
+}
+
+.nc-editor-tool-options {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: 12px;
+  padding-left: 12px;
+  border-left: 1px solid #333;
+}
+
+.nc-editor-tool-options label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #888;
+}
+
+.nc-editor-tool-options input[type="color"] {
+  width: 24px;
+  height: 24px;
+  border: 1px solid #444;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.nc-editor-tool-options input[type="range"] {
+  width: 80px;
+  accent-color: #c1e899;
+}
+
+/* ── Brush cursor indicator ── */
+
+.nc-editor-brush-cursor {
+  position: fixed;
+  border: 2px solid #c1e899;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 9999;
+  transform: translate(-50%, -50%);
+  transition: width 0.08s, height 0.08s, border-color 0.15s;
+  mix-blend-mode: difference;
+}
+
+/* ── Shape picker ── */
+
+.nc-editor-shape-picker {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 6px;
+}
+
+.nc-editor-shape-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: #888;
+  cursor: pointer;
+  transition: all 0.12s;
+  padding: 0;
+}
+
+.nc-editor-shape-btn:hover {
+  background: #2a2a2a;
+  color: #ccc;
+}
+
+.nc-editor-shape-btn-active {
+  background: #c1e899;
+  color: #0a0a0a;
+}
+
+/* ── Topbar button icons ── */
+
+.nc-editor-btn svg {
+  vertical-align: middle;
+}
+
+.nc-editor-btn-primary svg,
+.nc-editor-btn-outline svg {
+  margin-right: 4px;
+}

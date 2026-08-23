@@ -4,6 +4,38 @@ All notable changes to Parotia are documented here.
 
 ---
 
+## [1.4.0] - 2026-08-23
+
+### Capture correctness and page safety
+
+- Element capture now uses a fidelity-first path: a fully visible selection is captured once at native tab zoom and cropped directly from the viewport pixels. It no longer isolates the DOM, forces avatar/media styles, changes lazy-image attributes, pre-scrolls the page or zooms in; this prevents X/Twitter profile avatars and responsive layout from disappearing or shifting.
+- Element PNGs are safely enlarged to 2× after the faithful crop using high-quality browser resampling in a single render pass. Canvas dimensions and output memory are bounded, with the highest safe scale/native fallback for exceptional images; the page itself is never zoomed.
+- Coordinate-based stitching now handles overlap, clamped final scroll positions and non-zero element origins, and rejects incomplete pixel coverage.
+- Capture-time DOM changes are transactional and restore original inline values, attribute presence and CSS `!important` priorities.
+- Visual readiness covers lazy images, browser-selected `picture`, video posters, SVG images, CSS backgrounds and open Shadow DOM under hard deadlines with diagnostics.
+- Region/element crop geometry is finite, positive and clamped to viewport/bitmap bounds; Twitter-like avatar fallbacks are limited to visual assets and their ancestors.
+
+### Sessions, security and storage
+
+- Tab/session ownership survives MV3 suspension in `chrome.storage.session`, is checked against live tabs and never falls back to the active tab.
+- Message validation is centralized; content responses use a single envelope and the content runtime has one message router.
+- Editor capabilities use exact origin/path/tab checks, PNG signature and decoded-size checks, expiry, consume-before-download replay protection and startup/lazy/tab-close cleanup.
+
+### Editor, freeze and cleanup
+
+- Annotation, crop and adjust now share one bounded visible history with ordered Undo/Redo.
+- Crop/adjust/copy/share/save/close are serialized; Save has a terminal state and Close waits for discard with a timeout.
+- Freeze has a hard stability deadline and no longer claims to patch page-world timers from the isolated world.
+- Hide/Show/Undo/Reset preserve original display values/priorities and regeneration protection scans bounded descendant subtrees.
+
+### Quality and architecture
+
+- Added deterministic media/long-page/Twitter-like fixtures, direct critical-path tests and a real Chromium editor draw/save flow.
+- Global coverage is above 90% lines/statements with critical per-file gates; 314 Vitest tests and 5 Playwright tests pass.
+- Split session registry, editor tickets, temporary storage and downloads out of the service worker; added the reversible DOM ledger and capture preparation transaction owner.
+- CI builds the extension once, reuses the artifact for E2E and uploads coverage and failure artifacts.
+- Began the compatibility-safe NewsClean → Parotia migration: new types/wire sources use Parotia while legacy DOM selectors and aliases remain accepted for 1.x.
+
 ## [1.1.4] - 2026-08-20
 
 ### Element Capture: X.com / Virtualized-Feed Fix

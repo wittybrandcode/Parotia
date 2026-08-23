@@ -10,13 +10,9 @@ permissions:
   contents: read
 
 jobs:
-  ci:
+  quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    strategy:
-      matrix:
-        check: [typecheck, lint, test, build]
-    name: ${{ matrix.check }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -24,15 +20,47 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: typecheck
-        if: matrix.check == 'typecheck'
-        run: npm run typecheck
-      - name: lint
-        if: matrix.check == 'lint'
-        run: npm run lint
-      - name: test
-        if: matrix.check == 'test'
-        run: npm run test
-      - name: build
-        if: matrix.check == 'build'
-        run: npm run build
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run check:security
+      - run: npm run test:coverage
+      - run: npm run build
+      - name: Upload built extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-dist
+          path: dist/
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+          if-no-files-found: ignore
+
+  e2e:
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: extension-dist
+          path: dist/
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+      - name: Upload Playwright artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore

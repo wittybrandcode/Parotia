@@ -1,5 +1,5 @@
 import { elementSignature } from "@shared/utils/signature";
-import { isNewsCleanUi } from "../overlay/overlay";
+import { isParotiaUi } from "../overlay/overlay";
 
 /**
  * Match Engine — finds elements that look like a picked element so a whole
@@ -35,9 +35,9 @@ export class DefaultMatchEngine implements MatchEngine {
     const selector = target.tagName.toLowerCase();
     for (const element of Array.from(document.querySelectorAll<Element>(selector))) {
       if (element === target) continue;
-      // Skip NewsClean UI, protected elements, and the target's own subtree
+      // Skip Parotia UI, protected elements, and the target's own subtree
       // or ancestors (they would be double-deleted alongside it).
-      if (isNewsCleanUi(element)) continue;
+      if (isParotiaUi(element)) continue;
       if (target.contains(element) || element.contains(target)) continue;
       if (this.signatureOf(element) === signature) similar.push(element);
     }

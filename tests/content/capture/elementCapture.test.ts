@@ -1,150 +1,126 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { CAPTURE_ATTR, CAPTURE_STYLE_ATTR, ElementCaptureIsolator } from "@content/capture/elementCapture";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  ELEMENT_EXPORT_SCALE,
+  MAX_SAFE_OUTPUT_PIXELS,
+  ElementCaptureIsolator,
+  safeOutputScale,
+} from "@content/capture/elementCapture";
+import { MAX_CANVAS_DIMENSION } from "@content/capture/sliceMath";
 
-const PAGE = `
-  <div id="sibling-a">Other content</div>
-  <div id="target"><p>Capturable element</p></div>
-  <div id="sibling-b">More content</div>
-`;
-
-function setup(targetId = "#target") {
-  document.body.innerHTML = PAGE;
-  const target = document.querySelector<HTMLElement>(targetId);
-  if (!target) throw new Error("target missing");
-  return { target, isolator: new ElementCaptureIsolator() };
+function rect(left: number, top: number, width: number, height: number): DOMRect {
+  return {
+    left,
+    top,
+    width,
+    height,
+    right: left + width,
+    bottom: top + height,
+    x: left,
+    y: top,
+    toJSON: () => ({}),
+  } as DOMRect;
 }
 
-function captureStyle(): HTMLStyleElement | null {
-  return document.head?.querySelector(`style[${CAPTURE_STYLE_ATTR}]`) ?? null;
-}
-
-describe("ElementCaptureIsolator", () => {
+describe("ElementCaptureIsolator fidelity contract", () => {
   beforeEach(() => {
-    document.body.innerHTML = "";
-    document.querySelectorAll(`style[${CAPTURE_STYLE_ATTR}]`).forEach((el) => el.remove());
-    document.documentElement.removeAttribute(CAPTURE_ATTR);
+    document.head.innerHTML = "";
+    document.body.innerHTML = `
+      <div id="outside" style="visibility: collapse !important">Other content</div>
+      <article id="target">
+        <div style="opacity: 0.5"><img loading="lazy" data-src="avatar.png" /></div>
+        <p>Capturable element</p>
+      </article>
+    `;
+    Object.defineProperty(window, "scrollY", { configurable: true, value: 120 });
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1000 });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
+    Object.defineProperty(window, "devicePixelRatio", { configurable: true, value: 2 });
+    vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
   });
 
-  it("marks the element and injects a style hiding everything else", () => {
-    const { target, isolator } = setup();
+  it("measures the current frame without changing any DOM, style, media attribute, or scroll", () => {
+    const target = document.querySelector<HTMLElement>("#target");
+    if (!target) throw new Error("target missing");
+    target.getBoundingClientRect = () => rect(80, 40, 600, 500);
+    const beforeHtml = document.documentElement.outerHTML;
+    const isolator = new ElementCaptureIsolator();
+
     const metrics = isolator.isolate(target);
 
-    expect(target.getAttribute(CAPTURE_ATTR)).toBe("true");
-    const style = captureStyle();
-    expect(style).toBeTruthy();
-    const css = style?.textContent ?? "";
-    expect(css).toContain("visibility: hidden !important");
-    expect(css).toContain(`[${CAPTURE_ATTR}]`);
-    expect(metrics.dpr).toBe(window.devicePixelRatio || 1);
-    expect(typeof metrics.rect.left).toBe("number");
-    expect(typeof metrics.rect.width).toBe("number");
-    expect(typeof metrics.elementDocTop).toBe("number");
-    expect(typeof metrics.elementHeightCss).toBe("number");
-    expect(typeof metrics.viewportHeightCss).toBe("number");
+    expect(metrics).toEqual({
+      dpr: 2,
+      rect: { left: 80, top: 40, width: 600, height: 500 },
+      elementDocTop: 160,
+      elementHeightCss: 500,
+      viewportHeightCss: 800,
+      viewportWidthCss: 1000,
+      fullyVisible: true,
+    });
+    expect(document.documentElement.outerHTML).toBe(beforeHtml);
+    expect(window.scrollTo).not.toHaveBeenCalled();
   });
 
-  it("marks the root <html> element so the scoped rules actually match", () => {
-    const { target, isolator } = setup();
-    isolator.isolate(target);
-
-    expect(document.documentElement.getAttribute(CAPTURE_ATTR)).toBe("true");
-    expect(target.getAttribute(CAPTURE_ATTR)).toBe("true");
-  });
-
-  it("scopes every rule to html so the marker on <html> activates the isolation", () => {
-    const { isolator } = setup();
+  it.each([
+    rect(-1, 20, 100, 100),
+    rect(20, -1, 100, 100),
+    rect(950, 20, 100, 100),
+    rect(20, 750, 100, 100),
+  ])("uses stitching when any selected pixel is outside the viewport", (targetRect) => {
     const target = document.querySelector<HTMLElement>("#target");
     if (!target) throw new Error("target missing");
+    target.getBoundingClientRect = () => targetRect;
 
-    isolator.isolate(target);
-
-    const css = captureStyle()?.textContent ?? "";
-    expect(css).toContain(`html[${CAPTURE_ATTR}="true"] body > *`);
-    expect(css).toContain(`html[${CAPTURE_ATTR}="true"] [data-newsclean-root]`);
-    expect(css).toContain(`html[${CAPTURE_ATTR}="true"] [${CAPTURE_ATTR}]`);
-    expect(css).toContain("content-visibility: visible !important");
+    expect(new ElementCaptureIsolator().isolate(target).fullyVisible).toBe(false);
   });
 
-  it("also hides the picker overlays and action bar so they never appear in the image", () => {
-    const { target, isolator } = setup();
-    isolator.isolate(target);
-    const css = captureStyle()?.textContent ?? "";
-    expect(css).toContain("[data-newsclean-root]");
-    expect(css).toContain("[data-newsclean-highlight]");
-    expect(css).toContain(".nc-action-bar");
-    expect(css).toContain("display: none");
-  });
-
-  it("forces lazy images inside the element to eager and restores them on restore", () => {
-    document.body.innerHTML = `
-      <div id="target">
-        <img src="about:blank" loading="lazy" alt="profile" />
-        <img src="about:blank" alt="media" />
-      </div>
-    `;
+  it("restores only the original scroll after a stitched capture", () => {
     const target = document.querySelector<HTMLElement>("#target");
     if (!target) throw new Error("target missing");
+    target.getBoundingClientRect = () => rect(0, 0, 500, 1200);
+    const isolator = new ElementCaptureIsolator();
+    isolator.isolate(target);
+    Object.defineProperty(window, "scrollY", { configurable: true, value: 900 });
+
+    isolator.restore();
+
+    expect(window.scrollTo).toHaveBeenCalledWith(0, 120);
+    expect(document.querySelector("style[data-newsclean-capture-style]")).toBeNull();
+  });
+
+  it("is idempotent and never overwrites site-owned attributes", () => {
+    const target = document.querySelector<HTMLElement>("#target");
+    if (!target) throw new Error("target missing");
+    target.setAttribute("data-newsclean-capture", "site-owned");
+    target.getBoundingClientRect = () => rect(10, 10, 100, 100);
+    const before = document.documentElement.outerHTML;
     const isolator = new ElementCaptureIsolator();
 
     isolator.isolate(target);
-    const imgs = Array.from(target.querySelectorAll("img"));
-    expect(imgs.map((i) => i.getAttribute("loading"))).toEqual(["eager", "eager"]);
-
     isolator.restore();
-    expect(imgs[0]?.getAttribute("loading")).toBe("lazy");
-    expect(imgs[1]?.hasAttribute("loading")).toBe(false);
+    isolator.restore();
+
+    expect(document.documentElement.outerHTML).toBe(before);
+  });
+});
+
+describe("safe element export scaling", () => {
+  it("uses an exact 2x output for normal captures", () => {
+    expect(safeOutputScale(1800, 2000, ELEMENT_EXPORT_SCALE)).toBe(2);
   });
 
-  it("also forces the image itself when the target IS the image element", () => {
-    document.body.innerHTML = `
-      <div id="wrap" style="opacity: 0">
-        <img id="avatar" src="about:blank" loading="lazy" alt="profile" />
-      </div>
-    `;
-    const avatar = document.querySelector<HTMLElement>("#avatar");
-    const wrap = document.querySelector<HTMLElement>("#wrap");
-    if (!avatar || !wrap) throw new Error("elements missing");
-    const isolator = new ElementCaptureIsolator();
+  it("chooses the highest safe scale for unusually large captures", () => {
+    const width = 20_000;
+    const height = 1_000;
+    const scale = safeOutputScale(width, height, ELEMENT_EXPORT_SCALE);
 
-    isolator.isolate(avatar);
-
-    // The lazy avatar itself is forced eager.
-    expect(avatar.getAttribute("loading")).toBe("eager");
-    // The transparent wrapper is lifted so the avatar is actually painted.
-    expect(wrap.style.opacity).toBe("1");
-
-    isolator.restore();
-    expect(avatar.getAttribute("loading")).toBe("lazy");
-    expect(wrap.style.opacity).toBe("0");
+    expect(scale).toBeGreaterThanOrEqual(1);
+    expect(scale).toBeLessThan(2);
+    expect(Math.floor(width * scale)).toBeLessThanOrEqual(MAX_CANVAS_DIMENSION);
+    expect(Math.floor(width * scale) * Math.floor(height * scale)).toBeLessThanOrEqual(MAX_SAFE_OUTPUT_PIXELS);
   });
 
-  it("restore removes the style, both markers, and restores the page exactly", () => {
-    const { target, isolator } = setup();
-    const before = document.body.innerHTML;
-
-    isolator.isolate(target);
-    expect(captureStyle()).toBeTruthy();
-    expect(document.documentElement.getAttribute(CAPTURE_ATTR)).toBe("true");
-
-    isolator.restore();
-    expect(captureStyle()).toBeNull();
-    expect(target.hasAttribute(CAPTURE_ATTR)).toBe(false);
-    expect(document.documentElement.hasAttribute(CAPTURE_ATTR)).toBe(false);
-    expect(document.body.innerHTML).toBe(before);
-  });
-
-  it("re-isolating another element cleans up the previous one", () => {
-    const { isolator } = setup();
-    const first = document.querySelector<HTMLElement>("#sibling-a");
-    const second = document.querySelector<HTMLElement>("#sibling-b");
-    if (!first || !second) throw new Error("siblings missing");
-
-    isolator.isolate(first);
-    isolator.isolate(second);
-
-    expect(document.querySelectorAll(`style[${CAPTURE_STYLE_ATTR}]`).length).toBe(1);
-    expect(first.hasAttribute(CAPTURE_ATTR)).toBe(false);
-    expect(second.getAttribute(CAPTURE_ATTR)).toBe("true");
-    expect(document.documentElement.getAttribute(CAPTURE_ATTR)).toBe("true");
+  it("rejects invalid dimensions instead of allocating an unsafe canvas", () => {
+    expect(() => safeOutputScale(Number.NaN, 100, 2)).toThrow(/finite positive/i);
+    expect(() => safeOutputScale(100, 100, 0)).toThrow(/finite positive/i);
   });
 });

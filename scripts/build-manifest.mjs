@@ -49,7 +49,7 @@ const manifest = {
     {
       resources: [
         "ui/index.html",
-        "ui/options.html",
+        "ui/editor.html",
         "ui/assets/*",
       ],
       matches: ["http://*/*", "https://*/*"],

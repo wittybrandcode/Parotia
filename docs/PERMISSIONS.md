@@ -30,11 +30,12 @@ Every permission in `manifest.json` is justified below. Parotia requests only wh
 
 **What it does:** Provides access to `chrome.storage.local` for key-value storage.
 
-**Why it's needed:** 
-- Staging large capture image data between the content script and service worker (base64 data URLs for full-page captures can exceed message size limits)
-- Cleaning up orphaned data on service worker restart
+**Why it's needed:**
+- Staging large capture image data between the content script, worker and editor without repeatedly copying it through runtime messages
+- Persisting tab/session ownership in `chrome.storage.session` across MV3 worker suspension
+- Cleaning expired/orphaned staging records after interruption
 
-**Without it:** Full-page captures would fail because data URLs cannot be passed through `chrome.runtime.sendMessage()` (size limit ~6MB).
+**Without it:** full-page assembly and the one-time editor handoff would not have a reliable lifecycle-safe transfer channel.
 
 ---
 
@@ -42,9 +43,9 @@ Every permission in `manifest.json` is justified below. Parotia requests only wh
 
 **What it does:** Provides access to `chrome.tabs.get()`, `chrome.tabs.setZoom()`, `chrome.tabs.getZoom()`.
 
-**Why it's needed:** During element capture, Parotia temporarily sets the tab zoom to 2x for higher resolution. After capture, it restores the original zoom level.
+**Why it's needed:** Parotia verifies that persisted session owners and editor tabs still exist. Full-page capture may temporarily zoom out only when the native page would exceed Chromium's maximum canvas dimension. Element capture does not change zoom.
 
-**Without it:** Element capture would produce lower resolution images. The zoom get/set operations require the `tabs` permission.
+**Without it:** restart-safe tab ownership checks and the oversized full-page fallback would not be available.
 
 ---
 
@@ -66,7 +67,7 @@ Every permission in `manifest.json` is justified below. Parotia requests only wh
 
 **Why it's needed:** MV3 service workers cannot call `permissions.request()` (only extension pages may). The permission must be declared upfront in the manifest for the download to work without user confirmation on every capture.
 
-**Without it:** Every capture would trigger a browser download confirmation dialog, breaking the seamless workflow.
+**Without it:** the editor could not save the final PNG through the extension-controlled download path.
 
 **Note:** This permission is used only for saving captured PNG files. No files are uploaded or downloaded from remote servers.
 
@@ -97,7 +98,7 @@ These permissions are intentionally **not** requested:
     "activeTab",      // Temporary access to clicked tab
     "scripting",      // Inject content script on demand
     "storage",        // Stage capture data temporarily
-    "tabs",           // Zoom get/set for element capture
+    "tabs",           // Live-tab checks + oversized full-page zoom fallback
     "unlimitedStorage", // Large capture data staging
     "downloads"       // Save PNG files
   ]
@@ -105,3 +106,7 @@ These permissions are intentionally **not** requested:
 ```
 
 **Total: 6 permissions** — all justified, all minimal, all essential.
+
+## Web-accessible resources
+
+Only the toolbar page, editor page and their hashed Vite assets are exposed to HTTP(S) pages. The toolbar/editor must be frameable inside the user-activated tab. No content/background source file or test fixture is web-accessible.

@@ -120,6 +120,22 @@ describe("DefaultMutationEngine", () => {
     expect(document.querySelector<HTMLElement>(".sidebar")?.style.display).toBe("");
   });
 
+  it("restores the exact original display value and priority through hide/show/undo", () => {
+    const { mutations } = setup();
+    const aside = document.querySelector<HTMLElement>(".sidebar");
+    aside?.style.setProperty("display", "flex", "important");
+    mutations.hideElement(ref(".sidebar"));
+    expect(aside?.style.display).toBe("none");
+    mutations.showElement(ref(".sidebar"));
+    expect(aside?.style.getPropertyValue("display")).toBe("flex");
+    expect(aside?.style.getPropertyPriority("display")).toBe("important");
+    mutations.undo();
+    expect(aside?.style.display).toBe("none");
+    mutations.undo();
+    expect(aside?.style.getPropertyValue("display")).toBe("flex");
+    expect(aside?.style.getPropertyPriority("display")).toBe("important");
+  });
+
   it("showElement restores a hidden element and undo re-hides it", () => {
     const { mutations } = setup();
     mutations.hideElement(ref(".sidebar"));
@@ -233,6 +249,23 @@ describe("DefaultMutationEngine", () => {
       await flush();
 
       expect(banner.style.display).toBe("none");
+      mutations.stopRegenerationGuard();
+    });
+
+    it("scans descendants of a re-rendered container and restores generated hides on undo", async () => {
+      const { mutations } = setup();
+      document.body.innerHTML = `<div class="cookie-banner" data-cookie="1">Banner</div>`;
+      mutations.hideElement(ref(".cookie-banner"));
+      mutations.startRegenerationGuard();
+      const container = document.createElement("section");
+      container.innerHTML = `<div class="cookie-banner" data-cookie="1" style="display:grid!important">Banner again</div>`;
+      document.body.appendChild(container);
+      await flush();
+      const regenerated = container.querySelector<HTMLElement>(".cookie-banner");
+      expect(regenerated?.style.display).toBe("none");
+      mutations.undo();
+      expect(regenerated?.style.display).toBe("grid");
+      expect(regenerated?.style.getPropertyPriority("display")).toBe("important");
       mutations.stopRegenerationGuard();
     });
 

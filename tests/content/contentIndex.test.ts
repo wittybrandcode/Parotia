@@ -162,7 +162,7 @@ describe("content/index command pipeline", () => {
 
     expect(postMessage).toHaveBeenCalledWith(
       expect.objectContaining({
-        source: "newsclean-content",
+        source: "parotia-content",
         type: "PROGRESS",
         progress: { current: 1, total: 2, phase: "RENDERING" },
       }),

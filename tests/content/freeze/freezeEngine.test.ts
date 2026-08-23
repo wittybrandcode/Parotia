@@ -132,21 +132,41 @@ describe("DefaultFreezeEngine", () => {
     expect(foreign?.style.pointerEvents).toBe("");
   });
 
-  it("freeze cancels repeating intervals and unfreeze restores them", async () => {
+  it("does not pretend to patch page timers from the isolated content world", async () => {
     const engine = new DefaultFreezeEngine();
     const promise = engine.freeze();
     vi.advanceTimersByTime(600);
     await promise;
 
-    const frozenCallback = vi.fn();
-    window.setInterval(frozenCallback, 100);
+    const callback = vi.fn();
+    const interval = window.setInterval(callback, 100);
     vi.advanceTimersByTime(1000);
-    expect(frozenCallback).not.toHaveBeenCalled();
-
+    expect(callback).toHaveBeenCalled();
+    window.clearInterval(interval);
     await engine.unfreeze();
-    const restoredCallback = vi.fn();
-    window.setInterval(restoredCallback, 100);
-    vi.advanceTimersByTime(1000);
-    expect(restoredCallback).toHaveBeenCalled();
+  });
+
+  it("degrades at the hard deadline when mutations never become quiet", async () => {
+    vi.stubGlobal(
+      "MutationObserver",
+      class {
+        private readonly callback: MutationCallback;
+        private interval: number | null = null;
+        constructor(callback: MutationCallback) { this.callback = callback; }
+        observe() {
+          this.interval = window.setInterval(() => this.callback([], this as unknown as MutationObserver), 100);
+        }
+        disconnect() {
+          if (this.interval !== null) window.clearInterval(this.interval);
+        }
+      },
+    );
+    const engine = new DefaultFreezeEngine();
+    const promise = engine.freeze();
+    await vi.advanceTimersByTimeAsync(5500);
+    const result = await promise;
+    expect(result.stabilityReached).toBe(false);
+    expect(result.degraded).toBe(true);
+    expect(engine.getState().status).toBe("DEGRADED");
   });
 });

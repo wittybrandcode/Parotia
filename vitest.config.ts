@@ -19,7 +19,7 @@ export default defineConfig({
       include: ["src/**/*.ts", "src/**/*.tsx"],
       // Non-targets: barrel re-exports, type-only modules, and mount entries.
       exclude: ["src/shared/index.ts", "src/shared/types/**", "src/ui/src/main.tsx"],
-      reporter: ["text", "text-summary"],
+      reporter: ["text", "text-summary", "html", "json-summary"],
       thresholds: {
         statements: 80,
         branches: 75,

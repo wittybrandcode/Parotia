@@ -27,14 +27,14 @@ export class DefaultCaptureStitcher implements CaptureStitcher {
   private dpr = 1;
   private baseScrollCss = 0;
   private widthSet = false;
-  private nextY = 0;
+  private painted: Array<{ start: number; end: number }> = [];
 
   start(pageHeightCss: number, dpr: number, baseScrollCss = 0): void {
     this.pageHeightCss = pageHeightCss;
     this.dpr = dpr || 1;
     this.baseScrollCss = baseScrollCss || 0;
     this.widthSet = false;
-    this.nextY = 0;
+    this.painted = [];
     const canvas = document.createElement("canvas");
     canvas.width = 1;
     canvas.height = canvasHeightFor(pageHeightCss, this.dpr);
@@ -48,7 +48,7 @@ export class DefaultCaptureStitcher implements CaptureStitcher {
     this.ctx = canvas.getContext("2d");
   }
 
-  async addSlice(dataUrl: string, _scrollYCss: number): Promise<SliceResult> {
+  async addSlice(dataUrl: string, scrollYCss: number): Promise<SliceResult> {
     const { ctx, canvas } = this;
     if (!ctx || !canvas) throw new Error("Stitcher not started");
     const bitmap = await loadBitmap(dataUrl);
@@ -59,14 +59,18 @@ export class DefaultCaptureStitcher implements CaptureStitcher {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       this.widthSet = true;
     }
-    const y = this.nextY;
-    const canvasBottom = canvas.height;
-    const remaining = Math.max(0, canvasBottom - y);
-    if (remaining <= 0) { bitmap.close(); return { blank }; }
-    const drawHeight = Math.min(bitmap.height, remaining);
+    const rawY = Math.round((scrollYCss - this.baseScrollCss) * this.dpr);
+    const sourceY = Math.max(0, -rawY);
+    const y = Math.max(0, rawY);
+    const remaining = Math.max(0, canvas.height - y);
+    if (remaining <= 0 || sourceY >= bitmap.height) {
+      bitmap.close();
+      return { blank };
+    }
+    const drawHeight = Math.min(bitmap.height - sourceY, remaining);
     if (drawHeight > 0) {
-      ctx.drawImage(bitmap, 0, 0, bitmap.width, drawHeight, 0, y, bitmap.width, drawHeight);
-      this.nextY = y + drawHeight;
+      ctx.drawImage(bitmap, 0, sourceY, bitmap.width, drawHeight, 0, y, bitmap.width, drawHeight);
+      this.recordPainted(y, y + drawHeight);
     }
     bitmap.close();
     return { blank };
@@ -75,6 +79,10 @@ export class DefaultCaptureStitcher implements CaptureStitcher {
   finalize(): Promise<string> {
     const canvas = this.canvas;
     if (!canvas) return Promise.reject(new Error("Stitcher not started"));
+    const coverage = this.painted[0];
+    if (!coverage || coverage.start > 0 || coverage.end < canvas.height || this.painted.length > 1) {
+      return Promise.reject(new Error("Capture slices did not cover the requested image without gaps"));
+    }
     return canvasToPngDataUrl(canvas);
   }
 
@@ -83,6 +91,18 @@ export class DefaultCaptureStitcher implements CaptureStitcher {
     this.canvas = null;
     this.ctx = null;
     this.widthSet = false;
+    this.painted = [];
+  }
+
+  private recordPainted(start: number, end: number): void {
+    const ranges = [...this.painted, { start, end }].sort((a, b) => a.start - b.start);
+    const merged: Array<{ start: number; end: number }> = [];
+    for (const range of ranges) {
+      const last = merged[merged.length - 1];
+      if (!last || range.start > last.end) merged.push({ ...range });
+      else last.end = Math.max(last.end, range.end);
+    }
+    this.painted = merged;
   }
 }
 

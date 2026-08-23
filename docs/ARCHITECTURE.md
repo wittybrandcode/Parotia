@@ -1,177 +1,78 @@
 # Architecture
 
-Parotia is a Manifest V3 Chrome extension built with a strict separation between three execution contexts that never share memory.
+Parotia is a Manifest V3 capture extension with four isolated execution contexts. Page DOM is owned only by the content runtime; privileged browser APIs stay in the service worker.
 
----
+## Contexts and ownership
 
-## Execution Contexts
+```text
+Toolbar iframe (React)
+  -> chrome.runtime messages
+Service worker
+  -> validates session/tab ownership
+  -> coordinates captureVisibleTab, conditional full-page zoom fallback, temporary storage and download
+  -> chrome.tabs messages
+Content runtime
+  -> owns DOM, selection, cleanup, freeze and canvas stitching
+  -> targeted postMessage
+Toolbar iframe
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Service Worker                         │
-│              src/background/service-worker.ts             │
-│          (737 lines — NO DOM access)                      │
-│                                                           │
-│  chrome.tabs.*  chrome.downloads.*  chrome.storage.*      │
-└──────────────────────┬──────────────────────────────────┘
-                       │ chrome.tabs.sendMessage
-                       │ chrome.runtime.onMessage
-                       ▼
-┌─────────────────────────────────────────────────────────┐
-│                    Content Runtime                        │
-│              src/content/index.ts (hub)                   │
-│          (566 lines — OWNS the page DOM)                  │
-│                                                           │
-│  session · freeze · inspector · cleanup · mutation         │
-│  extraction · capture · matching · keyboard · overlay      │
-│  selection                                                  │
-└──────────────────────┬──────────────────────────────────┘
-                       │ postMessage (targeted origin)
-                       │ chrome.runtime.sendMessage
-                       ▼
-┌─────────────────────────────────────────────────────────┐
-│                      Toolbar UI                           │
-│              src/ui/src/App.tsx                            │
-│          (410 lines — React 18, Shadow DOM)               │
-│                                                           │
-│  Freeze toggle · Pick · Delete · Hide · Capture            │
-│  Free Select · History · Undo/Redo · Reset                 │
-└─────────────────────────────────────────────────────────┘
+Service worker -> one-time editor ticket -> Editor page (React + Konva)
 ```
 
-### Service Worker (Background)
+| Context | Primary modules | Durable state |
+|---|---|---|
+| Service worker | `service-worker.ts` router, `captureCoordinator.ts`, `captureModes/*`, `captureSupport.ts`, `sessionRegistry.ts`, `editorGateway.ts`, `editorTickets.ts`, `temporaryStorage.ts`, `downloadService.ts` | tab/session ownership in `chrome.storage.session` |
+| Content runtime | `content/index.ts`, `handlers/*`, engines under `content/*` | current page session and reversible DOM transactions |
+| Toolbar | `ui/src/App.tsx` | rendered snapshot only |
+| Editor | `ui/src/editor/*` | bounded unified visible-image history |
 
-**Never touches the page DOM.** Responsible for:
+## Core invariants
 
-- Extension lifecycle and toolbar activation
-- Tab ↔ session mapping (`Map<tabId, sessionId>`)
-- Capture orchestration (screenshot, scroll, stitch, download)
-- Payload validation at the privileged boundary
-- Session recovery after SW restarts
-- Stale data cleanup on startup
+1. A session belongs to exactly one live tab. There is no active-tab recovery fallback.
+2. Every temporary DOM/style/attribute mutation records exact presence, value and CSS priority and has an idempotent restore path.
+3. Slice coordinates, not arrival order, determine pixel placement. Finalization fails if painted intervals contain a gap.
+4. Every render wait has a hard deadline. Continuous page mutation degrades or reports diagnostics; it cannot hold a Promise forever.
+5. The worker returns one `MessageResponse<T>` envelope and unwraps the content response at the routing boundary.
+6. Editor tickets are short-lived, tab-bound and consumed before a privileged download.
+7. A fully visible element is a read-only, single-frame pixel crop: no page zoom, scroll, DOM isolation, forced media attributes or site-style overrides. Its finished crop is then enlarged independently to a high-quality 2× PNG within bounded canvas/memory limits.
 
-### Content Runtime
+## Capture flow
 
-**Owns the page DOM exclusively.** Injected via `chrome.scripting.executeScript`. Central hub (`index.ts`) wires all engines:
-
-| Engine | File | Lines | Purpose |
-|--------|------|-------|---------|
-| Session | `session/session.ts` | 55 | Lifecycle state machine, page context capture |
-| Freeze | `freeze/freezeEngine.ts` | 197 | `window.stop()`, CSS injection, MutationObserver stability |
-| Inspector | `inspector/inspector.ts` | 456 | Element picker, hover overlay, action bar |
-| Cleanup | `cleanup/cleanupEngine.ts` | 196 | Delete/hide coordination, count tracking |
-| Mutation | `mutation/mutationEngine.ts` | 290 | Central DOM mutation point, undo/redo |
-| History | `mutation/history.ts` | 119 | LIFO undo/redo stack (cap: 100) |
-| Extraction | `extraction/extractionEngine.ts` | 121 | Article candidate scoring |
-| Capture Stitcher | `capture/captureStitcher.ts` | 101 | Viewport slice stitching on canvas |
-| Element Capture | `capture/elementCapture.ts` | 281 | Element isolation, eager images, forced visibility |
-| Fixed Headers | `capture/fixedHeaders.ts` | 87 | Detect/hide sticky headers during capture |
-| Slice Math | `capture/sliceMath.ts` | 45 | Pure math for slice planning (shared with SW) |
-| Match Engine | `matching/matchEngine.ts` | 66 | "Delete Similar" — structural similarity |
-| Keyboard | `keyboard/shortcuts.ts` | 106 | Shift+Alt+F/P, Escape, Delete |
-| Overlay | `overlay/overlay.ts` | 167 | Shadow DOM iframe container |
-| Free Select | `selection/freeSelect.ts` | 379 | Draw rectangle → crop capture |
-
-### Toolbar UI
-
-React 18 application rendered inside a Shadow DOM iframe. Communicates via:
-
-- **Outbound:** `chrome.runtime.sendMessage()` → Service Worker
-- **Inbound:** `postMessage` from content runtime (state broadcasts, progress updates)
-
----
-
-## Data Flow
-
-### 1. Session Start
-
-```
-User clicks icon → service-worker.ts:handleCommand("START_SESSION")
-  → ensureContentScriptInjected() → chrome.scripting.executeScript
-  → content/index.ts:createSession()
-  → broadcastState() → postMessage → App.tsx:setState()
+```text
+CAPTURE(mode)
+  -> verify session owner and serialize capture per tab
+  -> content prepare transaction (toolbar; media/fixed headers only where the mode requires them)
+  -> captureVisibleTab one or more times
+  -> content crops or stitches by actual scroll coordinates
+  -> stage PNG under capture:<session>
+  -> worker removes staging key
+  -> issue editor-image/editor-ticket capability
+  -> editor consumes source image and later consumes/discards ticket
+  -> finally restore any mode-owned scroll, zoom, toolbar, styles and media attributes
 ```
 
-### 2. Freeze
+For a fully visible picked element, Parotia measures its current viewport rectangle, captures one native frame and crops those pixels directly. It never changes zoom or site DOM on this path, so responsive layout and virtualized-feed state remain intact. The final element crop is enlarged in the same render pass with high-quality browser resampling and lossless PNG encoding. Normal captures receive exactly 2× dimensions; unusually large captures use the highest safe scale bounded by Chromium's canvas dimension and a 64M-pixel output budget, with native-size fallback if a driver rejects the enhanced surface. Only elements extending outside the viewport fall back to `DefaultCaptureStitcher` before receiving the same safe export treatment. Full-page and fallback element stitching map `(actualScrollY - baseScrollCss) * dpr`, crop negative/overlapping source rows, merge painted intervals and reject incomplete coverage. Region and bitmap crops clamp all coordinates to the decoded bitmap.
 
-```
-User clicks logo → App.tsx → chrome.runtime.sendMessage("FREEZE_PAGE")
-  → service-worker → chrome.tabs.sendMessage("FREEZE_PAGE")
-  → content/freezeEngine.ts → window.stop() + CSS + MutationObserver
-  → broadcastState() → toolbar updates
-```
+## Reversible page changes
 
-### 3. Element Cleanup
+`DomPatchLedger` is the primitive for capture-time styles and attributes. Cleanup operations retain their original `display` value and priority. Fixed headers and iframe freeze locks retain their original inline CSS. Region/full-page preparation is owned by `CapturePreparationTransactions`, so repeated prepare/restore calls are safe.
 
-```
-User clicks Pick → inspector.ts starts hover overlay
-  → User clicks element → elementReferenceOf() → serialize to ElementReference
-  → User clicks Delete → mutationEngine.execute(Command)
-  → DOM removal → history.push() → broadcastState()
-```
+## Media readiness
 
-### 4. Capture
+The readiness layer covers normal DOM and open Shadow DOM images, browser-selected `picture/srcset`, video posters, SVG images and CSS backgrounds. Canvas and current video frames are composited after a bounded paint window. Closed shadow roots and inaccessible iframe DOM cannot be inspected, although already-painted pixels remain part of `captureVisibleTab`.
 
-```
-User clicks Capture → "CAPTURE" command
-  → service-worker: captureFullPage() or captureElement() or captureRegion()
-  → chrome.tabs.captureVisibleTab() (repeated for full page)
-  → data URLs staged in chrome.storage.local
-  → content: stitcher.ts assembles on canvas
-  → data URL → blob → downloadPng() → chrome.downloads.download()
-```
+## Session and message boundaries
 
----
+`SessionRegistry` persists `{tabId, sessionId, createdAt}` in `chrome.storage.session`, validates that stored tabs still exist during hydration, and removes ownership on navigation or tab close. `validateBackgroundCommandShape()` is the shared structural validator used before side effects in both privileged boundaries; content additionally verifies that the session ID equals the page-owned session.
 
-## Shared Module
+## Editor model
 
-`src/shared/` contains code shared between Service Worker and Content Runtime:
+Annotations, crop and adjust commit PNG snapshots into one bounded `EditorHistory`. Undo/redo therefore follows the visible operation order. Crop, adjust, copy, share, save and close run through one exclusive operation boundary; Save moves the UI to a terminal `Saved` state and Close waits briefly for ticket discard.
 
-| Module | Used By |
-|--------|---------|
-| `types/*` | All contexts |
-| `constants.ts` | Freeze engine, history, capture |
-| `utils/id.ts` | Session, inspector, mutation, extraction |
-| `utils/filename.ts` | Service worker (download naming) |
-| `utils/selector.ts` | Tests only (inspector has its own) |
+## Compatibility names
 
----
+`data-newsclean-*`, `__newsclean__` and the deprecated `NewsCleanSession`/`isNewsCleanUi` aliases are retained for the 1.x compatibility window. New code uses `ParotiaSession`, `isParotiaUi` and `parotia-*` wire sources while receivers accept the old source names. Removing the legacy selectors requires a separately versioned migration.
 
-## Build Pipeline
+## Build outputs
 
-```
-src/ (TypeScript)
-  ├── esbuild → dist/content/index.js (90 KB)
-  ├── esbuild → dist/background/service-worker.js (24 KB)
-  ├── Vite → dist/ui/index.html + options.html + assets/
-  ├── sharp → dist/icons/icon{16,32,48,128}.png
-  └── build-manifest.mjs → dist/manifest.json
-```
-
----
-
-## State Machine
-
-Session lifecycle follows defined transitions:
-
-```
-CREATED → FROZEN → UNFROZEN → FROZEN → ...
-    ↓        ↓
-  CLOSED  DEGRADED (MutationObserver failed)
-```
-
-Valid transitions are enforced by `SESSION_TRANSITIONS` in `src/shared/types/session.ts`.
-
----
-
-## Key Design Decisions
-
-1. **Element references are serializable** — DOM nodes are never stored; only `ElementReference` objects (id + selector + tagName + className + path). This enables clean undo/redo without holding DOM references.
-
-2. **Single mutation point** — All DOM changes go through `MutationEngine`. This guarantees undo/redo consistency and enables action logging.
-
-3. **Shadow DOM isolation** — Toolbar lives in Shadow DOM, immune to page CSS injection and protected from accidental selection during capture.
-
-4. **Canvas white fill** — Stitcher canvas is filled with `#ffffff` after resize to prevent transparent gaps between slices.
-
-5. **Cross-context shared code** — `sliceMath.ts` is imported by both service worker and content script via esbuild path aliases, avoiding code duplication.
+The lifecycle/router file is kept near 250 lines; capture modes are independent modules and share only bounded support helpers. `esbuild` emits content/background bundles, Vite emits toolbar/options/editor pages, Sharp generates icons, and `build-manifest.mjs` writes the single versioned MV3 manifest into `dist/`.

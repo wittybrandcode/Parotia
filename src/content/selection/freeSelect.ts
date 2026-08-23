@@ -190,8 +190,11 @@ export function startFreeSelect(): Promise<FreeSelectResult | null> {
       } else if (moving) {
         const dx = e.clientX - moveAnchorX;
         const dy = e.clientY - moveAnchorY;
-        currentRect.x = moveRectX + dx;
-        currentRect.y = moveRectY + dy;
+        currentRect = clampRect({
+          ...currentRect,
+          x: moveRectX + dx,
+          y: moveRectY + dy,
+        });
         paintAdjust();
       } else if (resizing) {
         applyResize(e.clientX, e.clientY);
@@ -343,7 +346,7 @@ export function startFreeSelect(): Promise<FreeSelectResult | null> {
       if (w < 0) { x += w; w = -w; }
       if (h < 0) { y += h; h = -h; }
 
-      currentRect = { x, y, width: w, height: h };
+      currentRect = clampRect({ x, y, width: w, height: h });
     }
 
     /* ── wire events ─────────────────────────────────────────────────── */
@@ -364,6 +367,19 @@ function normalise(x1: number, y1: number, x2: number, y2: number): Rect {
     y: Math.min(y1, y2),
     width: Math.abs(x2 - x1),
     height: Math.abs(y2 - y1),
+  };
+}
+
+function clampRect(rect: Rect): Rect {
+  const viewportWidth = Math.max(1, window.innerWidth);
+  const viewportHeight = Math.max(1, window.innerHeight);
+  const width = Math.max(0, Math.min(rect.width, viewportWidth));
+  const height = Math.max(0, Math.min(rect.height, viewportHeight));
+  return {
+    x: Math.max(0, Math.min(rect.x, viewportWidth - width)),
+    y: Math.max(0, Math.min(rect.y, viewportHeight - height)),
+    width,
+    height,
   };
 }
 
