@@ -109,15 +109,22 @@ function progressLabel(progress: CaptureProgress): string {
 }
 
 export function App() {
-  const bootstrapSessionId = (() => {
+  const bootstrapParams = (() => {
     try {
       const value = window.location.hash.slice(1);
-      const parsed = value ? JSON.parse(decodeURIComponent(value)) as { sessionId?: unknown } : {};
-      return typeof parsed.sessionId === "string" ? parsed.sessionId : "";
+      const parsed = value
+        ? JSON.parse(decodeURIComponent(value)) as { sessionId?: unknown; parentOrigin?: unknown }
+        : {};
+      return {
+        sessionId: typeof parsed.sessionId === "string" ? parsed.sessionId : "",
+        parentOrigin: typeof parsed.parentOrigin === "string" ? new URL(parsed.parentOrigin).origin : "",
+      };
     } catch {
-      return "";
+      return { sessionId: "", parentOrigin: "" };
     }
   })();
+  const bootstrapSessionId = bootstrapParams.sessionId;
+  const bootstrapParentOrigin = bootstrapParams.parentOrigin;
   const [state, setState] = useState<ToolbarState>({
     sessionId: null,
     status: "CREATED",
@@ -185,6 +192,7 @@ export function App() {
       // (the content script posts through the page's own window). Anything
       // arriving from an external window is spoofed and ignored.
       if (event.source !== window.parent) return;
+      if (!bootstrapParentOrigin || event.origin !== bootstrapParentOrigin) return;
       const broadcast = event.data;
       if (broadcast?.source !== CONTENT_MESSAGE_SOURCE && broadcast?.source !== LEGACY_CONTENT_MESSAGE_SOURCE) return;
       if (broadcast.type === "PROGRESS") {
@@ -218,7 +226,7 @@ export function App() {
     })();
 
     return () => window.removeEventListener("message", onMessage);
-  }, [applyState, bootstrapSessionId]);
+  }, [applyState, bootstrapParentOrigin, bootstrapSessionId]);
 
   const freezeStatus = state.freeze?.status ?? "UNFROZEN";
   const frozen = freezeStatus !== "UNFROZEN";

@@ -52,7 +52,7 @@ const manifest = {
         "ui/editor.html",
         "ui/assets/*",
       ],
-      matches: ["http://*/*", "https://*/*"],
+      matches: ["*://*/*"],
     },
   ],
 };
