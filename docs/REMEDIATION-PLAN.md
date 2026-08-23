@@ -516,8 +516,9 @@ PR-07  real E2E + CI + docs + release
 | TypeScript | `npm run typecheck` ✅ |
 | ESLint | `npm run lint` ✅، بلا تحذيرات |
 | Security invariants | `npm run check:security` ✅ |
+| Dependency audit | `npm audit` ✅، صفر ثغرات مع تثبيت نظيف `--ignore-scripts` |
 | Vitest | 314/314 عبر 36 ملفاً ✅ |
-| Coverage | 90.76% lines/statements، 88.91% functions، 78.65% branches ✅ |
+| Coverage | 90.85% lines/statements، 88.91% functions، 78.66% branches ✅ |
 | Critical-file gates | ستة ملفات: capture/annotation/modal/session/tickets/coordinator ✅ |
 | Production build | content/background/UI/icons/manifest ✅ |
 | Chromium E2E | 5/5، ويشمل editor حقيقياً مع رسم وحفظ واستهلاك ticket ✅ |

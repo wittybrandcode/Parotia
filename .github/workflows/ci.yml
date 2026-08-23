@@ -10,7 +10,32 @@ permissions:
   contents: read
 
 jobs:
-  quality:
+  typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck
+
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run lint
+      - run: npm run check:security
+
+  test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -19,17 +44,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm run check:security
+      - run: npm ci --ignore-scripts
       - run: npm run test:coverage
-      - run: npm run build
-      - name: Upload built extension
-        uses: actions/upload-artifact@v4
-        with:
-          name: extension-dist
-          path: dist/
       - name: Upload coverage
         if: always()
         uses: actions/upload-artifact@v4
@@ -38,8 +54,7 @@ jobs:
           path: coverage/
           if-no-files-found: ignore
 
-  e2e:
-    needs: quality
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -48,13 +63,31 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - name: Upload built extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-dist
+          path: dist/
+
+  e2e:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
       - uses: actions/download-artifact@v4
         with:
           name: extension-dist
           path: dist/
-      - run: npx playwright install --with-deps chromium
-      - run: npx playwright test
+      - run: npm run e2e:install:chromium
+      - run: npm run test:e2e:ci
       - name: Upload Playwright artifacts
         if: failure()
         uses: actions/upload-artifact@v4
