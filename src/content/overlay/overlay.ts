@@ -88,6 +88,8 @@ function showSplash(): void {
 export interface OverlayInstance {
   root: HTMLElement;
   shadow: ShadowRoot;
+  /** Sends only after the iframe has proved it loaded at the extension origin. */
+  postToToolbar(message: Record<string, unknown>): boolean;
   destroy(): void;
   setVisible(visible: boolean): void;
 }
@@ -141,6 +143,7 @@ export function createOverlay(sessionId?: string): OverlayInstance {
   // height through postMessage. Without this the iframe would keep its default
   // 150px box and leave a dark gap below the bar that covers the article.
   const extensionOrigin = new URL(chrome.runtime.getURL("")).origin;
+  let toolbarReady = false;
   const onUiResize = (event: MessageEvent<{ source?: string; type?: string; height?: number }>): void => {
     // Only accept resize reports from the toolbar iframe we host, delivered
     // straight from the extension's own origin — anything else is ignored.
@@ -148,6 +151,7 @@ export function createOverlay(sessionId?: string): OverlayInstance {
     if (event.origin !== extensionOrigin) return;
     const data = event.data;
     if ((data?.source !== UI_MESSAGE_SOURCE && data?.source !== LEGACY_UI_MESSAGE_SOURCE) || data.type !== "RESIZE") return;
+    toolbarReady = true;
     const height = typeof data.height === "number" && data.height > 0 ? data.height : 0;
     frame.style.height = height > 0 ? `${height}px` : "";
   };
@@ -162,7 +166,17 @@ export function createOverlay(sessionId?: string): OverlayInstance {
   return {
     root,
     shadow,
+    postToToolbar(message) {
+      if (!toolbarReady || !frame.contentWindow) return false;
+      try {
+        frame.contentWindow.postMessage(message, extensionOrigin);
+        return true;
+      } catch {
+        return false;
+      }
+    },
     destroy() {
+      toolbarReady = false;
       window.removeEventListener("message", onUiResize);
       root.remove();
     },

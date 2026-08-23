@@ -109,7 +109,6 @@ export async function captureFullPage(tabId: number | undefined, command: Captur
       };
     }
 
-    const maxScroll = Math.max(0, metrics.pageHeightCss - metrics.viewportHeightCss);
     const scrollYs = planSlices(metrics.pageHeightCss, metrics.viewportHeightCss);
 
     const scrollTo = async (y: number): Promise<number> => {
@@ -124,7 +123,7 @@ export async function captureFullPage(tabId: number | undefined, command: Captur
 
     await captureSliceLoop(
       tabId, sessionId, tab.windowId,
-      scrollYs.map((y) => Math.min(y, maxScroll)),
+      scrollYs,
       scrollTo,
       async (dataUrl, scrollY) => {
         const res = (await chrome.tabs.sendMessage(tabId, {
@@ -143,14 +142,28 @@ export async function captureFullPage(tabId: number | undefined, command: Captur
       type: "CAPTURE_FINALIZE",
       payload: { sessionId },
     } satisfies BackgroundCommand)) as
-      | MessageResponse<{ success?: boolean; error?: { message?: string } }>
+      | MessageResponse<{
+          success?: boolean;
+          error?: { message?: string };
+          partial?: boolean;
+          capturedHeightCss?: number;
+          requestedHeightCss?: number;
+          gapCount?: number;
+        }>
       | undefined;
 
     if (!result?.data?.success) {
       const detail = result?.data?.error?.message ?? result?.error?.message ?? "";
       throw new Error(`Failed to assemble the full-page image${detail ? `: ${detail}` : ""}`);
     }
-    steps.push("assembled");
+    const partial = result.data.partial === true;
+    const capturedHeightCss = Math.max(0, Math.round(result.data.capturedHeightCss ?? 0));
+    const requestedHeightCss = Math.max(0, Math.round(result.data.requestedHeightCss ?? metrics.pageHeightCss));
+    const warning = partial
+      ? `Only the first ${capturedHeightCss}px of ${requestedHeightCss}px could be captured continuously; ` +
+        "the page changed or skipped a scroll range during capture."
+      : undefined;
+    steps.push(partial ? `assembled partial ${capturedHeightCss}px/${requestedHeightCss}px` : "assembled");
     pushProgress(tabId, sessionId, { current: scrollYs.length, total: scrollYs.length, phase: "STITCHING" });
 
     const key = `capture:${sessionId}`;
@@ -161,14 +174,21 @@ export async function captureFullPage(tabId: number | undefined, command: Captur
     }
     await chrome.storage.local.remove(key);
 
-    const filename = `parotia-fullpage-${titleSlug(tab)}-${timestampPart()}.png`;
+    const filename = `parotia-fullpage-${partial ? "partial-" : ""}${titleSlug(tab)}-${timestampPart()}.png`;
     pushProgress(tabId, sessionId, { current: scrollYs.length, total: scrollYs.length, phase: "ENCODING" });
     const result2 = await finishCapture(tabId, sessionId, dataUrl, filename);
     if (typeof result2 === "object" && result2 !== null && "success" in result2 && !(result2 as { success: boolean }).success) {
       return { ...result2, steps };
     }
     steps.push("downloaded");
-    return { success: true, filename, ...(typeof result2 === "object" && result2 !== null ? result2 : {}), steps };
+    return {
+      success: true,
+      filename,
+      ...(typeof result2 === "object" && result2 !== null ? result2 : {}),
+      partial,
+      ...(warning ? { warning } : {}),
+      steps,
+    };
   } catch (error) {
     throw new Error(`Capture failed [${steps.join(" > ") || "start"}]: ${error instanceof Error ? error.message : String(error)}`);
   } finally {

@@ -489,6 +489,58 @@ describe("service-worker", () => {
     expect(chromeStub.storage.local.remove).toHaveBeenCalledWith("capture:sess-f");
   });
 
+  it("opens a clearly named partial capture with a user-facing warning", async () => {
+    vi.useFakeTimers();
+    sw.tabSessions.set(4, "sess-partial");
+    chromeStub.tabs.get.mockResolvedValue({ id: 4, windowId: 12, title: "Dynamic page" });
+    chromeStub.tabs.captureVisibleTab.mockResolvedValue("data:image/png;base64,AAAA");
+    chromeStub.storage.local.get.mockResolvedValue({
+      "capture:sess-partial": "data:image/png;base64,BBBB",
+    });
+    chromeStub.storage.local.remove.mockResolvedValue(undefined);
+    chromeStub.tabs.sendMessage.mockImplementation(async (_tabId: number, message: { type: string; payload?: Record<string, unknown> }) => {
+      switch (message.type) {
+        case "CAPTURE_STITCH_START":
+          return okResponse({
+            success: true,
+            metrics: { pageHeightCss: 8088, viewportHeightCss: 1241, dpr: 1, scrollY: 0 },
+          });
+        case "CAPTURE_SCROLL":
+          return okResponse({ success: true, actualScrollY: message.payload?.scrollYCss ?? 0 });
+        case "CAPTURE_FINALIZE":
+          return okResponse({
+            success: true,
+            partial: true,
+            capturedHeightCss: 4200,
+            requestedHeightCss: 8088,
+            gapCount: 1,
+          });
+        default:
+          return okResponse({});
+      }
+    });
+
+    const pending = invokeOnMessage(
+      { type: "CAPTURE", payload: { sessionId: "sess-partial", mode: "FULL_PAGE" } },
+      {},
+    );
+    await vi.advanceTimersByTimeAsync(12000);
+    const res = await pending;
+
+    const data = res.data as {
+      success?: boolean;
+      partial?: boolean;
+      filename?: string;
+      warning?: string;
+      steps?: string[];
+    };
+    expect(data.success).toBe(true);
+    expect(data.partial).toBe(true);
+    expect(data.filename).toMatch(/^parotia-fullpage-partial-/);
+    expect(data.warning).toContain("first 4200px of 8088px");
+    expect(data.steps).toContain("assembled partial 4200px/8088px");
+  });
+
   it("captures a visible selected element in one native frame without changing zoom", async () => {
     vi.useFakeTimers();
     sw.tabSessions.set(5, "sess-e");

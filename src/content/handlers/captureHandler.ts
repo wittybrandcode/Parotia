@@ -11,6 +11,7 @@ import { startFreeSelect } from "../selection/freeSelect";
 /** Owns every capture-preparation mutation and makes restore idempotent. */
 class CapturePreparationTransactions {
   private regionStyle: HTMLStyleElement | null = null;
+  private fullPageStyle: HTMLStyleElement | null = null;
   private regionPatches: DomPatchLedger | null = null;
   private fullPagePatches: DomPatchLedger | null = null;
 
@@ -55,12 +56,30 @@ class CapturePreparationTransactions {
   }
 
   async prepareFullPage(): Promise<void> {
+    this.fullPageStyle?.remove();
+    const style = document.createElement("style");
+    style.setAttribute("data-parotia-full-page-capture", "true");
+    style.textContent = `
+      html, body {
+        scroll-behavior: auto !important;
+        scroll-snap-type: none !important;
+        overflow-anchor: none !important;
+      }
+      *, *::before, *::after {
+        scroll-snap-align: none !important;
+        scroll-snap-stop: normal !important;
+      }
+    `;
+    (document.head ?? document.documentElement).appendChild(style);
+    this.fullPageStyle = style;
     this.fullPagePatches?.restore();
     this.fullPagePatches = forceEagerImages(document);
     await waitForVisualAssets(document);
   }
 
   restoreFullPage(): void {
+    this.fullPageStyle?.remove();
+    this.fullPageStyle = null;
     this.fullPagePatches?.restore();
     this.fullPagePatches = null;
   }
@@ -283,7 +302,7 @@ export async function handleCaptureCommand(
       const fixedHeaderCount = ctx.fixedHeaders.detect();
       ctx.stitcher?.dispose();
       const newStitcher = new DefaultCaptureStitcher();
-      newStitcher.start(pageHeightCss, dpr);
+      newStitcher.start(pageHeightCss, dpr, 0, viewportHeightCss);
       ctx.stitcher = newStitcher;
       return {
         success: true,
@@ -310,10 +329,24 @@ export async function handleCaptureCommand(
     case "CAPTURE_FINALIZE": {
       if (!ctx.stitcher) return { success: false, error: "Stitcher not started" };
       try {
-        const dataUrl = await ctx.stitcher.finalize();
+        const finalized = ctx.stitcher.finalizeBestEffort
+          ? await ctx.stitcher.finalizeBestEffort()
+          : {
+              dataUrl: await ctx.stitcher.finalize(),
+              complete: true,
+              capturedHeightCss: 0,
+              requestedHeightCss: 0,
+              gapCount: 0,
+            };
         try {
-          await chrome.storage.local.set({ [`capture:${command.payload.sessionId}`]: dataUrl });
-          return { success: true };
+          await chrome.storage.local.set({ [`capture:${command.payload.sessionId}`]: finalized.dataUrl });
+          return {
+            success: true,
+            partial: !finalized.complete,
+            capturedHeightCss: finalized.capturedHeightCss,
+            requestedHeightCss: finalized.requestedHeightCss,
+            gapCount: finalized.gapCount,
+          };
         } catch (error) {
           return {
             success: false,

@@ -136,7 +136,7 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [inspecting, setInspecting] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
-  const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
+  const [feedback, setFeedback] = useState<{ ok: boolean; warning?: boolean; text: string } | null>(null);
   // While a capture is in flight, STATE broadcasts must not clear the live
   // progress feedback; once it ends, the next STATE clears the stale message.
   const capturingRef = useRef(false);
@@ -168,7 +168,12 @@ export function App() {
             "Operation failed";
           setFeedback({ ok: false, text: message });
         } else if (command.type === "CAPTURE") {
-          setFeedback({ ok: true, text: `Saved: ${(data as { filename?: string }).filename ?? "parotia.png"}` });
+          const captureData = data as { filename?: string; warning?: string };
+          setFeedback({
+            ok: true,
+            warning: Boolean(captureData.warning),
+            text: captureData.warning ?? `Saved: ${captureData.filename ?? "parotia.png"}`,
+          });
         }
         then?.(ok);
         // Sync the toolbar with the latest session state after every action.
@@ -372,7 +377,11 @@ export function App() {
         </div>
 
         <div className="nc-side">
-          <div className="nc-feedback" data-feedback-ok={feedback?.ok}>
+          <div
+            className="nc-feedback"
+            data-feedback-ok={feedback?.ok}
+            data-feedback-warning={feedback?.warning}
+          >
             {busy && <Loader2 className="nc-spin" size={11} aria-hidden="true" />}
             <span>{feedback ? feedback.text : `Removed ${removed} element${removed === 1 ? "" : "s"}`}</span>
             <a

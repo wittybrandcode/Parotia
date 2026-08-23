@@ -118,20 +118,12 @@ function historyState(): { canUndo: boolean; canRedo: boolean; undoLabel?: strin
 
 /**
  * Posts a message to the toolbar iframe. The frame starts as about:blank and
- * only navigates to the extension origin after load, so until then its window's
- * origin is the page's — posting with the extension's target origin throws and
- * would abort the caller. Dropping those early broadcasts is safe: the UI pulls
- * fresh state via GET_STATE after every action and on bootstrap.
+ * only navigates to the extension origin after load. OverlayInstance waits for
+ * the iframe's validated RESIZE handshake before allowing a post, so no message
+ * is attempted while the recipient still has the hosting page's origin.
  */
 function postToToolbar(message: Record<string, unknown>): void {
-  const frame = overlay?.shadow.querySelector<HTMLIFrameElement>("iframe[data-newsclean-frame]");
-  if (!frame?.contentWindow) return;
-  const targetOrigin = new URL(chrome.runtime.getURL("")).origin;
-  try {
-    frame.contentWindow.postMessage(message, targetOrigin);
-  } catch {
-    // Toolbar iframe not navigated to the extension origin yet — skip.
-  }
+  overlay?.postToToolbar(message);
 }
 
 /** Pushes the latest state to the toolbar iframe (which talks to the page). */

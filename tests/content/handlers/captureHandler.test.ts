@@ -4,6 +4,7 @@ import type { HandlerContext } from "@content/handlers/types";
 const mocks = vi.hoisted(() => ({
   addSlice: vi.fn(),
   finalize: vi.fn(),
+  finalizeBestEffort: vi.fn(),
   start: vi.fn(),
   dispose: vi.fn(),
   crop: vi.fn(),
@@ -22,6 +23,7 @@ vi.mock("@content/capture/captureStitcher", () => ({
     start(...args: unknown[]) { return mocks.start(...args); }
     addSlice(...args: unknown[]) { return mocks.addSlice(...args); }
     finalize(...args: unknown[]) { return mocks.finalize(...args); }
+    finalizeBestEffort(...args: unknown[]) { return mocks.finalizeBestEffort(...args); }
     dispose(...args: unknown[]) { return mocks.dispose(...args); }
   },
 }));
@@ -97,6 +99,13 @@ beforeEach(() => {
   mocks.waitFonts.mockResolvedValue(undefined);
   mocks.addSlice.mockResolvedValue({ blank: false });
   mocks.finalize.mockResolvedValue("data:image/png;base64,stitched");
+  mocks.finalizeBestEffort.mockResolvedValue({
+    dataUrl: "data:image/png;base64,stitched",
+    complete: true,
+    capturedHeightCss: 1200,
+    requestedHeightCss: 1200,
+    gapCount: 0,
+  });
   mocks.crop.mockResolvedValue("data:image/png;base64,cropped");
   mocks.loadBitmap.mockResolvedValue({ width: 100, height: 80, close: vi.fn() });
   (chrome.storage.local.set as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
@@ -304,7 +313,11 @@ describe("capture command handler", () => {
     }));
     expect(mocks.preRoll).toHaveBeenCalledWith(0);
     expect(mocks.waitVisual).toHaveBeenCalledWith(document);
-    expect(mocks.start).toHaveBeenCalledWith(1200, 2);
+    expect(mocks.start).toHaveBeenCalledWith(1200, 2, 0, 600);
+    expect(document.head.querySelector("[data-parotia-full-page-capture]")).not.toBeNull();
+
+    await handleCaptureCommand(command("RESTORE_CAPTURE"), ctx);
+    expect(document.head.querySelector("[data-parotia-full-page-capture]")).toBeNull();
   });
 
   it("scrolls, hides fixed headers and handles full-page slices", async () => {
@@ -324,7 +337,13 @@ describe("capture command handler", () => {
     expect(await handleCaptureCommand(command("CAPTURE_FINALIZE", { sessionId: "none" }), ctx))
       .toEqual(expect.objectContaining({ success: false }));
     ctx.stitcher = { addSlice: mocks.addSlice, finalize: mocks.finalize, dispose: mocks.dispose, start: mocks.start };
-    expect(await handleCaptureCommand(command("CAPTURE_FINALIZE", { sessionId: "full" }), ctx)).toEqual({ success: true });
+    expect(await handleCaptureCommand(command("CAPTURE_FINALIZE", { sessionId: "full" }), ctx)).toEqual({
+      success: true,
+      partial: false,
+      capturedHeightCss: 0,
+      requestedHeightCss: 0,
+      gapCount: 0,
+    });
     expect(chrome.storage.local.set).toHaveBeenCalledWith({ "capture:full": "data:image/png;base64,stitched" });
     expect(ctx.fixedHeaders.restoreAll).toHaveBeenCalled();
 
@@ -332,6 +351,30 @@ describe("capture command handler", () => {
     (chrome.storage.local.set as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("quota"));
     expect(await handleCaptureCommand(command("CAPTURE_FINALIZE", { sessionId: "full" }), ctx))
       .toEqual(expect.objectContaining({ success: false, error: expect.stringContaining("quota") }));
+  });
+
+  it("stages a clearly marked partial full-page fallback", async () => {
+    const ctx = makeContext();
+    mocks.finalizeBestEffort.mockResolvedValueOnce({
+      dataUrl: "data:image/png;base64,partial",
+      complete: false,
+      capturedHeightCss: 4200,
+      requestedHeightCss: 8088,
+      gapCount: 1,
+    });
+    const stitcher = new (await import("@content/capture/captureStitcher")).DefaultCaptureStitcher();
+    ctx.stitcher = stitcher;
+
+    expect(await handleCaptureCommand(command("CAPTURE_FINALIZE", { sessionId: "partial" }), ctx)).toEqual({
+      success: true,
+      partial: true,
+      capturedHeightCss: 4200,
+      requestedHeightCss: 8088,
+      gapCount: 1,
+    });
+    expect(chrome.storage.local.set).toHaveBeenCalledWith({
+      "capture:partial": "data:image/png;base64,partial",
+    });
   });
 
   it("keeps SELECT_REGION worker-owned", async () => {
