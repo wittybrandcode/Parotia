@@ -18,6 +18,7 @@ Complete technical documentation for the Parotia Chrome extension.
 | [Keyboard Shortcuts](./KEYBOARD-SHORTCUTS.md) | Complete shortcut reference |
 | [Contributing](./CONTRIBUTING.md) | How to contribute, code conventions |
 | [Changelog](./CHANGELOG.md) | Version history and release notes |
+| [Future Roadmap](./FUTURE-ROADMAP.md) | أهداف vNext: الزوم، الطبقات، النصوص، المشاركة وحفظ المشاريع |
 | [v1.1 Plan](./PLAN-V1.1.md) | Hardening plan for the next release |
 
 ---
