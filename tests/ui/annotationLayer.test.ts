@@ -100,6 +100,8 @@ describe("AnnotationLayer", () => {
     const editor = createAnnotationLayer();
     const listener = vi.fn();
     editor.init(document.querySelector("#stage")!, 800, 600, new Image());
+    expect(document.querySelector<HTMLElement>("#stage")!.style.width).toBe("800px");
+    expect(document.querySelector<HTMLElement>("#stage")!.style.height).toBe("600px");
     editor.setCommitListener(listener);
     editor.setTool(tool);
     const stage = mocks.state.stage!;

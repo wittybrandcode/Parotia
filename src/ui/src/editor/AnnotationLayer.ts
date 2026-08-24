@@ -38,7 +38,6 @@ export function createAnnotationLayer(): AnnotationLayer {
   let pendingInput: HTMLInputElement | null = null;
   let stageWidth = 0;
   let stageHeight = 0;
-  let displayScale = 1;
   const options = { ...DEFAULT_OPTIONS };
 
   let onCommit: (() => void) | null = null;
@@ -178,15 +177,9 @@ export function createAnnotationLayer(): AnnotationLayer {
     destroy();
     stageWidth = width;
     stageHeight = height;
-    const host = container.parentElement?.getBoundingClientRect();
-    const availableWidth = Math.max(1, (host?.width ?? width) - 32);
-    const availableHeight = Math.max(1, (host?.height ?? height) - 32);
-    displayScale = Math.min(1, availableWidth / width, availableHeight / height);
-    container.style.width = `${Math.round(width * displayScale)}px`;
-    container.style.height = `${Math.round(height * displayScale)}px`;
+    container.style.width = `${width}px`;
+    container.style.height = `${height}px`;
     stage = new Konva.Stage({ container, width, height });
-    stage.content.style.transform = `scale(${displayScale})`;
-    stage.content.style.transformOrigin = "top left";
     const backgroundLayer = new Konva.Layer({ listening: false });
     annotationLayer = new Konva.Layer();
     const uiLayer = new Konva.Layer({ listening: false });
@@ -243,7 +236,6 @@ export function createAnnotationLayer(): AnnotationLayer {
     onCommit = null;
     stageWidth = 0;
     stageHeight = 0;
-    displayScale = 1;
   }
 
   return {

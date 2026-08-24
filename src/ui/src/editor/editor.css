@@ -82,6 +82,71 @@ html, body, #root {
   background: #333;
 }
 
+.nc-editor-zoom-controls {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  border: 1px solid #333;
+  border-radius: 7px;
+  background: #0d0d0d;
+  overflow: hidden;
+}
+
+.nc-editor-zoom-button,
+.nc-editor-zoom-value,
+.nc-editor-zoom-mode {
+  height: 100%;
+  border: 0;
+  border-right: 1px solid #292929;
+  background: transparent;
+  color: #999;
+  cursor: pointer;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.nc-editor-zoom-button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+}
+
+.nc-editor-zoom-value {
+  width: 48px;
+}
+
+.nc-editor-zoom-mode {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 39px;
+  padding: 0 7px;
+}
+
+.nc-editor-zoom-mode:last-child {
+  border-right: 0;
+}
+
+.nc-editor-zoom-button:hover:not(:disabled),
+.nc-editor-zoom-value:hover:not(:disabled),
+.nc-editor-zoom-mode:hover:not(:disabled) {
+  background: #202020;
+  color: #ddd;
+}
+
+.nc-editor-zoom-mode-active {
+  background: #1e2718;
+  color: #c1e899;
+}
+
+.nc-editor-zoom-button:disabled,
+.nc-editor-zoom-value:disabled,
+.nc-editor-zoom-mode:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* ── Buttons ── */
 
 .nc-editor-btn {
@@ -157,6 +222,17 @@ html, body, #root {
   background-position: 0 0, 0 10px, 10px -10px, -10px 0;
 }
 
+.nc-editor-canvas-area.nc-editor-viewport-pan-ready,
+.nc-editor-canvas-area.nc-editor-viewport-pan-ready canvas {
+  cursor: grab !important;
+}
+
+.nc-editor-canvas-area.nc-editor-viewport-panning,
+.nc-editor-canvas-area.nc-editor-viewport-panning canvas {
+  cursor: grabbing !important;
+  user-select: none;
+}
+
 .nc-editor-canvas {
   max-width: calc(100% - 32px);
   max-height: calc(100% - 32px);
@@ -168,7 +244,6 @@ html, body, #root {
 /* ── Konva annotation container ── */
 
 .nc-editor-konva-container {
-  position: relative;
   flex: 0 0 auto;
   overflow: visible;
 }

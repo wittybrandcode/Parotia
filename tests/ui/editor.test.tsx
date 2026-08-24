@@ -12,6 +12,11 @@ const mocks = vi.hoisted(() => {
   };
   const crop = { start: vi.fn(), stop: vi.fn() };
   const adjust = { start: vi.fn(), stop: vi.fn(), getFilter: vi.fn(() => "brightness(110%) contrast(90%)") };
+  const viewport = {
+    state: { scale: 1, percent: 100, mode: "FIT", offsetX: 0, offsetY: 0 },
+    fit: vi.fn(), fill: vi.fn(), actualSize: vi.fn(), zoomBy: vi.fn(), setScale: vi.fn(),
+    panBy: vi.fn(), refresh: vi.fn(), setGesturesEnabled: vi.fn(), destroy: vi.fn(),
+  };
   const canvas = document.createElement("canvas");
   const engine = {
     canvas,
@@ -22,13 +27,14 @@ const mocks = vi.hoisted(() => {
     toBlob: vi.fn().mockResolvedValue(new Blob(["png"], { type: "image/png" })),
     resize: vi.fn(), applyFilter: vi.fn(), destroy: vi.fn(),
   };
-  return { annotation, crop, adjust, engine };
+  return { annotation, crop, adjust, viewport, engine };
 });
 
 vi.mock("@ui/src/editor/CanvasEngine", () => ({ createCanvasEngine: () => mocks.engine }));
 vi.mock("@ui/src/editor/AnnotationLayer", () => ({ createAnnotationLayer: () => mocks.annotation }));
 vi.mock("@ui/src/editor/CropTool", () => ({ createCropTool: () => mocks.crop }));
 vi.mock("@ui/src/editor/AdjustPanel", () => ({ createAdjustPanel: () => mocks.adjust }));
+vi.mock("@ui/src/editor/EditorViewport", () => ({ createEditorViewport: () => mocks.viewport }));
 
 import { EditorApp } from "@ui/src/editor/EditorApp";
 
@@ -105,5 +111,28 @@ describe("image editor", () => {
     expect(mocks.engine.loadImage).not.toHaveBeenCalled();
     expect(mocks.annotation.init).not.toHaveBeenCalled();
     expect(chrome.storage.local.remove).toHaveBeenCalledWith("editor-image:test");
+  });
+
+  it("offers professional zoom controls and suspends gestures during crop", async () => {
+    render(<EditorApp />);
+    await waitFor(() => expect(mocks.annotation.init).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Zoom out" }));
+    fireEvent.click(screen.getByText("Fill"));
+    fireEvent.click(screen.getByText("1:1"));
+    expect(mocks.viewport.zoomBy).toHaveBeenNthCalledWith(1, 1.2);
+    expect(mocks.viewport.zoomBy).toHaveBeenNthCalledWith(2, 1 / 1.2);
+    expect(mocks.viewport.fill).toHaveBeenCalled();
+    expect(mocks.viewport.actualSize).toHaveBeenCalled();
+
+    fireEvent.keyDown(window, { key: "0", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "1", ctrlKey: true });
+    expect(mocks.viewport.fit).toHaveBeenCalled();
+    expect(mocks.viewport.actualSize).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(screen.getByText("Crop"));
+    expect(mocks.viewport.setGesturesEnabled).toHaveBeenLastCalledWith(false);
+    expect(screen.getByRole("button", { name: "Zoom in" })).toBeDisabled();
   });
 });

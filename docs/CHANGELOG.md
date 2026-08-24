@@ -6,6 +6,14 @@ All notable changes to Parotia are documented here.
 
 ## [Unreleased]
 
+### Professional editor viewport
+
+- Added a dedicated presentation-only viewport controller with cursor-centred zoom, bounded pan, `Fit`, `Fill`, `1:1`, percentage feedback and resize-aware recentering.
+- Added wheel/trackpad navigation, middle-button and `Space + Drag` panning, plus `Ctrl/Cmd +/-`, `0` and `1` shortcuts that respect editable controls.
+- Konva now remains at native image dimensions while the outer surface receives a GPU-friendly CSS transform, so workspace zoom never changes annotation coordinates or exported pixels.
+- Viewport gestures and controls pause while the coordinate-sensitive crop overlay is active, then resume automatically.
+- Added mathematical and UI integration coverage; the suite now passes 340 tests across 39 files.
+
 ### Large-image editor preflight
 
 - PNG dimensions are read from IHDR before image decode or Canvas allocation, and the editor estimates five decoded RGBA surfaces plus encoded-data overhead against a bounded device-memory budget.

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowRight, Circle, Copy, Download, Pencil, Redo2, Scissors, Share2, SlidersHorizontal, Square, Type, Undo2, X, Minus } from "lucide-react";
+import { ArrowRight, Circle, Copy, Download, Maximize2, Minus, Pencil, Redo2, Scissors, Share2, SlidersHorizontal, Square, Type, Undo2, X, ZoomIn, ZoomOut } from "lucide-react";
 import { createCanvasEngine, type CanvasEngine } from "./CanvasEngine";
 import { createCropTool, type CropRect, type CropTool } from "./CropTool";
 import { createAnnotationLayer, type AnnotationLayer, type AnnotateTool } from "./AnnotationLayer";
 import { createAdjustPanel, type AdjustPanel } from "./AdjustPanel";
 import { EditorHistory } from "./EditorHistory";
+import { createEditorViewport, type EditorViewport, type ViewportState } from "./EditorViewport";
 import {
   assessEditorImage,
   detectedDeviceMemoryGb,
@@ -28,6 +29,7 @@ export function EditorApp() {
   const annotationRef = useRef<AnnotationLayer | null>(null);
   const cropRef = useRef<CropTool | null>(null);
   const adjustRef = useRef<AdjustPanel | null>(null);
+  const viewportRef = useRef<EditorViewport | null>(null);
   const paramsRef = useRef<EditorParams>({});
   const operationRef = useRef(false);
   const historyRef = useRef(new EditorHistory());
@@ -46,6 +48,7 @@ export function EditorApp() {
   const [drawWidth, setDrawWidth] = useState(3);
   const [textSize, setTextSize] = useState(24);
   const [shapeKind, setShapeKind] = useState<AnnotateTool>("freehand");
+  const [viewportState, setViewportState] = useState<ViewportState>({ scale: 1, percent: 100, mode: "FIT", offsetX: 0, offsetY: 0 });
 
   const refreshHistory = useCallback(() => {
     setCanUndo(historyRef.current.canUndo);
@@ -56,6 +59,8 @@ export function EditorApp() {
     const container = konvaContainerRef.current;
     const wrapper = wrapperRef.current;
     if (!container || !wrapper) throw new Error("Editor surface is unavailable");
+    viewportRef.current?.destroy();
+    viewportRef.current = null;
     annotationRef.current?.destroy();
     container.replaceChildren();
     const image = new Image();
@@ -70,6 +75,7 @@ export function EditorApp() {
     annotation.setOptions({ color: drawColor, strokeWidth: drawWidth, fontSize: textSize });
     annotation.setTool(shapeKind);
     annotationRef.current = annotation;
+    viewportRef.current = createEditorViewport(wrapper, container, width, height, { onChange: setViewportState });
     annotation.setCommitListener(() => {
       if (operationRef.current) return;
       const snapshot = document.createElement("canvas");
@@ -179,12 +185,17 @@ export function EditorApp() {
   }, []);
 
   useEffect(() => () => {
+    viewportRef.current?.destroy();
     annotationRef.current?.destroy();
     cropRef.current?.stop();
     adjustRef.current?.stop();
     engineRef.current?.destroy();
     historyRef.current.clear();
   }, []);
+
+  useEffect(() => {
+    viewportRef.current?.setGesturesEnabled(loaded && !operating && tool !== "crop");
+  }, [loaded, operating, tool]);
 
   useEffect(() => {
     cropRef.current?.stop();
@@ -224,9 +235,15 @@ export function EditorApp() {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
       const modifier = event.ctrlKey || event.metaKey;
       if (modifier && event.key.toLowerCase() === "z" && !event.shiftKey) { event.preventDefault(); void restoreHistory("undo"); }
       else if (modifier && (event.key.toLowerCase() === "y" || (event.key.toLowerCase() === "z" && event.shiftKey))) { event.preventDefault(); void restoreHistory("redo"); }
+      else if (modifier && (event.key === "+" || event.key === "=")) { event.preventDefault(); viewportRef.current?.zoomBy(1.2); }
+      else if (modifier && event.key === "-") { event.preventDefault(); viewportRef.current?.zoomBy(1 / 1.2); }
+      else if (event.key === "0") { event.preventDefault(); viewportRef.current?.fit(); }
+      else if (event.key === "1") { event.preventDefault(); viewportRef.current?.actualSize(); }
       else if (event.key === "Escape") setTool(null);
     };
     window.addEventListener("keydown", onKey);
@@ -301,6 +318,15 @@ export function EditorApp() {
         {imageIdentity && <span className="nc-editor-image-identity" title="Decoded image dimensions">{imageIdentity}</span>}
       </div>
       <div className="nc-editor-topbar-right">
+        <div className="nc-editor-zoom-controls" role="group" aria-label="Zoom controls">
+          <button className="nc-editor-zoom-button" onClick={() => viewportRef.current?.zoomBy(1 / 1.2)} disabled={!loaded || operating || tool === "crop"} title="Zoom out (Ctrl+-)" aria-label="Zoom out"><ZoomOut size={14} /></button>
+          <button className="nc-editor-zoom-value" onClick={() => viewportRef.current?.fit()} disabled={!loaded || operating || tool === "crop"} title="Fit to workspace (0)">{viewportState.percent}%</button>
+          <button className="nc-editor-zoom-button" onClick={() => viewportRef.current?.zoomBy(1.2)} disabled={!loaded || operating || tool === "crop"} title="Zoom in (Ctrl++)" aria-label="Zoom in"><ZoomIn size={14} /></button>
+          <button className={`nc-editor-zoom-mode ${viewportState.mode === "FIT" ? "nc-editor-zoom-mode-active" : ""}`} onClick={() => viewportRef.current?.fit()} disabled={!loaded || operating || tool === "crop"} title="Fit to workspace (0)"><Maximize2 size={13} />Fit</button>
+          <button className={`nc-editor-zoom-mode ${viewportState.mode === "FILL" ? "nc-editor-zoom-mode-active" : ""}`} onClick={() => viewportRef.current?.fill()} disabled={!loaded || operating || tool === "crop"} title="Fill workspace">Fill</button>
+          <button className={`nc-editor-zoom-mode ${viewportState.mode === "ACTUAL" ? "nc-editor-zoom-mode-active" : ""}`} onClick={() => viewportRef.current?.actualSize()} disabled={!loaded || operating || tool === "crop"} title="Actual pixels (1)">1:1</button>
+        </div>
+        <span className="nc-editor-separator" />
         <button className="nc-editor-btn nc-editor-btn-ghost" onClick={() => void restoreHistory("undo")} disabled={!canUndo || operating} title="Undo (Ctrl+Z)" aria-label="Undo"><Undo2 size={14} /></button>
         <button className="nc-editor-btn nc-editor-btn-ghost" onClick={() => void restoreHistory("redo")} disabled={!canRedo || operating} title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><Redo2 size={14} /></button>
         <span className="nc-editor-separator" />
