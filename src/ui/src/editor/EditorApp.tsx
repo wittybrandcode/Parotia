@@ -4,7 +4,8 @@ import { createCanvasEngine, type CanvasEngine } from "./CanvasEngine";
 import { createCropTool, type CropRect, type CropTool } from "./CropTool";
 import { createAnnotationLayer, type AnnotationLayer, type AnnotateTool } from "./AnnotationLayer";
 import { createAdjustPanel, type AdjustPanel } from "./AdjustPanel";
-import { EditorHistory } from "./EditorHistory";
+import { createEditorDocument, type EditorDocument } from "./EditorDocument";
+import { addLayerCommand, EditorDocumentHistory, replaceDocumentCommand } from "./EditorDocumentHistory";
 import { createEditorViewport, type EditorViewport, type ViewportState } from "./EditorViewport";
 import {
   assessEditorImage,
@@ -32,7 +33,7 @@ export function EditorApp() {
   const viewportRef = useRef<EditorViewport | null>(null);
   const paramsRef = useRef<EditorParams>({});
   const operationRef = useRef(false);
-  const historyRef = useRef(new EditorHistory());
+  const historyRef = useRef<EditorDocumentHistory | null>(null);
 
   const [loaded, setLoaded] = useState(false);
   const [tool, setTool] = useState<ActiveTool>(null);
@@ -51,11 +52,11 @@ export function EditorApp() {
   const [viewportState, setViewportState] = useState<ViewportState>({ scale: 1, percent: 100, mode: "FIT", offsetX: 0, offsetY: 0 });
 
   const refreshHistory = useCallback(() => {
-    setCanUndo(historyRef.current.canUndo);
-    setCanRedo(historyRef.current.canRedo);
+    setCanUndo(historyRef.current?.canUndo ?? false);
+    setCanRedo(historyRef.current?.canRedo ?? false);
   }, []);
 
-  const initAnnotation = useCallback(async (dataUrl: string, width: number, height: number): Promise<void> => {
+  const initAnnotation = useCallback(async (document: EditorDocument): Promise<void> => {
     const container = konvaContainerRef.current;
     const wrapper = wrapperRef.current;
     if (!container || !wrapper) throw new Error("Editor surface is unavailable");
@@ -68,25 +69,30 @@ export function EditorApp() {
     await new Promise<void>((resolve, reject) => {
       image.onload = () => resolve();
       image.onerror = () => reject(new Error("Failed to render the captured image"));
-      image.src = dataUrl;
+      image.src = document.background.source;
     });
     const annotation = createAnnotationLayer();
-    annotation.init(container, width, height, image);
+    annotation.init(container, document.canvas.width, document.canvas.height, image);
     annotation.setOptions({ color: drawColor, strokeWidth: drawWidth, fontSize: textSize });
     annotation.setTool(shapeKind);
     annotationRef.current = annotation;
-    viewportRef.current = createEditorViewport(wrapper, container, width, height, { onChange: setViewportState });
-    annotation.setCommitListener(() => {
+    await annotation.loadLayers(document.layers);
+    viewportRef.current = createEditorViewport(wrapper, container, document.canvas.width, document.canvas.height, { onChange: setViewportState });
+    annotation.setCommitListener((layer) => {
       if (operationRef.current) return;
-      const snapshot = document.createElement("canvas");
-      annotation.renderTo(snapshot);
-      historyRef.current.commit(snapshot.toDataURL("image/png"));
-      setSaved(false);
-      refreshHistory();
+      try {
+        const history = historyRef.current;
+        if (!history) throw new Error("Editor document history is unavailable");
+        history.execute(addLayerCommand(layer));
+        setSaved(false);
+        refreshHistory();
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "Failed to record the annotation layer");
+      }
     });
     cropRef.current?.stop();
     adjustRef.current?.stop();
-    cropRef.current = createCropTool(container, wrapper, width, height);
+    cropRef.current = createCropTool(container, wrapper, document.canvas.width, document.canvas.height);
     adjustRef.current = createAdjustPanel(container, wrapper);
     refreshHistory();
   }, [drawColor, drawWidth, textSize, shapeKind, refreshHistory]);
@@ -117,16 +123,20 @@ export function EditorApp() {
     }
   }, []);
 
-  const commitRenderedImage = useCallback(async (transform?: (engine: CanvasEngine) => void): Promise<void> => {
+  const commitRenderedImage = useCallback(async (label: string, transform?: (engine: CanvasEngine) => void): Promise<void> => {
     await runExclusive(async () => {
       const engine = engineRef.current;
-      if (!engine) throw new Error("Editor is not ready");
+      const history = historyRef.current;
+      if (!engine || !history) throw new Error("Editor is not ready");
+      const before = history.document;
       renderEditor(engine.canvas);
       transform?.(engine);
       const next = engine.toDataURL();
-      historyRef.current.commit(next);
+      const replacement = createEditorDocument({ source: next, width: engine.width, height: engine.height, id: before.id });
+      const after: EditorDocument = { ...replacement, createdAt: before.createdAt };
+      history.execute(replaceDocumentCommand(before, after, label));
       setSaved(false);
-      await initAnnotation(next, engine.width, engine.height);
+      await initAnnotation(after);
       setTool(null);
       refreshHistory();
     });
@@ -135,13 +145,14 @@ export function EditorApp() {
   const restoreHistory = useCallback(async (direction: "undo" | "redo"): Promise<void> => {
     await runExclusive(async () => {
       const history = historyRef.current;
-      const value = direction === "undo" ? history.undo() : history.redo();
-      if (!value) return;
+      if (!history) throw new Error("Editor document history is unavailable");
+      const document = direction === "undo" ? history.undo() : history.redo();
+      if (!document) return;
       const engine = engineRef.current;
       if (!engine) throw new Error("Editor is not ready");
       try {
-        await engine.loadImage(value);
-        await initAnnotation(value, engine.width, engine.height);
+        await engine.loadImage(document.background.source);
+        await initAnnotation(document);
         setSaved(false);
         refreshHistory();
       } catch (cause) {
@@ -172,8 +183,9 @@ export function EditorApp() {
         const engine = createCanvasEngine(canvasRef.current);
         engineRef.current = engine;
         await engine.loadImage(dataUrl);
-        historyRef.current.initialize(dataUrl);
-        await initAnnotation(dataUrl, engine.width, engine.height);
+        const document = createEditorDocument({ source: dataUrl, width: engine.width, height: engine.height });
+        historyRef.current = new EditorDocumentHistory(document);
+        await initAnnotation(document);
         setLoaded(true);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : "Failed to open editor");
@@ -190,7 +202,8 @@ export function EditorApp() {
     cropRef.current?.stop();
     adjustRef.current?.stop();
     engineRef.current?.destroy();
-    historyRef.current.clear();
+    historyRef.current?.clear();
+    historyRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -208,7 +221,7 @@ export function EditorApp() {
     }
     if (tool === "crop" && cropRef.current) {
       cropRef.current.start((rect: CropRect) => {
-        void commitRenderedImage((engine) => {
+        void commitRenderedImage("Crop image", (engine) => {
           const context = engine.canvas.getContext("2d");
           if (!context) throw new Error("Cannot crop image");
           const data = context.getImageData(rect.x, rect.y, rect.width, rect.height);
@@ -222,7 +235,7 @@ export function EditorApp() {
         const filter = adjustRef.current?.getFilter() ?? "none";
         const surface = konvaContainerRef.current;
         if (surface) surface.style.filter = "";
-        void commitRenderedImage((engine) => {
+        void commitRenderedImage("Adjust image", (engine) => {
           engine.applyFilter(filter);
         });
       }, () => setTool(null));

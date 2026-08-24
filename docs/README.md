@@ -19,6 +19,7 @@ Complete technical documentation for the Parotia Chrome extension.
 | [Contributing](./CONTRIBUTING.md) | How to contribute, code conventions |
 | [Changelog](./CHANGELOG.md) | Version history and release notes |
 | [Future Roadmap](./FUTURE-ROADMAP.md) | أهداف vNext: الزوم، الطبقات، النصوص، المشاركة وحفظ المشاريع |
+| [Editor Document](./EDITOR-DOCUMENT.md) | عقد المستند غير الهدّام، الطبقات، الأوامر وحدود Flatten |
 | [v1.1 Plan](./PLAN-V1.1.md) | Hardening plan for the next release |
 
 ---
@@ -26,10 +27,10 @@ Complete technical documentation for the Parotia Chrome extension.
 ## Quick Reference
 
 ```
-Parotia Chrome Extension v1.1.4
+Parotia Chrome Extension v1.4.1 + local vNext work
 ├── Manifest V3 (MV3)
 ├── TypeScript (strict) + React 18 + Vite 6
-├── 237 tests / 24 files / 80%+ coverage
+├── 353 tests / 40 files / 90%+ statement coverage
 ├── Zero network activity — all local
 └── MIT License
 ```

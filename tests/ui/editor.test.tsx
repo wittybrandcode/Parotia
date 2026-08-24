@@ -1,9 +1,10 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const annotation = {
     init: vi.fn(),
+    loadLayers: vi.fn().mockResolvedValue(undefined),
     setTool: vi.fn(),
     setOptions: vi.fn(),
     setCommitListener: vi.fn(),
@@ -134,5 +135,25 @@ describe("image editor", () => {
     fireEvent.click(screen.getByText("Crop"));
     expect(mocks.viewport.setGesturesEnabled).toHaveBeenLastCalledWith(false);
     expect(screen.getByRole("button", { name: "Zoom in" })).toBeDisabled();
+  });
+
+  it("records vector commits as document layers and rebuilds them through undo and redo", async () => {
+    render(<EditorApp />);
+    await waitFor(() => expect(mocks.annotation.setCommitListener).toHaveBeenCalled());
+    const layer = {
+      id: "layer-one", name: "Rectangle 1", order: 0, kind: "rectangle" as const, visible: true, locked: false, opacity: 1,
+      transform: { x: 10, y: 20, scaleX: 1, scaleY: 1, rotation: 0 }, width: 40, height: 30,
+      cornerRadius: 0, fill: null, stroke: "#fff", strokeWidth: 2,
+    };
+    const listener = mocks.annotation.setCommitListener.mock.calls.at(-1)?.[0] as ((value: typeof layer) => void);
+    act(() => listener(layer));
+    expect(screen.getByRole("button", { name: "Undo" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(mocks.annotation.loadLayers).toHaveBeenLastCalledWith([]));
+    expect(screen.getByRole("button", { name: "Redo" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Redo" }));
+    await waitFor(() => expect(mocks.annotation.loadLayers).toHaveBeenLastCalledWith([expect.objectContaining({ id: "layer-one", kind: "rectangle" })]));
   });
 });

@@ -4,6 +4,7 @@
  * transform is explicitly committed.
  */
 import Konva from "konva";
+import { createLayerBase, type EditorLayer } from "./EditorDocument";
 
 export type AnnotateTool = "freehand" | "line" | "rect" | "ellipse" | "arrow" | "text";
 
@@ -19,7 +20,8 @@ export interface AnnotationLayer {
   init(container: HTMLDivElement, width: number, height: number, backgroundImage: HTMLImageElement): void;
   setTool(tool: AnnotateTool): void;
   setOptions(opts: Partial<AnnotationOptions>): void;
-  setCommitListener(listener: (() => void) | null): void;
+  loadLayers(layers: EditorLayer[]): Promise<void>;
+  setCommitListener(listener: ((layer: EditorLayer) => void) | null): void;
   renderTo(canvas: HTMLCanvasElement): void;
   destroy(): void;
 }
@@ -38,9 +40,10 @@ export function createAnnotationLayer(): AnnotationLayer {
   let pendingInput: HTMLInputElement | null = null;
   let stageWidth = 0;
   let stageHeight = 0;
+  let layerCount = 0;
   const options = { ...DEFAULT_OPTIONS };
 
-  let onCommit: (() => void) | null = null;
+  let onCommit: ((layer: EditorLayer) => void) | null = null;
 
   function pointer(): { x: number; y: number } {
     return stage?.getPointerPosition() ?? { x: 0, y: 0 };
@@ -53,10 +56,41 @@ export function createAnnotationLayer(): AnnotationLayer {
     cursorCircle.strokeWidth(1);
   }
 
-  function addShape(shape: Konva.Shape): void {
+  function addShape(shape: Konva.Shape, layer: EditorLayer): void {
+    shape.id(layer.id);
+    shape.name(`editor-layer ${layer.kind}`);
     annotationLayer?.add(shape);
     annotationLayer?.batchDraw();
-    onCommit?.();
+    layerCount += 1;
+    onCommit?.(layer);
+  }
+
+  function committedLayer(shape: Konva.Shape, tool: Exclude<AnnotateTool, "text">): EditorLayer {
+    if (tool === "freehand" || tool === "line") {
+      const line = shape as Konva.Line;
+      return { ...createLayerBase("line", layerCount), kind: "line", points: [...line.points()], stroke: options.color, strokeWidth: options.strokeWidth, tension: tool === "freehand" ? 0.5 : 0 };
+    }
+    if (tool === "arrow") {
+      const arrow = shape as Konva.Arrow;
+      return {
+        ...createLayerBase("arrow", layerCount), kind: "arrow", points: [...arrow.points()], stroke: options.color,
+        strokeWidth: options.strokeWidth, pointerLength: Math.max(options.strokeWidth * 3, 10), pointerWidth: Math.max(options.strokeWidth * 2, 8),
+      };
+    }
+    if (tool === "rect") {
+      const rect = shape as Konva.Rect;
+      const position = rect.position();
+      return {
+        ...createLayerBase("rectangle", layerCount, position.x, position.y), kind: "rectangle", width: rect.width(), height: rect.height(),
+        cornerRadius: 0, fill: null, stroke: options.color, strokeWidth: options.strokeWidth,
+      };
+    }
+    const ellipse = shape as Konva.Ellipse;
+    const position = ellipse.position();
+    return {
+      ...createLayerBase("ellipse", layerCount, position.x, position.y), kind: "ellipse", radiusX: ellipse.radiusX(), radiusY: ellipse.radiusY(),
+      fill: null, stroke: options.color, strokeWidth: options.strokeWidth,
+    };
   }
 
   function makeShape(pos: { x: number; y: number }): Konva.Shape | null {
@@ -139,7 +173,11 @@ export function createAnnotationLayer(): AnnotationLayer {
     isDrawing = false;
     if (shouldDiscard(shape)) shape.destroy();
     else {
-      onCommit?.();
+      const layer = committedLayer(shape, currentTool as Exclude<AnnotateTool, "text">);
+      shape.id(layer.id);
+      shape.name(`editor-layer ${layer.kind}`);
+      onCommit?.(layer);
+      layerCount += 1;
     }
     annotationLayer.batchDraw();
   }
@@ -160,7 +198,14 @@ export function createAnnotationLayer(): AnnotationLayer {
       if (finished) return;
       finished = true;
       const text = input.value.trim();
-      if (save && text) addShape(new Konva.Text({ x, y: y - options.fontSize / 2, text, fontSize: options.fontSize, fontFamily: "sans-serif", fill: options.color, draggable: false }));
+      if (save && text) {
+        const textY = y - options.fontSize / 2;
+        const layer: EditorLayer = {
+          ...createLayerBase("text", layerCount, x, textY), kind: "text", text, fontSize: options.fontSize,
+          fontFamily: "sans-serif", fontWeight: 400, fontStyle: "normal", align: "left", fill: options.color,
+        };
+        addShape(new Konva.Text({ x, y: textY, text, fontSize: options.fontSize, fontFamily: "sans-serif", fill: options.color, draggable: false }), layer);
+      }
       input.remove();
       pendingInput = null;
     };
@@ -177,6 +222,7 @@ export function createAnnotationLayer(): AnnotationLayer {
     destroy();
     stageWidth = width;
     stageHeight = height;
+    layerCount = 0;
     container.style.width = `${width}px`;
     container.style.height = `${height}px`;
     stage = new Konva.Stage({ container, width, height });
@@ -193,6 +239,64 @@ export function createAnnotationLayer(): AnnotationLayer {
     setTool("freehand");
     updateCursor();
     stage.draw();
+  }
+
+  function nodeOptions(layer: EditorLayer): Record<string, unknown> {
+    return {
+      id: layer.id, name: `editor-layer ${layer.kind}`,
+      x: layer.transform.x, y: layer.transform.y, scaleX: layer.transform.scaleX, scaleY: layer.transform.scaleY,
+      rotation: layer.transform.rotation, opacity: layer.opacity, visible: layer.visible, draggable: false, listening: !layer.locked,
+    };
+  }
+
+  async function loadImage(source: string): Promise<HTMLImageElement> {
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error("Failed to load an editor image layer"));
+      image.src = source;
+    });
+    return image;
+  }
+
+  async function nodeFromLayer(layer: EditorLayer): Promise<Konva.Shape | Konva.Group> {
+    const common = nodeOptions(layer);
+    switch (layer.kind) {
+      case "image":
+        return new Konva.Image({ ...common, image: await loadImage(layer.source), width: layer.width, height: layer.height });
+      case "text":
+        {
+          const fontStyle = `${layer.fontWeight >= 600 ? "bold " : ""}${layer.fontStyle === "italic" ? "italic" : ""}`.trim() || "normal";
+        return new Konva.Text({
+          ...common, text: layer.text, fontFamily: layer.fontFamily, fontSize: layer.fontSize, fontStyle,
+          align: layer.align, fill: layer.fill, ...(layer.width === undefined ? {} : { width: layer.width }),
+        });
+        }
+      case "rectangle":
+        return new Konva.Rect({ ...common, width: layer.width, height: layer.height, cornerRadius: layer.cornerRadius, ...(layer.fill === null ? {} : { fill: layer.fill }), stroke: layer.stroke, strokeWidth: layer.strokeWidth });
+      case "ellipse":
+        return new Konva.Ellipse({ ...common, radiusX: layer.radiusX, radiusY: layer.radiusY, ...(layer.fill === null ? {} : { fill: layer.fill }), stroke: layer.stroke, strokeWidth: layer.strokeWidth });
+      case "line":
+        return new Konva.Line({ ...common, points: layer.points, stroke: layer.stroke, strokeWidth: layer.strokeWidth, tension: layer.tension, lineCap: "round", lineJoin: "round" });
+      case "arrow":
+        return new Konva.Arrow({ ...common, points: layer.points, stroke: layer.stroke, fill: layer.stroke, strokeWidth: layer.strokeWidth, pointerLength: layer.pointerLength, pointerWidth: layer.pointerWidth });
+      case "callout": {
+        const group = new Konva.Group(common);
+        group.add(
+          new Konva.Rect({ width: layer.width, height: layer.height, ...(layer.fill === null ? {} : { fill: layer.fill }), stroke: layer.stroke, strokeWidth: layer.strokeWidth, cornerRadius: 6 }),
+          new Konva.Text({ text: layer.text, width: layer.width, height: layer.height, padding: 8, fontFamily: layer.fontFamily, fontSize: layer.fontSize, fill: layer.textColor, verticalAlign: "middle", align: "center" }),
+        );
+        return group;
+      }
+    }
+  }
+
+  async function loadLayers(layers: EditorLayer[]): Promise<void> {
+    if (!annotationLayer) throw new Error("Annotation layer is not initialized");
+    for (const layer of [...layers].sort((a, b) => a.order - b.order)) annotationLayer.add(await nodeFromLayer(layer));
+    layerCount = layers.length;
+    annotationLayer.batchDraw();
   }
 
   function renderTo(canvas: HTMLCanvasElement): void {
@@ -220,7 +324,7 @@ export function createAnnotationLayer(): AnnotationLayer {
     updateCursor();
   }
 
-  function setCommitListener(listener: (() => void) | null): void {
+  function setCommitListener(listener: ((layer: EditorLayer) => void) | null): void {
     onCommit = listener;
   }
 
@@ -236,11 +340,12 @@ export function createAnnotationLayer(): AnnotationLayer {
     onCommit = null;
     stageWidth = 0;
     stageHeight = 0;
+    layerCount = 0;
   }
 
   return {
     get width() { return stageWidth; },
     get height() { return stageHeight; },
-    init, setTool, setOptions, setCommitListener, renderTo, destroy,
+    init, setTool, setOptions, loadLayers, setCommitListener, renderTo, destroy,
   };
 }

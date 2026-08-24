@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => {
     remove() { this.layer = null; }
     destroy() { this.destroyed = true; }
     getLayer() { return this.layer; }
+    id(value: string) { this.attrs.id = value; }
+    name(value: string) { this.attrs.name = value; }
   }
   class Line extends Shape {
     points(value?: number[]) {
@@ -23,7 +25,7 @@ const mocks = vi.hoisted(() => {
     height() { return Number(this.attrs.height ?? 0); }
   }
   class Ellipse extends Shape {
-    position(value?: { x: number; y: number }) { if (value) Object.assign(this.attrs, value); }
+    position(value?: { x: number; y: number }) { if (value) Object.assign(this.attrs, value); return { x: Number(this.attrs.x ?? 0), y: Number(this.attrs.y ?? 0) }; }
     radiusX(value?: number) { if (value !== undefined) this.attrs.radiusX = value; return Number(this.attrs.radiusX ?? 0); }
     radiusY(value?: number) { if (value !== undefined) this.attrs.radiusY = value; return Number(this.attrs.radiusY ?? 0); }
   }
@@ -38,6 +40,10 @@ const mocks = vi.hoisted(() => {
     children: Shape[] = [];
     add(shape: Shape) { shape.layer = this; this.children.push(shape); }
     batchDraw = vi.fn();
+  }
+  class Group extends Shape {
+    children: Shape[] = [];
+    add(...shapes: Shape[]) { this.children.push(...shapes); }
   }
   class Stage {
     content = document.createElement("div");
@@ -62,7 +68,7 @@ const mocks = vi.hoisted(() => {
     destroy() { this.destroyed = true; }
   }
   const state: { stage: Stage | null } = { stage: null };
-  return { state, Stage, Layer, Line, Rect, Ellipse, Circle, Shape };
+  return { state, Stage, Layer, Line, Rect, Ellipse, Circle, Group, Shape };
 });
 
 vi.mock("konva", () => ({
@@ -74,12 +80,14 @@ vi.mock("konva", () => ({
     Ellipse: mocks.Ellipse,
     Arrow: mocks.Line,
     Circle: mocks.Circle,
+    Group: mocks.Group,
     Text: mocks.Shape,
     Image: mocks.Shape,
   },
 }));
 
 import { createAnnotationLayer, type AnnotateTool } from "@ui/src/editor/AnnotationLayer";
+import { identityTransform, type EditorLayer } from "@ui/src/editor/EditorDocument";
 
 function rect(width: number, height: number): DOMRect {
   return { x: 0, y: 0, top: 0, left: 0, right: width, bottom: height, width, height, toJSON: () => ({}) } as DOMRect;
@@ -96,7 +104,7 @@ describe("AnnotationLayer", () => {
     mocks.state.stage = null;
   });
 
-  it.each<AnnotateTool>(["freehand", "line", "rect", "ellipse", "arrow"])("commits a visible %s gesture", (tool) => {
+  it.each<[AnnotateTool, EditorLayer["kind"]]>([["freehand", "line"], ["line", "line"], ["rect", "rectangle"], ["ellipse", "ellipse"], ["arrow", "arrow"]])("commits a visible %s gesture as an editable %s layer", (tool, expectedKind) => {
     const editor = createAnnotationLayer();
     const listener = vi.fn();
     editor.init(document.querySelector("#stage")!, 800, 600, new Image());
@@ -111,6 +119,8 @@ describe("AnnotationLayer", () => {
     stage.emit("pointermove");
     stage.emit("pointerup");
     expect(listener).toHaveBeenCalledOnce();
+    expect(listener.mock.calls[0]?.[0]).toMatchObject({ kind: expectedKind, visible: true, locked: false, opacity: 1 });
+    expect(stage.layers[1]?.children[0]?.attrs.id).toMatch(/^editor-layer-/);
   });
 
   it("discards a zero-size gesture and commits text once on Enter plus blur", () => {
@@ -177,5 +187,25 @@ describe("AnnotationLayer", () => {
     stage.emit("pointerdown");
     stage.emit("pointerdown");
     expect(document.body.querySelectorAll("input")).toHaveLength(1);
+  });
+
+  it("rebuilds persisted vector layers in their stored order", async () => {
+    const editor = createAnnotationLayer();
+    editor.init(document.querySelector("#stage")!, 200, 100, new Image());
+    const common = (id: string, order: number) => ({ id, name: id, order, visible: true, locked: false, opacity: 1, transform: identityTransform() });
+    const layers: EditorLayer[] = [
+      { ...common("line", 1), kind: "line", points: [0, 0, 10, 10], stroke: "#fff", strokeWidth: 2, tension: 0.5 },
+      { ...common("rect", 0), kind: "rectangle", width: 20, height: 10, cornerRadius: 0, fill: null, stroke: "#fff", strokeWidth: 2 },
+      { ...common("text", 2), kind: "text", text: "Caption", fontFamily: "Arial", fontSize: 20, fontWeight: 400, fontStyle: "normal", align: "left", fill: "#fff" },
+      { ...common("ellipse", 3), kind: "ellipse", radiusX: 10, radiusY: 5, fill: null, stroke: "#fff", strokeWidth: 2 },
+      { ...common("arrow", 4), kind: "arrow", points: [0, 0, 20, 20], stroke: "#fff", strokeWidth: 2, pointerLength: 10, pointerWidth: 8 },
+      { ...common("callout", 5), kind: "callout", text: "Note", width: 60, height: 30, fontFamily: "Arial", fontSize: 12, textColor: "#111", fill: "#fff", stroke: "#000", strokeWidth: 1 },
+    ];
+    await editor.loadLayers(layers);
+    const children = mocks.state.stage!.layers[1]!.children;
+    expect(children).toHaveLength(6);
+    expect(children[0]?.attrs.width).toBe(20);
+    expect(children[1]?.attrs.tension).toBe(0.5);
+    expect(children[5]).toBeInstanceOf(mocks.Group);
   });
 });

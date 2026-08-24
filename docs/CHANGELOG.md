@@ -6,6 +6,14 @@ All notable changes to Parotia are documented here.
 
 ## [Unreleased]
 
+### Non-destructive editor document foundation
+
+- Replaced PNG-per-gesture history with a versioned `EditorDocument` and reversible `EditorDocumentHistory` command timeline bounded by both entry count and retained bytes.
+- Added stable image, text, rectangle, ellipse, line, arrow and callout layer contracts with IDs, order, visibility, locking, opacity and geometric transforms.
+- New annotations remain vector layers and survive document rebuilds through Undo/Redo; the old snapshot-based `EditorHistory` was removed.
+- Kept Flatten/Export explicit and independent: Copy, Share and Save render the native document, while current crop/adjust operations use reversible raster-document replacement commands.
+- Added strict parsing, deterministic serialization, version-zero migration and round-trip/command/integration coverage; the suite now contains 353 tests across 40 files.
+
 ### Professional editor viewport
 
 - Added a dedicated presentation-only viewport controller with cursor-centred zoom, bounded pan, `Fit`, `Fill`, `1:1`, percentage feedback and resize-aware recentering.
