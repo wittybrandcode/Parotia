@@ -13,7 +13,7 @@ Freeze, inspect, clean and capture news pages as broadcast-ready PNGs.
 [![Chrome Extension](https://img.shields.io/badge/Chrome-Extension-blue?logo=googlechrome)](https://developer.chrome.com/docs/extensions/)
 [![MV3](https://img.shields.io/badge/MV3-Support-green)](https://developer.chrome.com/docs/extensions/mv3/)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](#license)
-[![Tests](https://img.shields.io/badge/Tests-323%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/Tests-334%20passing-brightgreen)](#testing)
 
 </div>
 
@@ -52,7 +52,7 @@ Export the cleaned page as a PNG in multiple modes:
 Watch capture progress in real-time — the toolbar shows `Capture rendering 2/4 (50%)` while it works.
 
 ### Local Editor
-Annotate, crop and adjust a capture with one ordered Undo/Redo history, then copy, share or save it through a one-time tab-bound capability.
+Annotate, crop and adjust a capture with one ordered Undo/Redo history, then copy, share or save it through a one-time tab-bound capability. A decoded-memory preflight checks dimensions, pixel count and the device budget before allocating editor canvases; an oversized original is saved directly with an explicit warning instead of risking a frozen tab.
 
 ### Keyboard Shortcuts
 
@@ -155,7 +155,7 @@ npm run dev:ui         # Vite dev server for toolbar UI
 | **v8 coverage** | Enforced thresholds (lines ≥80%, branches ≥75%) |
 
 ```bash
-npm run test           # 323 tests across 36 files
+npm run test           # 334 tests across 38 files
 npm run test:coverage  # With coverage report
 npm run test:e2e       # Requires build first
 ```

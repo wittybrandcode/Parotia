@@ -32,6 +32,18 @@ vi.mock("@ui/src/editor/AdjustPanel", () => ({ createAdjustPanel: () => mocks.ad
 
 import { EditorApp } from "@ui/src/editor/EditorApp";
 
+function pngHeader(width: number, height: number): string {
+  const bytes = new Uint8Array(24);
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+  bytes.set([0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52], 8);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(16, width);
+  view.setUint32(20, height);
+  return `data:image/png;base64,${btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(""))}`;
+}
+
+const SAFE_PNG = pngHeader(2, 2);
+
 class ImmediateImage {
   onload: (() => void) | null = null;
   onerror: (() => void) | null = null;
@@ -44,7 +56,7 @@ describe("image editor", () => {
     vi.clearAllMocks();
     vi.stubGlobal("Image", ImmediateImage);
     vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue("data:image/png;base64,AAAA");
-    vi.mocked(chrome.storage.local.get).mockImplementation((() => Promise.resolve({ "editor-image:test": "data:image/png;base64,AAAA" })) as never);
+    vi.mocked(chrome.storage.local.get).mockImplementation((() => Promise.resolve({ "editor-image:test": SAFE_PNG })) as never);
     vi.mocked(chrome.storage.local.remove).mockResolvedValue(undefined);
     vi.mocked(chrome.runtime.sendMessage).mockResolvedValue({ success: true });
     window.history.replaceState({}, "", "#%7B%22imageKey%22%3A%22editor-image%3Atest%22%2C%22filename%22%3A%22capture.png%22%2C%22editorToken%22%3A%22aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa%22%2C%22parentOrigin%22%3A%22https%3A%2F%2Fpage.example%22%7D");
@@ -72,6 +84,7 @@ describe("image editor", () => {
     })));
     expect(mocks.annotation.renderTo).toHaveBeenCalled();
     expect(chrome.storage.local.remove).toHaveBeenCalledWith("editor-image:test");
+    expect(screen.getByTitle("Decoded image dimensions")).toHaveTextContent("2 × 2 · 0.0 MP");
   });
 
   it("surfaces a failed save response instead of silently discarding it", async () => {
@@ -80,5 +93,17 @@ describe("image editor", () => {
     expect(await screen.findByText("Parotia Editor")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Disk full");
+  });
+
+  it("refuses an oversized staged image before allocating the editor canvas", async () => {
+    (chrome.storage.local.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      "editor-image:test": pngHeader(20_000, 100),
+    });
+    render(<EditorApp />);
+
+    expect(await screen.findByText(/exceeds the 16384px editor dimension limit/i)).toBeInTheDocument();
+    expect(mocks.engine.loadImage).not.toHaveBeenCalled();
+    expect(mocks.annotation.init).not.toHaveBeenCalled();
+    expect(chrome.storage.local.remove).toHaveBeenCalledWith("editor-image:test");
   });
 });

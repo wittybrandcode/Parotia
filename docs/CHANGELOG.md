@@ -4,6 +4,18 @@ All notable changes to Parotia are documented here.
 
 ---
 
+## [Unreleased]
+
+### Large-image editor preflight
+
+- PNG dimensions are read from IHDR before image decode or Canvas allocation, and the editor estimates five decoded RGBA surfaces plus encoded-data overhead against a bounded device-memory budget.
+- The current editor contract now declares limits of `16384px` per dimension and `32 Mi` pixels, with a `256–512 MiB` working budget (`384 MiB` fallback).
+- Oversized captures bypass editor staging and download the unchanged original with an explicit dimensions/limit warning; the editor repeats the check before allocation as defense in depth.
+- Accepted captures show dimensions and megapixels in the editor header. Proxy/tiled editing remains an explicit later milestone and no quality reduction occurs silently.
+- Added focused preflight, gateway and zero-allocation editor tests; 334 Vitest tests now pass across 38 files.
+
+---
+
 ## [1.4.1] - 2026-08-24
 
 ### Full-page capture reliability

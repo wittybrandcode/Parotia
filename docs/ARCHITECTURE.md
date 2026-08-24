@@ -69,6 +69,8 @@ The readiness layer covers normal DOM and open Shadow DOM images, browser-select
 
 Annotations, crop and adjust commit PNG snapshots into one bounded `EditorHistory`. Undo/redo therefore follows the visible operation order. Crop, adjust, copy, share, save and close run through one exclusive operation boundary; Save moves the UI to a terminal `Saved` state and Close waits briefly for ticket discard.
 
+Before staging an editor ticket, `assessEditorImage()` reads only the PNG IHDR and estimates the peak decoded working set: five RGBA surfaces plus encoded-string overhead. The current single-canvas editor accepts at most `16384px` per dimension, `32 Mi` pixels and a memory budget derived from the browser's coarse `deviceMemory` value, clamped to `256–512 MiB` (`384 MiB` when unavailable). A capture outside any limit bypasses ticket/image staging and downloads the unchanged PNG with a visible reason. The editor repeats the same check before its first Canvas allocation as defense in depth. Proxy/tiled editing remains a separate vNext renderer milestone; no resolution reduction is performed silently.
+
 ## Compatibility names
 
 `data-newsclean-*`, `__newsclean__` and the deprecated `NewsCleanSession`/`isNewsCleanUi` aliases are retained for the 1.x compatibility window. New code uses `ParotiaSession`, `isParotiaUi` and `parotia-*` wire sources while receivers accept the old source names. Removing the legacy selectors requires a separately versioned migration.

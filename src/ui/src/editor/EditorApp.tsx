@@ -5,6 +5,12 @@ import { createCropTool, type CropRect, type CropTool } from "./CropTool";
 import { createAnnotationLayer, type AnnotationLayer, type AnnotateTool } from "./AnnotationLayer";
 import { createAdjustPanel, type AdjustPanel } from "./AdjustPanel";
 import { EditorHistory } from "./EditorHistory";
+import {
+  assessEditorImage,
+  detectedDeviceMemoryGb,
+  editorBypassWarning,
+  formatEditorImageIdentity,
+} from "@shared/utils/editorPreflight";
 
 type ActiveTool = null | "annotate" | "crop" | "adjust";
 type EditorParams = { imageKey?: string; filename?: string; editorToken?: string; parentOrigin?: string };
@@ -35,6 +41,7 @@ export function EditorApp() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filename, setFilename] = useState("parotia-capture.png");
+  const [imageIdentity, setImageIdentity] = useState<string | null>(null);
   const [drawColor, setDrawColor] = useState("#c1e899");
   const [drawWidth, setDrawWidth] = useState(3);
   const [textSize, setTextSize] = useState(24);
@@ -151,7 +158,10 @@ export function EditorApp() {
         const stored = await chrome.storage.local.get(params.imageKey);
         const dataUrl = stored?.[params.imageKey];
         if (typeof dataUrl !== "string") throw new Error("The captured image is no longer available");
+        const preflight = assessEditorImage(dataUrl, detectedDeviceMemoryGb());
+        if (preflight.metadata) setImageIdentity(formatEditorImageIdentity(preflight.metadata));
         await chrome.storage.local.remove(params.imageKey);
+        if (preflight.mode === "BYPASS") throw new Error(editorBypassWarning(preflight));
         if (!canvasRef.current) throw new Error("Editor canvas is unavailable");
         const engine = createCanvasEngine(canvasRef.current);
         engineRef.current = engine;
@@ -285,7 +295,11 @@ export function EditorApp() {
 
   return <div className="nc-editor-root">
     <div className="nc-editor-topbar">
-      <div className="nc-editor-topbar-left"><span className="nc-editor-title">Parotia Editor</span>{filename && <span className="nc-editor-filename">{filename}</span>}</div>
+      <div className="nc-editor-topbar-left">
+        <span className="nc-editor-title">Parotia Editor</span>
+        {filename && <span className="nc-editor-filename">{filename}</span>}
+        {imageIdentity && <span className="nc-editor-image-identity" title="Decoded image dimensions">{imageIdentity}</span>}
+      </div>
       <div className="nc-editor-topbar-right">
         <button className="nc-editor-btn nc-editor-btn-ghost" onClick={() => void restoreHistory("undo")} disabled={!canUndo || operating} title="Undo (Ctrl+Z)" aria-label="Undo"><Undo2 size={14} /></button>
         <button className="nc-editor-btn nc-editor-btn-ghost" onClick={() => void restoreHistory("redo")} disabled={!canRedo || operating} title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><Redo2 size={14} /></button>
