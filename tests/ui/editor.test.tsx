@@ -5,9 +5,14 @@ const mocks = vi.hoisted(() => {
   const annotation = {
     init: vi.fn(),
     loadLayers: vi.fn().mockResolvedValue(undefined),
+    replaceLayers: vi.fn().mockResolvedValue(undefined),
+    setMode: vi.fn(),
+    selectLayer: vi.fn(),
     setTool: vi.fn(),
     setOptions: vi.fn(),
     setCommitListener: vi.fn(),
+    setSelectionListener: vi.fn(),
+    setTransformListener: vi.fn(),
     renderTo: vi.fn((canvas: HTMLCanvasElement) => { canvas.width = 2; canvas.height = 2; }),
     destroy: vi.fn(),
   };
@@ -55,6 +60,8 @@ class ImmediateImage {
   onload: (() => void) | null = null;
   onerror: (() => void) | null = null;
   crossOrigin = "";
+  naturalWidth = 40;
+  naturalHeight = 30;
   set src(_value: string) { queueMicrotask(() => this.onload?.()); }
 }
 
@@ -148,6 +155,9 @@ describe("image editor", () => {
     const listener = mocks.annotation.setCommitListener.mock.calls.at(-1)?.[0] as ((value: typeof layer) => void);
     act(() => listener(layer));
     expect(screen.getByRole("button", { name: "Undo" })).toBeEnabled();
+    expect(screen.getByRole("complementary", { name: "Layers panel" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Rectangle 1/i })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByLabelText("Layer X")).toHaveValue(10);
 
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
     await waitFor(() => expect(mocks.annotation.loadLayers).toHaveBeenLastCalledWith([]));
@@ -155,5 +165,40 @@ describe("image editor", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Redo" }));
     await waitFor(() => expect(mocks.annotation.loadLayers).toHaveBeenLastCalledWith([expect.objectContaining({ id: "layer-one", kind: "rectangle" })]));
+  });
+
+  it("applies canvas transforms and keyboard layer operations through document history", async () => {
+    render(<EditorApp />);
+    await waitFor(() => expect(mocks.annotation.setCommitListener).toHaveBeenCalled());
+    const before = {
+      id: "layer-transform", name: "Rectangle 1", order: 0, kind: "rectangle" as const, visible: true, locked: false, opacity: 1,
+      transform: { x: 10, y: 20, scaleX: 1, scaleY: 1, rotation: 0 }, width: 40, height: 30,
+      cornerRadius: 0, fill: null, stroke: "#fff", strokeWidth: 2,
+    };
+    const commit = mocks.annotation.setCommitListener.mock.calls.at(-1)?.[0] as ((value: typeof before) => void);
+    act(() => commit(before));
+
+    const transform = mocks.annotation.setTransformListener.mock.calls.at(-1)?.[0] as ((oldLayer: typeof before, nextLayer: typeof before) => void);
+    act(() => transform(before, { ...before, transform: { x: 55, y: 44, scaleX: 1.5, scaleY: 0.75, rotation: 30 } }));
+    expect(screen.getByLabelText("Layer X")).toHaveValue(55);
+    expect(screen.getByLabelText("Layer rotation")).toHaveValue(30);
+
+    fireEvent.keyDown(window, { key: "d", ctrlKey: true });
+    await waitFor(() => expect(screen.getByText("Rectangle 1 copy")).toBeInTheDocument());
+    fireEvent.keyDown(window, { key: "Delete" });
+    await waitFor(() => expect(screen.queryByText("Rectangle 1 copy")).not.toBeInTheDocument());
+  });
+
+  it("imports a raster image as a new editable image layer", async () => {
+    const { container } = render(<EditorApp />);
+    await waitFor(() => expect(mocks.annotation.init).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "Add image layer" }));
+    const input = container.querySelector<HTMLInputElement>("input[type='file']");
+    expect(input).not.toBeNull();
+    fireEvent.change(input!, { target: { files: [new File(["image"], "overlay.png", { type: "image/png" })] } });
+
+    expect(await screen.findByText("Image 1")).toBeInTheDocument();
+    expect(mocks.annotation.replaceLayers).toHaveBeenLastCalledWith([expect.objectContaining({ kind: "image", width: 40, height: 30 })]);
+    expect(mocks.annotation.selectLayer).toHaveBeenLastCalledWith(expect.stringMatching(/^editor-layer-/));
   });
 });

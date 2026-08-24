@@ -157,6 +157,8 @@ test("4.5 staged capture opens in the real editor, draws, and consumes its save 
       throw new Error(`Editor failed to load staged PNG: ${loadingError ?? "unknown error"}`);
     }
     await expect(page.getByRole("button", { name: /save/i })).toBeEnabled();
+    await expect(page.getByRole("complementary", { name: "Layers panel" })).toBeVisible();
+    await expect(page.getByText(/create the first editable layer/i)).toBeVisible();
 
     await page.getByText("Draw", { exact: true }).click();
     await page.getByTitle("Rectangle").click();

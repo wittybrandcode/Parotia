@@ -6,7 +6,8 @@
 import Konva from "konva";
 import { createLayerBase, type EditorLayer } from "./EditorDocument";
 
-export type AnnotateTool = "freehand" | "line" | "rect" | "ellipse" | "arrow" | "text";
+export type AnnotateTool = "freehand" | "line" | "rect" | "ellipse" | "arrow" | "text" | "callout";
+export type AnnotationMode = "idle" | "draw" | "select";
 
 export interface AnnotationOptions {
   color: string;
@@ -18,10 +19,15 @@ export interface AnnotationLayer {
   readonly width: number;
   readonly height: number;
   init(container: HTMLDivElement, width: number, height: number, backgroundImage: HTMLImageElement): void;
+  setMode(mode: AnnotationMode): void;
   setTool(tool: AnnotateTool): void;
   setOptions(opts: Partial<AnnotationOptions>): void;
   loadLayers(layers: EditorLayer[]): Promise<void>;
+  replaceLayers(layers: EditorLayer[]): Promise<void>;
+  selectLayer(layerId: string | null): void;
   setCommitListener(listener: ((layer: EditorLayer) => void) | null): void;
+  setSelectionListener(listener: ((layerId: string | null) => void) | null): void;
+  setTransformListener(listener: ((before: EditorLayer, after: EditorLayer) => void) | null): void;
   renderTo(canvas: HTMLCanvasElement): void;
   destroy(): void;
 }
@@ -31,19 +37,26 @@ const DEFAULT_OPTIONS: AnnotationOptions = { color: "#c1e899", strokeWidth: 3, f
 export function createAnnotationLayer(): AnnotationLayer {
   let stage: Konva.Stage | null = null;
   let annotationLayer: Konva.Layer | null = null;
+  let uiLayer: Konva.Layer | null = null;
+  let transformer: Konva.Transformer | null = null;
   let cursorCircle: Konva.Circle | null = null;
   let activeShape: Konva.Shape | null = null;
   let isDrawing = false;
   let startX = 0;
   let startY = 0;
   let currentTool: AnnotateTool = "freehand";
+  let currentMode: AnnotationMode = "idle";
+  let selectedLayerId: string | null = null;
   let pendingInput: HTMLInputElement | null = null;
   let stageWidth = 0;
   let stageHeight = 0;
   let layerCount = 0;
   const options = { ...DEFAULT_OPTIONS };
+  const layerModels = new Map<string, EditorLayer>();
 
   let onCommit: ((layer: EditorLayer) => void) | null = null;
+  let onSelection: ((layerId: string | null) => void) | null = null;
+  let onTransform: ((before: EditorLayer, after: EditorLayer) => void) | null = null;
 
   function pointer(): { x: number; y: number } {
     return stage?.getPointerPosition() ?? { x: 0, y: 0 };
@@ -56,16 +69,17 @@ export function createAnnotationLayer(): AnnotationLayer {
     cursorCircle.strokeWidth(1);
   }
 
-  function addShape(shape: Konva.Shape, layer: EditorLayer): void {
+  function addShape(shape: Konva.Shape | Konva.Group, layer: EditorLayer): void {
     shape.id(layer.id);
     shape.name(`editor-layer ${layer.kind}`);
+    layerModels.set(layer.id, layer);
     annotationLayer?.add(shape);
     annotationLayer?.batchDraw();
     layerCount += 1;
     onCommit?.(layer);
   }
 
-  function committedLayer(shape: Konva.Shape, tool: Exclude<AnnotateTool, "text">): EditorLayer {
+  function committedLayer(shape: Konva.Shape, tool: Exclude<AnnotateTool, "text" | "callout">): EditorLayer {
     if (tool === "freehand" || tool === "line") {
       const line = shape as Konva.Line;
       return { ...createLayerBase("line", layerCount), kind: "line", points: [...line.points()], stroke: options.color, strokeWidth: options.strokeWidth, tension: tool === "freehand" ? 0.5 : 0 };
@@ -107,18 +121,70 @@ export function createAnnotationLayer(): AnnotationLayer {
       case "arrow":
         return new Konva.Arrow({ ...base, points: [pos.x, pos.y, pos.x, pos.y], fill: options.color, pointerLength: Math.max(options.strokeWidth * 3, 10), pointerWidth: Math.max(options.strokeWidth * 2, 8) });
       case "text":
+      case "callout":
         return null;
     }
   }
 
+  function layerNode(layerId: string): Konva.Node | null {
+    return annotationLayer?.findOne((node: Konva.Node) => node.id() === layerId) ?? null;
+  }
+
+  function nodeLayerId(target: Konva.Node): string | null {
+    let node: Konva.Node | null = target;
+    while (node && node !== stage) {
+      if (layerModels.has(node.id())) return node.id();
+      node = node.getParent();
+    }
+    return null;
+  }
+
+  function updateSelectionPresentation(): void {
+    for (const [id, model] of layerModels) {
+      const node = layerNode(id);
+      node?.draggable(currentMode === "select" && id === selectedLayerId && !model.locked && model.visible);
+    }
+    const selectedModel = selectedLayerId ? layerModels.get(selectedLayerId) : null;
+    const selectedNode = selectedLayerId ? layerNode(selectedLayerId) : null;
+    transformer?.nodes(currentMode === "select" && selectedNode && selectedModel?.visible && !selectedModel.locked ? [selectedNode] : []);
+    transformer?.getLayer()?.batchDraw();
+  }
+
+  function selectLayer(layerId: string | null): void {
+    selectedLayerId = layerId && layerModels.has(layerId) ? layerId : null;
+    updateSelectionPresentation();
+    onSelection?.(selectedLayerId);
+  }
+
+  function onTransformEnd(event: Konva.KonvaEventObject<Event>): void {
+    const id = nodeLayerId(event.target);
+    if (!id) return;
+    const before = layerModels.get(id);
+    const node = layerNode(id);
+    if (!before || !node || before.locked) return;
+    const after: EditorLayer = {
+      ...before,
+      transform: { x: node.x(), y: node.y(), scaleX: node.scaleX(), scaleY: node.scaleY(), rotation: node.rotation() },
+    };
+    layerModels.set(id, after);
+    onTransform?.(before, after);
+  }
+
   function onPointerDown(event: Konva.KonvaEventObject<PointerEvent>): void {
     if (!stage || !annotationLayer || pendingInput) return;
+    if (currentMode === "idle") return;
+    if (currentMode === "select") {
+      const parent = event.target.getParent();
+      if (parent === transformer || parent?.getParent?.() === transformer) return;
+      selectLayer(event.target === stage ? null : nodeLayerId(event.target));
+      return;
+    }
     // The background is non-listening, so a canvas click targets the stage.
     // Existing annotations are not accidentally drawn over.
     if (event.target !== stage) return;
     const pos = pointer();
-    if (currentTool === "text") {
-      placeText(pos.x, pos.y);
+    if (currentTool === "text" || currentTool === "callout") {
+      placeText(pos.x, pos.y, currentTool);
       return;
     }
     startX = pos.x;
@@ -173,16 +239,17 @@ export function createAnnotationLayer(): AnnotationLayer {
     isDrawing = false;
     if (shouldDiscard(shape)) shape.destroy();
     else {
-      const layer = committedLayer(shape, currentTool as Exclude<AnnotateTool, "text">);
+      const layer = committedLayer(shape, currentTool as Exclude<AnnotateTool, "text" | "callout">);
       shape.id(layer.id);
       shape.name(`editor-layer ${layer.kind}`);
+      layerModels.set(layer.id, layer);
       onCommit?.(layer);
       layerCount += 1;
     }
     annotationLayer.batchDraw();
   }
 
-  function placeText(x: number, y: number): void {
+  function placeText(x: number, y: number, kind: "text" | "callout"): void {
     if (!stage || !annotationLayer || pendingInput) return;
     const rect = stage.container().getBoundingClientRect();
     const scale = rect.width / stage.width();
@@ -198,13 +265,27 @@ export function createAnnotationLayer(): AnnotationLayer {
       if (finished) return;
       finished = true;
       const text = input.value.trim();
-      if (save && text) {
+      if (save && text && kind === "text") {
         const textY = y - options.fontSize / 2;
         const layer: EditorLayer = {
           ...createLayerBase("text", layerCount, x, textY), kind: "text", text, fontSize: options.fontSize,
           fontFamily: "sans-serif", fontWeight: 400, fontStyle: "normal", align: "left", fill: options.color,
         };
         addShape(new Konva.Text({ x, y: textY, text, fontSize: options.fontSize, fontFamily: "sans-serif", fill: options.color, draggable: false }), layer);
+      } else if (save && text) {
+        const width = 240;
+        const height = 96;
+        const layer: EditorLayer = {
+          ...createLayerBase("callout", layerCount, x, y), kind: "callout", text, width, height,
+          fontFamily: "sans-serif", fontSize: options.fontSize, textColor: "#111111", fill: options.color,
+          stroke: options.color, strokeWidth: Math.max(1, options.strokeWidth),
+        };
+        const group = new Konva.Group({ x, y, draggable: false });
+        group.add(
+          new Konva.Rect({ width, height, fill: options.color, stroke: options.color, strokeWidth: options.strokeWidth, cornerRadius: 6 }),
+          new Konva.Text({ text, width, height, padding: 8, fontFamily: "sans-serif", fontSize: options.fontSize, fill: "#111111", verticalAlign: "middle", align: "center" }),
+        );
+        addShape(group, layer);
       }
       input.remove();
       pendingInput = null;
@@ -228,15 +309,23 @@ export function createAnnotationLayer(): AnnotationLayer {
     stage = new Konva.Stage({ container, width, height });
     const backgroundLayer = new Konva.Layer({ listening: false });
     annotationLayer = new Konva.Layer();
-    const uiLayer = new Konva.Layer({ listening: false });
+    uiLayer = new Konva.Layer();
     stage.add(backgroundLayer, annotationLayer, uiLayer);
     backgroundLayer.add(new Konva.Image({ image: backgroundImage, width, height, listening: false }));
     cursorCircle = new Konva.Circle({ x: -100, y: -100, visible: false, listening: false });
     uiLayer.add(cursorCircle);
+    transformer = new Konva.Transformer({
+      name: "editor-transformer-anchor", rotateEnabled: true, keepRatio: false, flipEnabled: false, ignoreStroke: true,
+      borderStroke: "#c1e899", borderStrokeWidth: 1, anchorFill: "#c1e899", anchorStroke: "#111111", anchorSize: 9,
+      boundBoxFunc: (oldBox, newBox) => Math.abs(newBox.width) < 5 || Math.abs(newBox.height) < 5 ? oldBox : newBox,
+    });
+    uiLayer.add(transformer);
     stage.on("pointerdown", onPointerDown);
     stage.on("pointermove", onPointerMove);
     stage.on("pointerup pointercancel", onPointerUp);
+    stage.on("dragend transformend", onTransformEnd);
     setTool("freehand");
+    setMode("idle");
     updateCursor();
     stage.draw();
   }
@@ -294,17 +383,34 @@ export function createAnnotationLayer(): AnnotationLayer {
 
   async function loadLayers(layers: EditorLayer[]): Promise<void> {
     if (!annotationLayer) throw new Error("Annotation layer is not initialized");
-    for (const layer of [...layers].sort((a, b) => a.order - b.order)) annotationLayer.add(await nodeFromLayer(layer));
+    for (const layer of [...layers].sort((a, b) => a.order - b.order)) {
+      layerModels.set(layer.id, layer);
+      annotationLayer.add(await nodeFromLayer(layer));
+    }
     layerCount = layers.length;
+    updateSelectionPresentation();
     annotationLayer.batchDraw();
+  }
+
+  async function replaceLayers(layers: EditorLayer[]): Promise<void> {
+    if (!annotationLayer) throw new Error("Annotation layer is not initialized");
+    transformer?.nodes([]);
+    annotationLayer.destroyChildren();
+    layerModels.clear();
+    await loadLayers(layers);
+    if (selectedLayerId && !layerModels.has(selectedLayerId)) selectedLayerId = null;
+    updateSelectionPresentation();
   }
 
   function renderTo(canvas: HTMLCanvasElement): void {
     if (!stage) return;
     const cursorWasVisible = cursorCircle?.visible() ?? false;
+    const transformerWasVisible = transformer?.visible() ?? false;
     cursorCircle?.visible(false);
+    transformer?.visible(false);
     const snapshot = stage.toCanvas({ pixelRatio: 1 });
     cursorCircle?.visible(cursorWasVisible);
+    transformer?.visible(transformerWasVisible);
     canvas.width = stageWidth;
     canvas.height = stageHeight;
     const ctx = canvas.getContext("2d");
@@ -315,8 +421,16 @@ export function createAnnotationLayer(): AnnotationLayer {
   function setTool(tool: AnnotateTool): void {
     currentTool = tool;
     if (!stage) return;
-    stage.container().style.cursor = tool === "text" ? "text" : "none";
-    cursorCircle?.visible(tool !== "text");
+    stage.container().style.cursor = tool === "text" || tool === "callout" ? "text" : "none";
+    cursorCircle?.visible(currentMode === "draw" && tool !== "text" && tool !== "callout");
+  }
+
+  function setMode(mode: AnnotationMode): void {
+    currentMode = mode;
+    if (!stage) return;
+    stage.container().style.cursor = mode === "select" ? "default" : mode === "draw" && (currentTool === "text" || currentTool === "callout") ? "text" : mode === "draw" ? "none" : "default";
+    cursorCircle?.visible(mode === "draw" && currentTool !== "text" && currentTool !== "callout");
+    updateSelectionPresentation();
   }
 
   function setOptions(next: Partial<AnnotationOptions>): void {
@@ -328,24 +442,40 @@ export function createAnnotationLayer(): AnnotationLayer {
     onCommit = listener;
   }
 
+  function setSelectionListener(listener: ((layerId: string | null) => void) | null): void {
+    onSelection = listener;
+  }
+
+  function setTransformListener(listener: ((before: EditorLayer, after: EditorLayer) => void) | null): void {
+    onTransform = listener;
+  }
+
   function destroy(): void {
     pendingInput?.remove();
     pendingInput = null;
     stage?.destroy();
     stage = null;
     annotationLayer = null;
+    uiLayer = null;
+    transformer = null;
     cursorCircle = null;
     activeShape = null;
     isDrawing = false;
     onCommit = null;
+    onSelection = null;
+    onTransform = null;
     stageWidth = 0;
     stageHeight = 0;
     layerCount = 0;
+    layerModels.clear();
+    selectedLayerId = null;
+    currentMode = "idle";
   }
 
   return {
     get width() { return stageWidth; },
     get height() { return stageHeight; },
-    init, setTool, setOptions, loadLayers, setCommitListener, renderTo, destroy,
+    init, setMode, setTool, setOptions, loadLayers, replaceLayers, selectLayer,
+    setCommitListener, setSelectionListener, setTransformListener, renderTo, destroy,
   };
 }
