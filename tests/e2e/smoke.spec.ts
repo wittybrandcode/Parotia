@@ -161,6 +161,9 @@ test("4.5 staged capture opens in the real editor, draws, and consumes its save 
     await expect(page.getByRole("button", { name: /save/i })).toBeEnabled();
     await expect(page.getByRole("complementary", { name: "Layers panel" })).toBeVisible();
     await expect(page.getByText(/create the first editable layer/i)).toBeVisible();
+    await expect(page.getByTitle("Freehand")).toBeVisible();
+    await expect(page.getByTitle("Callout")).toBeVisible();
+    await expect(page.getByRole("slider", { name: "Text size" })).toBeVisible();
 
     await page.getByText("Draw", { exact: true }).click();
     await page.getByTitle("Rectangle").click();

@@ -545,7 +545,12 @@ export function EditorApp() {
       <ToolButton icon={<Scissors size={15} />} label="Crop" active={tool === "crop"} disabled={operating} onClick={() => setTool(tool === "crop" ? "select" : "crop")} />
       <ToolButton icon={<Pencil size={15} />} label="Draw" active={tool === "annotate"} disabled={operating} onClick={() => setTool(tool === "annotate" ? "select" : "annotate")} />
       <ToolButton icon={<SlidersHorizontal size={15} />} label="Adjust" active={tool === "adjust"} disabled={operating} onClick={() => setTool(tool === "adjust" ? "select" : "adjust")} />
-      {tool === "annotate" && <div className="nc-editor-tool-options"><ShapePicker kind={shapeKind} onChange={setShapeKind} /><label>Color<input type="color" value={drawColor} onChange={(event) => setDrawColor(event.target.value)} /></label><label>Width<input type="range" min={1} max={20} value={drawWidth} onChange={(event) => setDrawWidth(Number(event.target.value))} /></label>{(shapeKind === "text" || shapeKind === "callout") && <label>Size<input type="range" min={12} max={72} value={textSize} onChange={(event) => setTextSize(Number(event.target.value))} /></label>}</div>}
+      <div className="nc-editor-tool-options">
+        <ShapePicker kind={shapeKind} disabled={operating} onChange={(kind) => { setShapeKind(kind); setTool("annotate"); }} />
+        <label>Color<input aria-label="Drawing color" type="color" value={drawColor} disabled={operating} onChange={(event) => setDrawColor(event.target.value)} /></label>
+        <label>Width<input aria-label="Drawing width" type="range" min={1} max={20} value={drawWidth} disabled={operating} onChange={(event) => setDrawWidth(Number(event.target.value))} /></label>
+        <label>Size<input aria-label="Text size" type="range" min={12} max={72} value={textSize} disabled={operating} onChange={(event) => setTextSize(Number(event.target.value))} /></label>
+      </div>
     </div>}
   </div>;
 }
@@ -561,6 +566,6 @@ const SHAPE_OPTIONS: { kind: AnnotateTool; icon: React.ReactNode; tip: string }[
   { kind: "callout", icon: <MessageSquare size={13} />, tip: "Callout" },
 ];
 
-function ShapePicker({ kind, onChange }: { kind: AnnotateTool; onChange: (kind: AnnotateTool) => void }) {
-  return <div className="nc-editor-shape-picker">{SHAPE_OPTIONS.map((option) => <button key={option.kind} className={`nc-editor-shape-btn ${kind === option.kind ? "nc-editor-shape-btn-active" : ""}`} title={option.tip} onClick={() => onChange(option.kind)}>{option.icon}</button>)}</div>;
+function ShapePicker({ kind, disabled, onChange }: { kind: AnnotateTool; disabled?: boolean; onChange: (kind: AnnotateTool) => void }) {
+  return <div className="nc-editor-shape-picker">{SHAPE_OPTIONS.map((option) => <button key={option.kind} disabled={disabled} className={`nc-editor-shape-btn ${kind === option.kind ? "nc-editor-shape-btn-active" : ""}`} title={option.tip} onClick={() => onChange(option.kind)}>{option.icon}</button>)}</div>;
 }

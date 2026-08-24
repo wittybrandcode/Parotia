@@ -563,16 +563,20 @@ html, body, #root {
 .nc-editor-toolbar {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: safe center;
   gap: 6px;
   height: 56px;
   padding: 0 16px;
   background: #111;
   border-top: 1px solid #222;
   flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
 }
 
 .nc-editor-tool-btn {
+  flex: 0 0 auto;
   padding: 6px 12px;
   border-radius: 6px;
   font-size: 13px;
@@ -600,6 +604,7 @@ html, body, #root {
 
 .nc-editor-tool-options {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 12px;
   margin-left: 12px;

@@ -144,6 +144,28 @@ describe("image editor", () => {
     expect(screen.getByRole("button", { name: "Zoom in" })).toBeDisabled();
   });
 
+  it("keeps the complete drawing toolbar visible and activates Draw when a shape is chosen", async () => {
+    render(<EditorApp />);
+    await waitFor(() => expect(mocks.annotation.init).toHaveBeenCalled());
+
+    expect(screen.getByTitle("Freehand")).toBeVisible();
+    expect(screen.getByTitle("Text")).toBeVisible();
+    expect(screen.getByTitle("Callout")).toBeVisible();
+    expect(screen.getByLabelText("Drawing color")).toBeVisible();
+    expect(screen.getByLabelText("Drawing width")).toBeVisible();
+    expect(screen.getByLabelText("Text size")).toBeVisible();
+
+    fireEvent.click(screen.getByText("Crop"));
+    expect(screen.getByTitle("Rectangle")).toBeVisible();
+    fireEvent.click(screen.getByTitle("Rectangle"));
+    await waitFor(() => expect(mocks.annotation.setTool).toHaveBeenLastCalledWith("rect"));
+    expect(screen.getByText("Draw").closest("button")).toHaveClass("nc-editor-tool-btn-active");
+
+    fireEvent.click(screen.getByText("Select"));
+    expect(screen.getByTitle("Rectangle")).toBeVisible();
+    expect(screen.getByLabelText("Text size")).toBeVisible();
+  });
+
   it("records vector commits as document layers and rebuilds them through undo and redo", async () => {
     render(<EditorApp />);
     await waitFor(() => expect(mocks.annotation.setCommitListener).toHaveBeenCalled());
