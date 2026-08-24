@@ -179,14 +179,14 @@ export function createAnnotationLayer(): AnnotationLayer {
       selectLayer(event.target === stage ? null : nodeLayerId(event.target));
       return;
     }
-    // The background is non-listening, so a canvas click targets the stage.
-    // Existing annotations are not accidentally drawn over.
-    if (event.target !== stage) return;
+    // Draw mode is explicit: a new layer may be placed over an existing one.
+    // Requiring an empty Stage hit made text and overlapping annotations fail
+    // whenever Konva resolved the pointer to another visible layer.
     const pos = pointer();
-    if (currentTool === "text" || currentTool === "callout") {
-      placeText(pos.x, pos.y, currentTool);
-      return;
-    }
+    // Text editors are opened from the completed click/tap event. Creating and
+    // focusing an input during pointerdown lets the remainder of that same
+    // click blur and remove it before the user can type.
+    if (currentTool === "text" || currentTool === "callout") return;
     startX = pos.x;
     startY = pos.y;
     activeShape = makeShape(pos);
@@ -194,6 +194,12 @@ export function createAnnotationLayer(): AnnotationLayer {
     annotationLayer.add(activeShape);
     isDrawing = true;
     annotationLayer.batchDraw();
+  }
+
+  function onTextActivate(): void {
+    if (currentMode !== "draw" || pendingInput || (currentTool !== "text" && currentTool !== "callout")) return;
+    const pos = pointer();
+    placeText(pos.x, pos.y, currentTool);
   }
 
   function onPointerMove(): void {
@@ -256,6 +262,10 @@ export function createAnnotationLayer(): AnnotationLayer {
     const input = document.createElement("input");
     let finished = false;
     pendingInput = input;
+    input.className = "nc-editor-inline-text-input";
+    input.setAttribute("aria-label", kind === "text" ? "Enter text" : "Enter callout text");
+    input.setAttribute("dir", "auto");
+    input.placeholder = kind === "text" ? "Type text…" : "Type callout…";
     Object.assign(input.style, {
       position: "fixed", left: `${rect.left + x * scale}px`, top: `${rect.top + (y - options.fontSize / 2) * scale}px`,
       fontSize: `${options.fontSize * scale}px`, color: options.color, background: "rgba(0,0,0,0.75)",
@@ -291,8 +301,8 @@ export function createAnnotationLayer(): AnnotationLayer {
       pendingInput = null;
     };
     input.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") finish(true);
-      if (event.key === "Escape") finish(false);
+      if (event.key === "Enter") { event.preventDefault(); finish(true); }
+      if (event.key === "Escape") { event.preventDefault(); finish(false); }
     });
     input.addEventListener("blur", () => finish(true));
     document.body.appendChild(input);
@@ -323,6 +333,7 @@ export function createAnnotationLayer(): AnnotationLayer {
     stage.on("pointerdown", onPointerDown);
     stage.on("pointermove", onPointerMove);
     stage.on("pointerup pointercancel", onPointerUp);
+    stage.on("click tap", onTextActivate);
     stage.on("dragend transformend", onTransformEnd);
     setTool("freehand");
     setMode("idle");

@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, expect, test } from "@playwright/test";
+import sharp from "sharp";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const extensionPath = path.join(dir, "..", "..", "dist").replace(/\\/g, "/");
@@ -124,7 +125,8 @@ test("4.5 staged capture opens in the real editor, draws, and consumes its save 
     const token = "e".repeat(48);
     const imageKey = `editor-image:${token}`;
     const ticketKey = `editor-ticket:${token}`;
-    const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR42mP8z8AARAwMjDAGCAMAAP//AwA0AAH9lQZsAAAAAElFTkSuQmCC";
+    const pngBuffer = await sharp({ create: { width: 320, height: 180, channels: 4, background: { r: 245, g: 245, b: 245, alpha: 1 } } }).png().toBuffer();
+    const png = `data:image/png;base64,${pngBuffer.toString("base64")}`;
     const tabId = await page.evaluate(async () => {
       const tab = await chrome.tabs.getCurrent();
       if (tab.id === undefined) throw new Error("Editor tab id unavailable");
@@ -170,6 +172,25 @@ test("4.5 staged capture opens in the real editor, draws, and consumes its save 
     await page.mouse.down();
     await page.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.8);
     await page.mouse.up();
+
+    const textTool = page.getByTitle("Text");
+    await textTool.click();
+    await expect(textTool).toHaveClass(/nc-editor-shape-btn-active/);
+    const editorSurface = page.locator(".nc-editor-konva-container");
+    await expect(editorSurface).toHaveCSS("cursor", "text");
+    const textPoint = { x: box.x + box.width * 0.05, y: box.y + box.height * 0.05 };
+    await page.mouse.click(textPoint.x, textPoint.y);
+    const textInput = page.locator(".nc-editor-inline-text-input");
+    await expect(textInput).toBeVisible();
+    await textInput.fill("Editable caption");
+    await textInput.press("Enter");
+    await expect(page.getByRole("option", { name: /^Text \d+/ })).toBeVisible();
+    const layerText = page.getByRole("textbox", { name: "Layer text" });
+    await expect(layerText).toHaveValue("Editable caption");
+    await layerText.fill("نص عربي قابل للتحرير");
+    await layerText.press("Enter");
+    await expect(layerText).toHaveValue("نص عربي قابل للتحرير");
+    await page.getByRole("combobox", { name: "Layer font" }).selectOption("Georgia");
 
     await page.getByRole("button", { name: /save/i }).click();
     await expect(page.getByRole("button", { name: /saved/i })).toBeDisabled();

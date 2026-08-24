@@ -159,7 +159,7 @@ describe("AnnotationLayer", () => {
     expect(listener).not.toHaveBeenCalled();
 
     editor.setTool("text");
-    stage.emit("pointerdown");
+    stage.emit("click");
     const input = document.body.querySelector("input")!;
     input.value = "caption";
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
@@ -175,7 +175,7 @@ describe("AnnotationLayer", () => {
     editor.setTool("callout");
     editor.setCommitListener(listener);
     mocks.state.stage!.pointer = { x: 40, y: 50 };
-    mocks.state.stage!.emit("pointerdown");
+    mocks.state.stage!.emit("click");
     const input = document.body.querySelector("input")!;
     input.value = "Important";
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
@@ -190,7 +190,7 @@ describe("AnnotationLayer", () => {
     editor.setMode("draw");
     editor.setOptions({ color: "#fff", strokeWidth: 8, fontSize: 32 });
     editor.setTool("text");
-    mocks.state.stage!.emit("pointerdown");
+    mocks.state.stage!.emit("click");
     document.body.querySelector("input")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     expect(document.body.querySelector("input")).toBeNull();
 
@@ -221,16 +221,17 @@ describe("AnnotationLayer", () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
-  it("ignores events from existing shapes and a second text click while input is pending", () => {
+  it("draws over existing shapes and ignores a second text click while input is pending", () => {
     const editor = createAnnotationLayer();
     editor.init(document.querySelector("#stage")!, 200, 100, new Image());
     editor.setMode("draw");
     const stage = mocks.state.stage!;
     stage.emitFrom("pointerdown", {});
-    expect(stage.layers[1]?.children).toHaveLength(0);
+    expect(stage.layers[1]?.children).toHaveLength(1);
+    stage.emit("pointerup");
     editor.setTool("text");
-    stage.emit("pointerdown");
-    stage.emit("pointerdown");
+    stage.emit("click");
+    stage.emit("click");
     expect(document.body.querySelectorAll("input")).toHaveLength(1);
   });
 
