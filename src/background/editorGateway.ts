@@ -1,4 +1,9 @@
 import type { BackgroundCommand } from "@shared/types";
+import {
+  assessEditorImage,
+  detectedDeviceMemoryGb,
+  editorBypassWarning,
+} from "@shared/utils/editorPreflight";
 import { logger } from "@shared/utils/logger";
 import { downloadPng } from "./downloadService";
 import { EditorTicketManager } from "./editorTickets";
@@ -42,6 +47,28 @@ export async function handleEditorResult(
 /** Wraps download-or-edit logic shared by all capture paths. */
 export async function finishCapture(tabId: number, sessionId: string, dataUrl: string, filename: string): Promise<unknown> {
   if (editorEnabled) {
+    const preflight = assessEditorImage(dataUrl, detectedDeviceMemoryGb());
+    if (preflight.mode === "BYPASS") {
+      const downloadId = await downloadPng(dataUrl, filename);
+      if (downloadId === null) {
+        return { success: false, error: "The image is too large for safe editing and could not be saved." };
+      }
+      return {
+        success: true,
+        filename,
+        editor: false,
+        editorBypassed: true,
+        warning: editorBypassWarning(preflight),
+        preflight: {
+          reason: preflight.reason,
+          width: preflight.metadata?.width,
+          height: preflight.metadata?.height,
+          pixels: preflight.metadata?.pixels,
+          estimatedWorkingBytes: preflight.estimatedWorkingBytes,
+          memoryBudgetBytes: preflight.memoryBudgetBytes,
+        },
+      };
+    }
     const ok = await openEditor(tabId, sessionId, dataUrl, filename);
     if (ok) return { success: true, filename, editor: true };
     return { success: false, error: "Failed to save the file. Check your downloads folder and try again." };

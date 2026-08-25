@@ -4,6 +4,42 @@ All notable changes to Parotia are documented here.
 
 ---
 
+## [Unreleased]
+
+### Professional layers, typography and shapes
+
+- Added a non-destructive layer workspace with multi-selection, grouping, alignment, distribution, drag ordering, locking, visibility, clipboard workflows, keyboard controls and smart snapping guides.
+- Added professional editable typography: multiline RTL/LTR text, explicit font fallback, local-font discovery after user permission, text boxes, spacing, backgrounds, borders, shadows and reusable presets.
+- Added editable shape geometry and solid/dashed/dotted strokes, configurable arrow heads and direction reversal, automatically continued numbered step markers, type-safe style copy/paste and four editorial shape presets.
+- Advanced the editor document to schema v4 with strict validation and recursive migration from v0/v1/v2/v3; copied legacy layers are migrated before insertion.
+- Expanded the real Chromium workflow to cover Arabic text, text presets, numbered steps, style transfer, advanced arrows and final native-resolution save.
+
+### Non-destructive editor document foundation
+
+- Replaced PNG-per-gesture history with a versioned `EditorDocument` and reversible `EditorDocumentHistory` command timeline bounded by both entry count and retained bytes.
+- Added stable image, text, rectangle, ellipse, line, arrow and callout layer contracts with IDs, order, visibility, locking, opacity and geometric transforms.
+- New annotations remain vector layers and survive document rebuilds through Undo/Redo; the old snapshot-based `EditorHistory` was removed.
+- Kept Flatten/Export explicit and independent: Copy, Share and Save render the native document, while current crop/adjust operations use reversible raster-document replacement commands.
+- Added strict parsing, deterministic serialization, version-zero migration and round-trip/command/integration coverage; the suite now contains 353 tests across 40 files.
+
+### Professional editor viewport
+
+- Added a dedicated presentation-only viewport controller with cursor-centred zoom, bounded pan, `Fit`, `Fill`, `1:1`, percentage feedback and resize-aware recentering.
+- Added wheel/trackpad navigation, middle-button and `Space + Drag` panning, plus `Ctrl/Cmd +/-`, `0` and `1` shortcuts that respect editable controls.
+- Konva now remains at native image dimensions while the outer surface receives a GPU-friendly CSS transform, so workspace zoom never changes annotation coordinates or exported pixels.
+- Viewport gestures and controls pause while the coordinate-sensitive crop overlay is active, then resume automatically.
+- Added mathematical and UI integration coverage; the suite now passes 340 tests across 39 files.
+
+### Large-image editor preflight
+
+- PNG dimensions are read from IHDR before image decode or Canvas allocation, and the editor estimates five decoded RGBA surfaces plus encoded-data overhead against a bounded device-memory budget.
+- The current editor contract now declares limits of `16384px` per dimension and `32 Mi` pixels, with a `256–512 MiB` working budget (`384 MiB` fallback).
+- Oversized captures bypass editor staging and download the unchanged original with an explicit dimensions/limit warning; the editor repeats the check before allocation as defense in depth.
+- Accepted captures show dimensions and megapixels in the editor header. Proxy/tiled editing remains an explicit later milestone and no quality reduction occurs silently.
+- Added focused preflight, gateway and zero-allocation editor tests; 334 Vitest tests now pass across 38 files.
+
+---
+
 ## [1.4.1] - 2026-08-24
 
 ### Full-page capture reliability

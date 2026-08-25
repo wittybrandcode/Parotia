@@ -34,6 +34,7 @@ Thresholds are release constraints and must not be lowered to pass a change.
 - Media readiness: lazy images, browser-owned picture selection, SVG, CSS background, poster and open Shadow DOM with timeout diagnostics.
 - Session/security: worker hydration, closed tabs, sender mismatch, exact editor URL/tab, expiry and concurrent replay.
 - Editor: direct Konva annotation behavior, bounded mixed-operation history, operation errors, real Chromium draw/save ticket consumption.
+- Large-image preflight: PNG IHDR parsing, device-aware memory budgets, dimension/pixel/memory rejection, direct-original download and zero Canvas allocation on rejected editor input.
 - Freeze/cleanup: continuous mutation deadline, iframe/fixed-header priority restore, regenerated descendants and original `display!important`.
 
 The deterministic browser fixture is `tests/fixtures/capture-matrix.html`. It contains article, long checker pattern, Twitter-like avatar, RTL content, canvas, picture, SVG, video poster, CSS background, hidden content and open Shadow DOM. Add `?dynamic=1` to create continuous mutations.

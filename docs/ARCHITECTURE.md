@@ -67,7 +67,13 @@ The readiness layer covers normal DOM and open Shadow DOM images, browser-select
 
 ## Editor model
 
-Annotations, crop and adjust commit PNG snapshots into one bounded `EditorHistory`. Undo/redo therefore follows the visible operation order. Crop, adjust, copy, share, save and close run through one exclusive operation boundary; Save moves the UI to a terminal `Saved` state and Close waits briefly for ticket discard.
+The editor owns one versioned `EditorDocument`: native canvas geometry, an immutable raster background reference and an ordered vector-layer list. Text, line, arrow, rectangle and ellipse commits are stored as independently addressable layer commands instead of repeated PNG snapshots. Every layer has a stable ID, visibility, lock, opacity, order and geometric transform. `EditorDocumentHistory` applies reversible patches under entry and byte budgets; an operation too large to retain creates an explicit history boundary instead of allowing Undo to cross an unrecoverable state.
+
+Konva renders the document at native coordinates while `EditorViewport` applies presentation-only zoom and pan to its outer container. `renderTo()` is the explicit Flatten boundary used by Copy, Share and Save, so viewport scale never changes exported pixels. Existing crop and adjustment tools currently flatten their result into a replacement raster document, but that replacement is itself one reversible command and restores earlier vector layers on Undo. A schema-version parser validates serialized documents, normalizes layer order and migrates the documented version-zero shape before rendering.
+
+Crop, adjust, copy, share, save and close run through one exclusive operation boundary; Save moves the UI to a terminal `Saved` state and Close waits briefly for ticket discard.
+
+Before staging an editor ticket, `assessEditorImage()` reads only the PNG IHDR and estimates the peak decoded working set: five RGBA surfaces plus encoded-string overhead. The current single-canvas editor accepts at most `16384px` per dimension, `32 Mi` pixels and a memory budget derived from the browser's coarse `deviceMemory` value, clamped to `256–512 MiB` (`384 MiB` when unavailable). A capture outside any limit bypasses ticket/image staging and downloads the unchanged PNG with a visible reason. The editor repeats the same check before its first Canvas allocation as defense in depth. Proxy/tiled editing remains a separate vNext renderer milestone; no resolution reduction is performed silently.
 
 ## Compatibility names
 

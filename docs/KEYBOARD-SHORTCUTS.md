@@ -14,6 +14,19 @@ Parotia provides keyboard shortcuts for power users. All shortcuts respect edita
 | `Delete` | Delete the picked element | Only when element selected |
 | `Backspace` | Delete the picked element | Only when element selected |
 
+### Editor workspace
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl/Cmd + +` | Zoom in around the workspace centre |
+| `Ctrl/Cmd + -` | Zoom out around the workspace centre |
+| `0` | Fit the image to the workspace |
+| `1` | Show actual image pixels at `100%` |
+| `Space + Drag` | Pan the image without changing the active drawing tool |
+| Middle mouse drag | Pan the image |
+| Wheel / trackpad scroll | Pan horizontally or vertically |
+| Trackpad pinch or `Ctrl/Cmd + Wheel` | Zoom around the pointer |
+
 ---
 
 ## Safety

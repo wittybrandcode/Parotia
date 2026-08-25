@@ -1,7 +1,7 @@
 /**
  * Canvas state management for the image editor. Handles image loading,
- * rendering, resize, filtering, and export. EditorHistory owns the single
- * user-visible undo/redo timeline.
+ * rendering, resize, filtering, and export. EditorDocumentHistory owns the
+ * single user-visible undo/redo timeline.
  */
 
 export interface CanvasEngine {
