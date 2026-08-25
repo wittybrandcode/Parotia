@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowRight, Circle, Copy, Download, Maximize2, MessageSquare, Minus, MousePointer2, Pencil, Redo2, Scissors, Share2, SlidersHorizontal, Square, Type, Undo2, X, ZoomIn, ZoomOut } from "lucide-react";
+import { ArrowRight, Circle, Copy, Download, Magnet, Maximize2, MessageSquare, Minus, MousePointer2, Pencil, Redo2, Scissors, Share2, SlidersHorizontal, Square, Type, Undo2, X, ZoomIn, ZoomOut } from "lucide-react";
 import { createCanvasEngine, type CanvasEngine } from "./CanvasEngine";
 import { createCropTool, type CropRect, type CropTool } from "./CropTool";
 import { createAnnotationLayer, type AnnotationLayer, type AnnotateTool } from "./AnnotationLayer";
@@ -83,6 +83,7 @@ export function EditorApp() {
   const [drawWidth, setDrawWidth] = useState(3);
   const [textSize, setTextSize] = useState(24);
   const [shapeKind, setShapeKind] = useState<AnnotateTool>("freehand");
+  const [snappingEnabled, setSnappingEnabled] = useState(true);
   const [documentState, setDocumentState] = useState<EditorDocument | null>(null);
   const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([]);
   const [viewportState, setViewportState] = useState<ViewportState>({ scale: 1, percent: 100, mode: "FIT", offsetX: 0, offsetY: 0 });
@@ -117,6 +118,7 @@ export function EditorApp() {
     annotation.init(container, document.canvas.width, document.canvas.height, image);
     annotation.setOptions({ color: drawColor, strokeWidth: drawWidth, fontSize: textSize });
     annotation.setTool(shapeKind);
+    annotation.setSnapping(snappingEnabled);
     annotationRef.current = annotation;
     await annotation.loadLayers(document.layers);
     setDocumentState(document);
@@ -162,7 +164,7 @@ export function EditorApp() {
     cropRef.current = createCropTool(container, wrapper, document.canvas.width, document.canvas.height);
     adjustRef.current = createAdjustPanel(container, wrapper);
     refreshHistory();
-  }, [drawColor, drawWidth, textSize, shapeKind, refreshHistory, setSelection]);
+  }, [drawColor, drawWidth, textSize, shapeKind, snappingEnabled, refreshHistory, setSelection]);
 
   const renderEditor = useCallback((target: HTMLCanvasElement): void => {
     const annotation = annotationRef.current;
@@ -510,6 +512,10 @@ export function EditorApp() {
   }, [loaded, operating, tool]);
 
   useEffect(() => {
+    annotationRef.current?.setSnapping(snappingEnabled);
+  }, [snappingEnabled]);
+
+  useEffect(() => {
     cropRef.current?.stop();
     adjustRef.current?.stop();
     const annotation = annotationRef.current;
@@ -688,6 +694,7 @@ export function EditorApp() {
       <ToolButton icon={<Scissors size={15} />} label="Crop" active={tool === "crop"} disabled={operating} onClick={() => setTool(tool === "crop" ? "select" : "crop")} />
       <ToolButton icon={<Pencil size={15} />} label="Draw" active={tool === "annotate"} disabled={operating} onClick={() => setTool(tool === "annotate" ? "select" : "annotate")} />
       <ToolButton icon={<SlidersHorizontal size={15} />} label="Adjust" active={tool === "adjust"} disabled={operating} onClick={() => setTool(tool === "adjust" ? "select" : "adjust")} />
+      <ToolButton icon={<Magnet size={15} />} label="Snap" title="Snap to canvas and layers (hold Alt while dragging to bypass)" active={snappingEnabled} disabled={operating} onClick={() => setSnappingEnabled((enabled) => !enabled)} />
       <div className="nc-editor-tool-options">
         <ShapePicker kind={shapeKind} disabled={operating} onChange={(kind) => { setShapeKind(kind); setTool("annotate"); }} />
         <label>Color<input aria-label="Drawing color" type="color" value={drawColor} disabled={operating} onChange={(event) => setDrawColor(event.target.value)} /></label>
@@ -698,8 +705,8 @@ export function EditorApp() {
   </div>;
 }
 
-function ToolButton({ icon, label, active, disabled, onClick }: { icon: React.ReactNode; label: string; active: boolean; disabled?: boolean; onClick: () => void }) {
-  return <button className={`nc-editor-tool-btn ${active ? "nc-editor-tool-btn-active" : ""}`} disabled={disabled} onClick={onClick}>{icon}<span>{label}</span></button>;
+function ToolButton({ icon, label, title, active, disabled, onClick }: { icon: React.ReactNode; label: string; title?: string; active: boolean; disabled?: boolean; onClick: () => void }) {
+  return <button className={`nc-editor-tool-btn ${active ? "nc-editor-tool-btn-active" : ""}`} aria-pressed={active} title={title} disabled={disabled} onClick={onClick}>{icon}<span>{label}</span></button>;
 }
 
 const SHAPE_OPTIONS: { kind: AnnotateTool; icon: React.ReactNode; tip: string }[] = [

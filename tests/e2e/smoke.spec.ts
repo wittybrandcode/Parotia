@@ -164,6 +164,11 @@ test("4.5 staged capture opens in the real editor, draws, and consumes its save 
     await expect(page.getByTitle("Freehand")).toBeVisible();
     await expect(page.getByTitle("Callout")).toBeVisible();
     await expect(page.getByRole("slider", { name: "Text size" })).toBeVisible();
+    const snapToggle = page.getByRole("button", { name: "Snap" });
+    await expect(snapToggle).toHaveAttribute("aria-pressed", "true");
+    await snapToggle.click();
+    await expect(snapToggle).toHaveAttribute("aria-pressed", "false");
+    await snapToggle.click();
 
     await page.getByText("Draw", { exact: true }).click();
     await page.getByTitle("Rectangle").click();

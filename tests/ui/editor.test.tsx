@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => {
     selectLayers: vi.fn(),
     setTool: vi.fn(),
     setOptions: vi.fn(),
+    setSnapping: vi.fn(),
     setCommitListener: vi.fn(),
     setSelectionListener: vi.fn(),
     setTransformListener: vi.fn(),
@@ -155,6 +156,11 @@ describe("image editor", () => {
     expect(screen.getByLabelText("Drawing color")).toBeVisible();
     expect(screen.getByLabelText("Drawing width")).toBeVisible();
     expect(screen.getByLabelText("Text size")).toBeVisible();
+    const snap = screen.getByRole("button", { name: "Snap" });
+    expect(snap).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(snap);
+    expect(snap).toHaveAttribute("aria-pressed", "false");
+    expect(mocks.annotation.setSnapping).toHaveBeenLastCalledWith(false);
 
     fireEvent.click(screen.getByText("Crop"));
     expect(screen.getByTitle("Rectangle")).toBeVisible();

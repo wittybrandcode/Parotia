@@ -283,6 +283,7 @@ describe("AnnotationLayer", () => {
     editor.setSelectionListener(selection);
     editor.setTransformListener(transform);
     editor.setMode("select");
+    editor.setSnapping(false);
     editor.selectLayer(layer.id);
 
     const stage = mocks.state.stage!;
@@ -330,6 +331,7 @@ describe("AnnotationLayer", () => {
     await editor.loadLayers([first, second]);
     editor.setTransformListener(transform);
     editor.setMode("select");
+    editor.setSnapping(false);
     editor.selectLayers([first.id, second.id]);
     const stage = mocks.state.stage!;
     const firstNode = stage.layers[1]!.children[0]!;
@@ -370,5 +372,30 @@ describe("AnnotationLayer", () => {
     expect(groupNode.children).toHaveLength(2);
     expect(transformer.selected).toEqual([groupNode]);
     expect(transformer.preserveRatio).toBe(true);
+  });
+
+  it("snaps dragging to canvas geometry, draws guides, and allows Alt bypass", async () => {
+    const editor = createAnnotationLayer();
+    editor.init(document.querySelector("#stage")!, 200, 100, new Image());
+    const layer: EditorLayer = { id: "snap", name: "Snap", order: 0, kind: "rectangle", visible: true, locked: false, opacity: 1, transform: identityTransform(12, 12), width: 20, height: 10, cornerRadius: 0, fill: null, stroke: "#fff", strokeWidth: 1 };
+    await editor.loadLayers([layer]);
+    editor.setMode("select");
+    editor.selectLayer(layer.id);
+    const stage = mocks.state.stage!;
+    const node = stage.layers[1]!.children[0]!;
+    stage.emitFrom("dragstart", node);
+    node.attrs.x = 3;
+    node.attrs.y = 2;
+    stage.emitFrom("dragmove", node);
+    expect(node.attrs).toMatchObject({ x: 0, y: 0 });
+    expect(stage.layers[2]!.children.filter((child) => !child.destroyed && child.name() === "editor-snap-guide")).toHaveLength(2);
+    stage.emitFrom("dragend", node);
+    expect(stage.layers[2]!.children.filter((child) => !child.destroyed && child.name() === "editor-snap-guide")).toHaveLength(0);
+
+    stage.emitFrom("dragstart", node);
+    node.attrs.x = 3;
+    node.attrs.y = 2;
+    stage.emitFrom("dragmove", node, { altKey: true });
+    expect(node.attrs).toMatchObject({ x: 3, y: 2 });
   });
 });

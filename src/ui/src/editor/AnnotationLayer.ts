@@ -5,6 +5,7 @@
  */
 import Konva from "konva";
 import { createLayerBase, type EditorLayer } from "./EditorDocument";
+import { snapLayerSelection, type SnapGuide } from "./EditorSnap";
 
 export type AnnotateTool = "freehand" | "line" | "rect" | "ellipse" | "arrow" | "text" | "callout";
 export type AnnotationMode = "idle" | "draw" | "select";
@@ -26,6 +27,7 @@ export interface AnnotationLayer {
   replaceLayers(layers: EditorLayer[]): Promise<void>;
   selectLayer(layerId: string | null): void;
   selectLayers(layerIds: string[]): void;
+  setSnapping(enabled: boolean): void;
   setCommitListener(listener: ((layer: EditorLayer) => void) | null): void;
   setSelectionListener(listener: ((layerIds: string[]) => void) | null): void;
   setTransformListener(listener: ((before: EditorLayer[], after: EditorLayer[]) => void) | null): void;
@@ -60,6 +62,8 @@ export function createAnnotationLayer(): AnnotationLayer {
   let onTransform: ((before: EditorLayer[], after: EditorLayer[]) => void) | null = null;
   let gestureBefore: Map<string, EditorLayer> | null = null;
   let activeDragId: string | null = null;
+  let snappingEnabled = true;
+  let snapGuides: Konva.Line[] = [];
 
   function pointer(): { x: number; y: number } {
     return stage?.getPointerPosition() ?? { x: 0, y: 0 };
@@ -169,6 +173,7 @@ export function createAnnotationLayer(): AnnotationLayer {
   }
 
   function onGestureStart(event: Konva.KonvaEventObject<Event>): void {
+    clearSnapGuides();
     const id = nodeLayerId(event.target);
     if (!id || !selectedLayerIds.includes(id)) return;
     gestureBefore = new Map(selectedLayerIds.flatMap((selectedId) => {
@@ -183,16 +188,25 @@ export function createAnnotationLayer(): AnnotationLayer {
     const origin = id ? gestureBefore?.get(id) : null;
     const node = id ? layerNode(id) : null;
     if (!id || !origin || !node) return;
-    const deltaX = node.x() - origin.transform.x;
-    const deltaY = node.y() - origin.transform.y;
+    const rawDeltaX = node.x() - origin.transform.x;
+    const rawDeltaY = node.y() - origin.transform.y;
+    const sourceEvent = event.evt as DragEvent | undefined;
+    const movingLayers = [...(gestureBefore?.values() ?? [])];
+    const stationaryLayers = [...layerModels.values()].filter((layer) => !gestureBefore?.has(layer.id) && layer.visible);
+    const renderedWidth = stage?.container().getBoundingClientRect().width ?? 0;
+    const displayScale = renderedWidth > 0 ? renderedWidth / stageWidth : 1;
+    const snapped = snappingEnabled && !sourceEvent?.altKey
+      ? snapLayerSelection(movingLayers, stationaryLayers, { width: stageWidth, height: stageHeight }, rawDeltaX, rawDeltaY, 6 / Math.max(displayScale, 0.01))
+      : { deltaX: rawDeltaX, deltaY: rawDeltaY, guides: [] };
+    showSnapGuides(snapped.guides);
     for (const [otherId, before] of gestureBefore ?? []) {
-      if (otherId === id) continue;
-      layerNode(otherId)?.position({ x: before.transform.x + deltaX, y: before.transform.y + deltaY });
+      layerNode(otherId)?.position({ x: before.transform.x + snapped.deltaX, y: before.transform.y + snapped.deltaY });
     }
     annotationLayer?.batchDraw();
   }
 
   function onGestureEnd(): void {
+    clearSnapGuides();
     if (!gestureBefore) return;
     const before = [...gestureBefore.values()];
     gestureBefore = null;
@@ -208,6 +222,7 @@ export function createAnnotationLayer(): AnnotationLayer {
   }
 
   function onPointerDown(event: Konva.KonvaEventObject<PointerEvent>): void {
+    clearSnapGuides();
     if (!stage || !annotationLayer || pendingInput) return;
     if (currentMode === "idle") return;
     if (currentMode === "select") {
@@ -368,6 +383,7 @@ export function createAnnotationLayer(): AnnotationLayer {
     uiLayer.add(cursorCircle);
     transformer = new Konva.Transformer({
       name: "editor-transformer-anchor", rotateEnabled: true, keepRatio: false, flipEnabled: false, ignoreStroke: true,
+      rotationSnaps: [0, 45, 90, 135, 180, 225, 270, 315], rotationSnapTolerance: 5,
       borderStroke: "#c1e899", borderStrokeWidth: 1, anchorFill: "#c1e899", anchorStroke: "#111111", anchorSize: 9,
       boundBoxFunc: (oldBox, newBox) => Math.abs(newBox.width) < 5 || Math.abs(newBox.height) < 5 ? oldBox : newBox,
     });
@@ -383,6 +399,23 @@ export function createAnnotationLayer(): AnnotationLayer {
     setMode("idle");
     updateCursor();
     stage.draw();
+  }
+
+  function clearSnapGuides(): void {
+    for (const guide of snapGuides) guide.destroy();
+    snapGuides = [];
+    uiLayer?.batchDraw();
+  }
+
+  function showSnapGuides(guides: SnapGuide[]): void {
+    clearSnapGuides();
+    if (!uiLayer) return;
+    snapGuides = guides.map((guide) => new Konva.Line({
+      points: guide.axis === "vertical" ? [guide.position, 0, guide.position, stageHeight] : [0, guide.position, stageWidth, guide.position],
+      stroke: guide.source === "canvas" ? "#c1e899" : "#75bfff", strokeWidth: 1, dash: [6, 4], listening: false, name: "editor-snap-guide",
+    }));
+    for (const guide of snapGuides) uiLayer.add(guide);
+    uiLayer.batchDraw();
   }
 
   function nodeOptions(layer: EditorLayer): Record<string, unknown> {
@@ -454,6 +487,7 @@ export function createAnnotationLayer(): AnnotationLayer {
 
   async function replaceLayers(layers: EditorLayer[]): Promise<void> {
     if (!annotationLayer) throw new Error("Annotation layer is not initialized");
+    clearSnapGuides();
     transformer?.nodes([]);
     annotationLayer.destroyChildren();
     layerModels.clear();
@@ -487,6 +521,7 @@ export function createAnnotationLayer(): AnnotationLayer {
 
   function setMode(mode: AnnotationMode): void {
     currentMode = mode;
+    if (mode !== "select") clearSnapGuides();
     if (!stage) return;
     stage.container().style.cursor = mode === "select" ? "default" : mode === "draw" && (currentTool === "text" || currentTool === "callout") ? "text" : mode === "draw" ? "none" : "default";
     cursorCircle?.visible(mode === "draw" && currentTool !== "text" && currentTool !== "callout");
@@ -496,6 +531,11 @@ export function createAnnotationLayer(): AnnotationLayer {
   function setOptions(next: Partial<AnnotationOptions>): void {
     Object.assign(options, next);
     updateCursor();
+  }
+
+  function setSnapping(enabled: boolean): void {
+    snappingEnabled = enabled;
+    if (!enabled) clearSnapGuides();
   }
 
   function setCommitListener(listener: ((layer: EditorLayer) => void) | null): void {
@@ -531,13 +571,15 @@ export function createAnnotationLayer(): AnnotationLayer {
     selectedLayerIds = [];
     gestureBefore = null;
     activeDragId = null;
+    snapGuides = [];
+    snappingEnabled = true;
     currentMode = "idle";
   }
 
   return {
     get width() { return stageWidth; },
     get height() { return stageHeight; },
-    init, setMode, setTool, setOptions, loadLayers, replaceLayers, selectLayer, selectLayers,
+    init, setMode, setTool, setOptions, loadLayers, replaceLayers, selectLayer, selectLayers, setSnapping,
     setCommitListener, setSelectionListener, setTransformListener, renderTo, destroy,
   };
 }
