@@ -20,7 +20,7 @@ Supported layer kinds are `image`, `text`, `rectangle`, `ellipse`, `line`, `arro
 - Canvas dimensions, image dimensions, font sizes and stroke widths are finite and positive.
 - Layer IDs are non-empty and unique inside one document.
 - Opacity stays between `0` and `1`; geometric scale cannot be zero.
-- Text scale is positive and uniform. Interactive text resizing is baked into font/box metrics and returns the layer transform to `1:1`, preventing horizontal or vertical glyph distortion.
+- Persisted text scale is positive and uniform. Point Text resizing is baked into typographic metrics; Paragraph Text resizing is baked only into its width/height. Both return the layer transform to `1:1`, preventing horizontal or vertical glyph distortion.
 - Point text cannot carry box dimensions or justified alignment; paragraph text requires both dimensions and supports horizontal plus vertical alignment.
 - Point arrays contain complete finite coordinate pairs.
 - Deserialization validates the complete structure and normalizes layer order to contiguous indices.
@@ -45,4 +45,4 @@ Crop and adjustment still flatten the current document into a replacement raster
 
 ## Text transformation boundary
 
-Point Text is created with one click and follows its natural content bounds. Paragraph Text is created by dragging a box and uses word wrapping, horizontal `left/center/right/justify` alignment and vertical `top/middle/bottom` alignment. Text selection exposes corner anchors only. Resizing updates font size, spacing, effects and paragraph geometry as one proportional operation, so saved documents never retain one-axis text stretching.
+Point Text is created with one click and follows its natural content bounds. It exposes corner anchors only; resizing is proportional and updates its real font/effect metrics. Paragraph Text is created by dragging a box and uses word wrapping, horizontal `left/center/right/justify` alignment and vertical `top/middle/bottom` alignment. Its eight handles resize the paragraph container independently in width and height, causing text reflow without changing font size, spacing or effects. Font size remains controlled exclusively by the typography size field.

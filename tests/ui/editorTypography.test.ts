@@ -46,12 +46,21 @@ describe("EditorTypography", () => {
     expect(convertTextMode({ ...paragraph, align: "justify" }, "point")).not.toHaveProperty("width");
   });
 
-  it("bakes the largest visual scale into font and paragraph metrics", () => {
-    const paragraph = convertTextMode(textLayer({ fontSize: 20, padding: 5, letterSpacing: 2 }), "paragraph");
-    const resized = bakeTextTransform(paragraph, { x: 12, y: 18, scaleX: 1.5, scaleY: 2, rotation: 15 });
+  it("bakes point-text scaling into real typographic metrics", () => {
+    const point = textLayer({ fontSize: 20, padding: 5, letterSpacing: 2 });
+    const resized = bakeTextTransform(point, { x: 12, y: 18, scaleX: 1.5, scaleY: 2, rotation: 15 });
     expect(resized).toMatchObject({
       fontSize: 40, padding: 10, letterSpacing: 4,
-      width: paragraph.width! * 2, height: paragraph.height! * 2,
+      transform: { x: 12, y: 18, scaleX: 1, scaleY: 1, rotation: 15 },
+    });
+  });
+
+  it("resizes only the paragraph container and preserves every font metric", () => {
+    const paragraph = convertTextMode(textLayer({ fontSize: 20, padding: 5, letterSpacing: 2, shadowBlur: 3 }), "paragraph");
+    const resized = bakeTextTransform(paragraph, { x: 12, y: 18, scaleX: 1.5, scaleY: 2, rotation: 15 });
+    expect(resized).toMatchObject({
+      width: paragraph.width! * 1.5, height: paragraph.height! * 2,
+      fontSize: 20, padding: 5, letterSpacing: 2, shadowBlur: 3,
       transform: { x: 12, y: 18, scaleX: 1, scaleY: 1, rotation: 15 },
     });
   });

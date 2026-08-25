@@ -164,8 +164,8 @@ export function createAnnotationLayer(): AnnotationLayer {
       return node && model?.visible && !model.locked ? [node] : [];
     }) : [];
     const requiresUniformTransform = nodes.some((node) => {
-      const kind = layerModels.get(node.id())?.kind;
-      return kind === "text" || kind === "group";
+      const model = layerModels.get(node.id());
+      return model?.kind === "group" || (model?.kind === "text" && model.textMode === "point");
     });
     transformer?.nodes(nodes);
     if (transformer && typeof transformer.keepRatio === "function") transformer.keepRatio(requiresUniformTransform);

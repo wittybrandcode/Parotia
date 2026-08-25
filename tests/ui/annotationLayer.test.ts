@@ -344,6 +344,35 @@ describe("AnnotationLayer", () => {
     })]);
   });
 
+  it("uses all paragraph handles to resize only the reflow box", async () => {
+    const editor = createAnnotationLayer();
+    const transform = vi.fn();
+    editor.init(document.querySelector("#stage")!, 400, 300, new Image());
+    const layer: EditorLayer = {
+      id: "paragraph-text", name: "Paragraph text", order: 0, kind: "text", visible: true, locked: false, opacity: 1,
+      transform: identityTransform(20, 30), ...DEFAULT_EDITOR_TEXT_STYLE, textMode: "paragraph", text: "Text that reflows",
+      width: 200, height: 100, fontSize: 20, padding: 8, letterSpacing: 1,
+    };
+    await editor.loadLayers([layer]);
+    editor.setTransformListener(transform);
+    editor.setMode("select");
+    editor.selectLayer(layer.id);
+    const stage = mocks.state.stage!;
+    const node = stage.layers[1]!.children[0]!;
+    const transformer = stage.layers[2]!.children[1] as InstanceType<typeof mocks.Transformer>;
+    expect(transformer.preserveRatio).toBe(false);
+    expect(transformer.anchors).toEqual(["top-left", "top-center", "top-right", "middle-right", "bottom-right", "bottom-center", "bottom-left", "middle-left"]);
+
+    stage.emitFrom("transformstart", node);
+    node.scaleX(1.5);
+    node.scaleY(2);
+    stage.emitFrom("transformend", node);
+    expect(transform).toHaveBeenCalledWith([layer], [expect.objectContaining({
+      width: 300, height: 200, fontSize: 20, padding: 8, letterSpacing: 1,
+      transform: expect.objectContaining({ scaleX: 1, scaleY: 1 }),
+    })]);
+  });
+
   it("renders an editable multiline RTL text box with background, border and shadow", async () => {
     const editor = createAnnotationLayer();
     editor.init(document.querySelector("#stage")!, 400, 300, new Image());
