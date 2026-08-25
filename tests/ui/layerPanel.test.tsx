@@ -104,14 +104,23 @@ describe("LayerPanel", () => {
       onSelect={vi.fn()} onUpdate={onUpdate} onDelete={vi.fn()} onDuplicate={vi.fn()} onMove={vi.fn()} onReorder={vi.fn()}
       onGroup={vi.fn()} onUngroup={vi.fn()} onAlign={vi.fn()} onDistribute={vi.fn()} onCopy={vi.fn()} onPaste={vi.fn()} onAddImage={vi.fn()} />);
 
-    const text = screen.getByRole("textbox", { name: "Layer text" });
-    fireEvent.change(text, { target: { value: "سطر أول\nسطر ثان" } });
-    fireEvent.keyDown(text, { key: "Enter", ctrlKey: true });
+    fireEvent.change(screen.getByRole("combobox", { name: "Text type" }), { target: { value: "paragraph" } });
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ textMode: "paragraph", width: expect.any(Number), height: expect.any(Number) }), "Convert Text 2 to paragraph text");
+
+    cleanup();
+    render(<LayerPanel document={{ ...documentWithLayers(), layers: [rectangle, { ...textLayer, textMode: "paragraph", width: 240, height: 100 }] }} selectedLayerIds={["text-id"]} disabled={false}
+      onSelect={vi.fn()} onUpdate={onUpdate} onDelete={vi.fn()} onDuplicate={vi.fn()} onMove={vi.fn()} onReorder={vi.fn()}
+      onGroup={vi.fn()} onUngroup={vi.fn()} onAlign={vi.fn()} onDistribute={vi.fn()} onCopy={vi.fn()} onPaste={vi.fn()} onAddImage={vi.fn()} />);
+
+    const paragraphText = screen.getByRole("textbox", { name: "Layer text" });
+    fireEvent.change(paragraphText, { target: { value: "سطر أول\nسطر ثان" } });
+    fireEvent.keyDown(paragraphText, { key: "Enter", ctrlKey: true });
     fireEvent.change(screen.getByRole("combobox", { name: "Text direction" }), { target: { value: "rtl" } });
     fireEvent.change(screen.getByLabelText("Text line height"), { target: { value: "1.6" } });
     fireEvent.blur(screen.getByLabelText("Text line height"));
     fireEvent.change(screen.getByLabelText("Text box width"), { target: { value: "280" } });
     fireEvent.blur(screen.getByLabelText("Text box width"));
+    fireEvent.click(screen.getByRole("button", { name: "Justify text" }));
     fireEvent.click(screen.getByLabelText("Text background enabled"));
     fireEvent.change(screen.getByRole("combobox", { name: "Text preset" }), { target: { value: "quote" } });
 
@@ -119,6 +128,7 @@ describe("LayerPanel", () => {
     expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ direction: "rtl" }), "Change Text 2 direction");
     expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ lineHeight: 1.6 }), "Change Text 2 lineHeight");
     expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ width: 280 }), "Change Text 2 width");
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ align: "justify" }), "Align Text 2");
     expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ backgroundColor: "#000000" }), "Change Text 2 background");
     expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ fontFamily: "Georgia", fontStyle: "italic" }), "Apply quote text preset");
   });

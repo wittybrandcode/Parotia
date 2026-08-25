@@ -151,7 +151,8 @@ describe("image editor", () => {
     await waitFor(() => expect(mocks.annotation.init).toHaveBeenCalled());
 
     expect(screen.getByTitle("Freehand")).toBeVisible();
-    expect(screen.getByTitle("Text")).toBeVisible();
+    expect(screen.getByTitle("Point text")).toBeVisible();
+    expect(screen.getByTitle("Paragraph text — drag a box")).toBeVisible();
     expect(screen.getByTitle("Callout")).toBeVisible();
     expect(screen.getByTitle("Step marker")).toBeVisible();
     expect(screen.getByLabelText("Drawing color")).toBeVisible();

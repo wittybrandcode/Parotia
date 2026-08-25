@@ -1,7 +1,7 @@
 import { createId } from "@shared/utils/id";
 
 export const EDITOR_DOCUMENT_SCHEMA = "parotia.editor-document" as const;
-export const EDITOR_DOCUMENT_VERSION = 4 as const;
+export const EDITOR_DOCUMENT_VERSION = 5 as const;
 
 export type EditorStrokeStyle = "solid" | "dashed" | "dotted";
 
@@ -32,6 +32,7 @@ export interface EditorImageLayer extends EditorLayerBase {
 
 export interface EditorTextLayer extends EditorLayerBase {
   kind: "text";
+  textMode: "point" | "paragraph";
   text: string;
   fontFamily: string;
   fontFallback: "sans-serif" | "serif" | "monospace";
@@ -39,7 +40,7 @@ export interface EditorTextLayer extends EditorLayerBase {
   fontWeight: number;
   fontStyle: "normal" | "italic";
   direction: "auto" | "ltr" | "rtl";
-  align: "left" | "center" | "right";
+  align: "left" | "center" | "right" | "justify";
   verticalAlign: "top" | "middle" | "bottom";
   fill: string;
   width?: number;
@@ -58,7 +59,7 @@ export interface EditorTextLayer extends EditorLayerBase {
 }
 
 export const DEFAULT_EDITOR_TEXT_STYLE = {
-  fontFamily: "sans-serif", fontFallback: "sans-serif", fontSize: 24, fontWeight: 400, fontStyle: "normal",
+  textMode: "point", fontFamily: "sans-serif", fontFallback: "sans-serif", fontSize: 24, fontWeight: 400, fontStyle: "normal",
   direction: "auto", align: "left", verticalAlign: "top", fill: "#c1e899", lineHeight: 1.2, letterSpacing: 0,
   padding: 0, backgroundColor: null, borderColor: null, borderWidth: 0, cornerRadius: 0,
   shadowColor: null, shadowBlur: 0, shadowOffsetX: 0, shadowOffsetY: 0,
@@ -277,13 +278,19 @@ function layer(value: unknown, path: string): EditorLayer {
     case "text": {
       const width = item.width === undefined ? undefined : positive(item.width, `${path}.width`);
       const height = item.height === undefined ? undefined : positive(item.height, `${path}.height`);
+      const textMode = enumValue(item.textMode, `${path}.textMode`, ["point", "paragraph"] as const);
+      const align = enumValue(item.align, `${path}.align`, ["left", "center", "right", "justify"] as const);
+      if (textMode === "paragraph" && (width === undefined || height === undefined)) throw new Error(`${path} paragraph text requires width and height`);
+      if (textMode === "point" && (width !== undefined || height !== undefined)) throw new Error(`${path} point text cannot have box dimensions`);
+      if (textMode === "point" && align === "justify") throw new Error(`${path} point text cannot use justified alignment`);
+      if (common.transform.scaleX <= 0 || common.transform.scaleY <= 0 || Math.abs(common.transform.scaleX - common.transform.scaleY) > 1e-6) throw new Error(`${path}.transform must use a positive uniform scale`);
       return {
-        ...common, kind, text: string(item.text, `${path}.text`, true), fontFamily: string(item.fontFamily, `${path}.fontFamily`),
+        ...common, kind, textMode, text: string(item.text, `${path}.text`, true), fontFamily: string(item.fontFamily, `${path}.fontFamily`),
         fontFallback: enumValue(item.fontFallback, `${path}.fontFallback`, ["sans-serif", "serif", "monospace"] as const),
         fontSize: positive(item.fontSize, `${path}.fontSize`), fontWeight: positive(item.fontWeight, `${path}.fontWeight`),
         fontStyle: enumValue(item.fontStyle, `${path}.fontStyle`, ["normal", "italic"] as const),
         direction: enumValue(item.direction, `${path}.direction`, ["auto", "ltr", "rtl"] as const),
-        align: enumValue(item.align, `${path}.align`, ["left", "center", "right"] as const),
+        align,
         verticalAlign: enumValue(item.verticalAlign, `${path}.verticalAlign`, ["top", "middle", "bottom"] as const),
         fill: string(item.fill, `${path}.fill`), lineHeight: positive(item.lineHeight, `${path}.lineHeight`),
         letterSpacing: finite(item.letterSpacing, `${path}.letterSpacing`), padding: nonNegative(item.padding, `${path}.padding`),
@@ -358,7 +365,7 @@ function parseCurrentVersion(value: unknown): EditorDocument {
 function migrate(value: unknown): unknown {
   const item = record(value, "document");
   if (item.schema !== EDITOR_DOCUMENT_SCHEMA) return value;
-  if (item.version === 1 || item.version === 2 || item.version === 3) return {
+  if (item.version === 1 || item.version === 2 || item.version === 3 || item.version === 4) return {
     ...item, version: EDITOR_DOCUMENT_VERSION,
     layers: Array.isArray(item.layers) ? item.layers.map(migrateLayer) : item.layers,
   };
@@ -381,8 +388,30 @@ function migrateLayer(value: unknown): unknown {
   const item = value as JsonRecord;
   if (item.kind === "text") {
     const migrated: JsonRecord = { ...item };
+    const hasBox = typeof migrated.width === "number" || typeof migrated.height === "number";
+    const textMode = migrated.textMode ?? (hasBox ? "paragraph" : "point");
     for (const [key, fallback] of Object.entries(DEFAULT_EDITOR_TEXT_STYLE)) {
       if (migrated[key] === undefined) migrated[key] = fallback;
+    }
+    migrated.textMode = textMode;
+    if (migrated.textMode === "paragraph") {
+      const fontSize = typeof migrated.fontSize === "number" && migrated.fontSize > 0 ? migrated.fontSize : DEFAULT_EDITOR_TEXT_STYLE.fontSize;
+      const lineHeight = typeof migrated.lineHeight === "number" && migrated.lineHeight > 0 ? migrated.lineHeight : DEFAULT_EDITOR_TEXT_STYLE.lineHeight;
+      const padding = typeof migrated.padding === "number" && migrated.padding >= 0 ? migrated.padding : DEFAULT_EDITOR_TEXT_STYLE.padding;
+      if (typeof migrated.width !== "number" || migrated.width <= 0) migrated.width = Math.max(240, fontSize * 10 + padding * 2);
+      if (typeof migrated.height !== "number" || migrated.height <= 0) migrated.height = Math.max(96, fontSize * lineHeight * 3 + padding * 2);
+    } else {
+      delete migrated.width;
+      delete migrated.height;
+      if (migrated.align === "justify") migrated.align = "left";
+      migrated.verticalAlign = "top";
+    }
+    if (migrated.transform && typeof migrated.transform === "object" && !Array.isArray(migrated.transform)) {
+      const legacyTransform = migrated.transform as JsonRecord;
+      const scaleX = typeof legacyTransform.scaleX === "number" ? Math.abs(legacyTransform.scaleX) : 1;
+      const scaleY = typeof legacyTransform.scaleY === "number" ? Math.abs(legacyTransform.scaleY) : 1;
+      const uniformScale = Math.max(scaleX, scaleY, Number.EPSILON);
+      migrated.transform = { ...legacyTransform, scaleX: uniformScale, scaleY: uniformScale };
     }
     return migrated;
   }

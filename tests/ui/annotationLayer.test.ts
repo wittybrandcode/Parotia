@@ -17,8 +17,8 @@ const mocks = vi.hoisted(() => {
     position(value?: { x: number; y: number }) { if (value) Object.assign(this.attrs, value); return { x: Number(this.attrs.x ?? 0), y: Number(this.attrs.y ?? 0) }; }
     x() { return Number(this.attrs.x ?? 0); }
     y() { return Number(this.attrs.y ?? 0); }
-    scaleX() { return Number(this.attrs.scaleX ?? 1); }
-    scaleY() { return Number(this.attrs.scaleY ?? 1); }
+    scaleX(value?: number) { if (value !== undefined) this.attrs.scaleX = value; return Number(this.attrs.scaleX ?? 1); }
+    scaleY(value?: number) { if (value !== undefined) this.attrs.scaleY = value; return Number(this.attrs.scaleY ?? 1); }
     rotation() { return Number(this.attrs.rotation ?? 0); }
     visible(value?: boolean) { if (value !== undefined) this.attrs.visible = value; return this.attrs.visible !== false; }
     width(value?: number) { if (value !== undefined) this.attrs.width = value; return Number(this.attrs.width ?? 0); }
@@ -60,8 +60,10 @@ const mocks = vi.hoisted(() => {
   class Transformer extends Group {
     selected: Shape[] = [];
     preserveRatio = false;
+    anchors: string[] = [];
     nodes(value?: Shape[]) { if (value) this.selected = value; return this.selected; }
     keepRatio(value?: boolean) { if (value !== undefined) this.preserveRatio = value; return this.preserveRatio; }
+    enabledAnchors(value?: string[]) { if (value) this.anchors = value; return this.anchors; }
   }
   class Stage {
     content = document.createElement("div");
@@ -187,6 +189,29 @@ describe("AnnotationLayer", () => {
     expect(mocks.state.stage!.layers[1]?.children[0]).toBeInstanceOf(mocks.Group);
   });
 
+  it("creates paragraph text by dragging a box and keeps Enter available for new lines", () => {
+    const editor = createAnnotationLayer();
+    const listener = vi.fn();
+    editor.init(document.querySelector("#stage")!, 400, 300, new Image());
+    editor.setMode("draw");
+    editor.setTool("paragraph");
+    editor.setCommitListener(listener);
+    const stage = mocks.state.stage!;
+    stage.pointer = { x: 30, y: 40 };
+    stage.emit("pointerdown");
+    stage.pointer = { x: 270, y: 160 };
+    stage.emit("pointermove");
+    stage.emit("pointerup");
+
+    const input = document.body.querySelector("textarea")!;
+    expect(input).not.toBeNull();
+    input.value = "First line\nSecond line";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    expect(listener).not.toHaveBeenCalled();
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true }));
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({ kind: "text", textMode: "paragraph", width: 240, height: 120 }));
+  });
+
   it("creates consecutive editable step markers with automatic numbering", () => {
     const editor = createAnnotationLayer();
     const listener = vi.fn();
@@ -284,11 +309,39 @@ describe("AnnotationLayer", () => {
     const layer: EditorLayer = {
       id: "styled-text", name: "Styled text", order: 0, kind: "text", visible: true, locked: false, opacity: 1,
       transform: identityTransform(), ...DEFAULT_EDITOR_TEXT_STYLE, text: "Headline", fontFamily: "Georgia", fontSize: 30, fontWeight: 700,
-      fontStyle: "italic", align: "center", fill: "#ffffff", width: 160,
+      textMode: "paragraph", fontStyle: "italic", align: "center", fill: "#ffffff", width: 160, height: 80,
     };
     await editor.loadLayers([layer]);
     const textGroup = mocks.state.stage!.layers[1]?.children[0] as InstanceType<typeof mocks.Group>;
     expect(textGroup.children[0]?.attrs).toMatchObject({ fontStyle: "bold italic", width: 160, align: "center" });
+  });
+
+  it("uses corner-only proportional text transforms and bakes resizing into typography", async () => {
+    const editor = createAnnotationLayer();
+    const transform = vi.fn();
+    editor.init(document.querySelector("#stage")!, 400, 300, new Image());
+    const layer: EditorLayer = {
+      id: "point-text", name: "Point text", order: 0, kind: "text", visible: true, locked: false, opacity: 1,
+      transform: identityTransform(20, 30), ...DEFAULT_EDITOR_TEXT_STYLE, text: "Scale safely", fontSize: 20,
+    };
+    await editor.loadLayers([layer]);
+    editor.setTransformListener(transform);
+    editor.setMode("select");
+    editor.selectLayer(layer.id);
+    const stage = mocks.state.stage!;
+    const node = stage.layers[1]!.children[0]!;
+    const transformer = stage.layers[2]!.children[1] as InstanceType<typeof mocks.Transformer>;
+    expect(transformer.preserveRatio).toBe(true);
+    expect(transformer.anchors).toEqual(["top-left", "top-right", "bottom-left", "bottom-right"]);
+
+    stage.emitFrom("transformstart", node);
+    node.scaleX(2);
+    node.scaleY(1.25);
+    stage.emitFrom("transformend", node);
+    expect(transform).toHaveBeenCalledWith([layer], [expect.objectContaining({
+      fontSize: 40,
+      transform: expect.objectContaining({ scaleX: 1, scaleY: 1 }),
+    })]);
   });
 
   it("renders an editable multiline RTL text box with background, border and shadow", async () => {

@@ -7,22 +7,24 @@
 Every document declares:
 
 - `schema: "parotia.editor-document"`
-- a numeric `version`, currently `1`
+- a numeric `version`, currently `5`
 - stable document identity and creation/update timestamps
 - native canvas dimensions and optional background colour
 - one raster background source
 - an ordered vector-layer list
 
-Supported layer kinds are `image`, `text`, `rectangle`, `ellipse`, `line`, `arrow` and `callout`. Every layer carries a stable ID, name, order, visibility, lock state, opacity and `{x, y, scaleX, scaleY, rotation}` transform. Kind-specific properties remain explicit and serializable; runtime Konva nodes are never stored in the document.
+Supported layer kinds are `image`, `text`, `rectangle`, `ellipse`, `line`, `arrow`, `callout`, `step` and `group`. Text layers explicitly declare `textMode: "point" | "paragraph"`; paragraph text owns positive width/height while point text uses natural metrics. Every layer carries a stable ID, name, order, visibility, lock state, opacity and `{x, y, scaleX, scaleY, rotation}` transform. Kind-specific properties remain explicit and serializable; runtime Konva nodes are never stored in the document.
 
 ## Invariants
 
 - Canvas dimensions, image dimensions, font sizes and stroke widths are finite and positive.
 - Layer IDs are non-empty and unique inside one document.
 - Opacity stays between `0` and `1`; geometric scale cannot be zero.
+- Text scale is positive and uniform. Interactive text resizing is baked into font/box metrics and returns the layer transform to `1:1`, preventing horizontal or vertical glyph distortion.
+- Point text cannot carry box dimensions or justified alignment; paragraph text requires both dimensions and supports horizontal plus vertical alignment.
 - Point arrays contain complete finite coordinate pairs.
 - Deserialization validates the complete structure and normalizes layer order to contiguous indices.
-- Unknown schema versions fail closed. The parser currently migrates the documented version-zero raster shape to version `1`.
+- Unknown schema versions fail closed. The parser migrates versions `0–4` to version `5`, including recursive groups and normalization of legacy non-uniform text transforms.
 
 ## Commands and history
 
@@ -41,6 +43,6 @@ The document is rendered at native canvas coordinates. `EditorViewport` changes 
 
 Crop and adjustment still flatten the current document into a replacement raster document. That transition is reversible and restores the prior vector layers on Undo. Moving those two transforms into fully non-destructive document operations is intentionally separate from the layer-selection work.
 
-## Next integration slice
+## Text transformation boundary
 
-The next milestone adds selection state and a Transformer over stable layer IDs, followed by move/resize/rotate commands and the visible layer panel. Project-file import/export can build directly on the validated serializer after those editing interactions stabilize.
+Point Text is created with one click and follows its natural content bounds. Paragraph Text is created by dragging a box and uses word wrapping, horizontal `left/center/right/justify` alignment and vertical `top/middle/bottom` alignment. Text selection exposes corner anchors only. Resizing updates font size, spacing, effects and paragraph geometry as one proportional operation, so saved documents never retain one-axis text stretching.

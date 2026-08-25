@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowRight, Circle, Copy, Download, Hash, Magnet, Maximize2, MessageSquare, Minus, MousePointer2, Pencil, Redo2, Scissors, Share2, SlidersHorizontal, Square, Type, Undo2, X, ZoomIn, ZoomOut } from "lucide-react";
+import { AlignLeft, ArrowRight, Circle, Copy, Download, Hash, Magnet, Maximize2, MessageSquare, Minus, MousePointer2, Pencil, Redo2, Scissors, Share2, SlidersHorizontal, Square, Type, Undo2, X, ZoomIn, ZoomOut } from "lucide-react";
 import { createCanvasEngine, type CanvasEngine } from "./CanvasEngine";
 import { createCropTool, type CropRect, type CropTool } from "./CropTool";
 import { createAnnotationLayer, type AnnotationLayer, type AnnotateTool } from "./AnnotationLayer";
@@ -148,13 +148,22 @@ export function EditorApp() {
         if (!history) throw new Error("Editor document history is unavailable");
         const current = before.map((entry) => history.document.layers.find((layer) => layer.id === entry.id)).filter((entry): entry is EditorLayer => Boolean(entry));
         if (current.length !== before.length) throw new Error("A transformed layer no longer exists");
-        const transformed = current.map((entry, index) => ({ ...entry, transform: after[index]!.transform } as EditorLayer));
-        if (current.every((entry, index) => JSON.stringify(entry.transform) === JSON.stringify(transformed[index]!.transform))) return;
+        const transformed = current.map((entry, index) => {
+          const candidate = after[index]!;
+          return candidate.id === entry.id && candidate.kind === entry.kind ? candidate : entry;
+        });
+        if (current.every((entry, index) => JSON.stringify(entry) === JSON.stringify(transformed[index]))) return;
         const nextDocument = history.execute(replaceLayersCommand(current, transformed, `Transform ${current.length} layer${current.length === 1 ? "" : "s"}`));
         setDocumentState(nextDocument);
         setSelection(transformed.map((entry) => entry.id));
         setSaved(false);
         refreshHistory();
+        layerSyncRef.current = layerSyncRef.current.then(async () => {
+          await annotation.replaceLayers(nextDocument.layers);
+          selectAnnotationLayers(annotation, transformed.map((entry) => entry.id));
+        }).catch((cause: unknown) => {
+          setError(cause instanceof Error ? cause.message : "Failed to refresh transformed text");
+        });
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : "Failed to transform the layer");
       }
@@ -737,7 +746,10 @@ export function EditorApp() {
         <ShapePicker kind={shapeKind} disabled={operating} onChange={(kind) => { setShapeKind(kind); setTool("annotate"); }} />
         <label>Color<input aria-label="Drawing color" type="color" value={drawColor} disabled={operating} onChange={(event) => setDrawColor(event.target.value)} /></label>
         <label>Width<input aria-label="Drawing width" type="range" min={1} max={20} value={drawWidth} disabled={operating} onChange={(event) => setDrawWidth(Number(event.target.value))} /></label>
-        <label>Size<input aria-label="Text size" type="range" min={12} max={72} value={textSize} disabled={operating} onChange={(event) => setTextSize(Number(event.target.value))} /></label>
+        <label>Text size<input className="nc-editor-text-size" aria-label="Text size" type="number" min={6} max={512} step={1} value={textSize} disabled={operating} onChange={(event) => {
+          const size = Number(event.target.value);
+          if (Number.isFinite(size) && size >= 6 && size <= 512) setTextSize(size);
+        }} /></label>
       </div>
     </div>}
   </div>;
@@ -750,7 +762,8 @@ function ToolButton({ icon, label, title, active, disabled, onClick }: { icon: R
 const SHAPE_OPTIONS: { kind: AnnotateTool; icon: React.ReactNode; tip: string }[] = [
   { kind: "freehand", icon: <Pencil size={13} />, tip: "Freehand" }, { kind: "line", icon: <Minus size={13} />, tip: "Line" },
   { kind: "rect", icon: <Square size={13} />, tip: "Rectangle" }, { kind: "ellipse", icon: <Circle size={13} />, tip: "Ellipse" },
-  { kind: "arrow", icon: <ArrowRight size={13} />, tip: "Arrow" }, { kind: "text", icon: <Type size={13} />, tip: "Text" },
+  { kind: "arrow", icon: <ArrowRight size={13} />, tip: "Arrow" }, { kind: "text", icon: <Type size={13} />, tip: "Point text" },
+  { kind: "paragraph", icon: <AlignLeft size={13} />, tip: "Paragraph text — drag a box" },
   { kind: "callout", icon: <MessageSquare size={13} />, tip: "Callout" },
   { kind: "step", icon: <Hash size={13} />, tip: "Step marker" },
 ];
