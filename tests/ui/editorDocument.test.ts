@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createEditorDocument,
   createLayerBase,
+  DEFAULT_EDITOR_TEXT_STYLE,
   identityTransform,
   parseEditorDocument,
   serializeEditorDocument,
@@ -15,7 +16,7 @@ function layers(): EditorLayer[] {
   });
   return [
     { ...common("image", 0), kind: "image", source: "data:image/png;base64,a", width: 20, height: 10 },
-    { ...common("text", 1), kind: "text", text: "مرحبا", fontFamily: "Arial", fontSize: 24, fontWeight: 400, fontStyle: "normal", align: "right", fill: "#fff" },
+    { ...common("text", 1), ...DEFAULT_EDITOR_TEXT_STYLE, kind: "text", text: "مرحبا", fontFamily: "Arial", align: "right", fill: "#fff" },
     { ...common("rectangle", 2), kind: "rectangle", width: 40, height: 30, cornerRadius: 2, fill: null, stroke: "#f00", strokeWidth: 3 },
     { ...common("ellipse", 3), kind: "ellipse", radiusX: 20, radiusY: 10, fill: "#000", stroke: "#fff", strokeWidth: 2 },
     { ...common("line", 4), kind: "line", points: [0, 0, 10, 10], stroke: "#fff", strokeWidth: 2, tension: 0.5 },
@@ -34,7 +35,7 @@ describe("EditorDocument", () => {
     const restored = parseEditorDocument(serializeEditorDocument(document));
     expect(restored).toEqual(document);
     expect(restored.schema).toBe("parotia.editor-document");
-    expect(restored.version).toBe(2);
+    expect(restored.version).toBe(3);
     expect(restored.layers.map((layer) => layer.kind)).toEqual(["image", "text", "rectangle", "ellipse", "line", "arrow", "callout"]);
   });
 
@@ -53,7 +54,7 @@ describe("EditorDocument", () => {
       backgroundDataUrl: "data:image/png;base64,legacy", createdAt: "2026-01-01", updatedAt: "2026-01-02", layers: [],
     });
     expect(migrated).toMatchObject({
-      version: 2, id: "legacy", canvas: { width: 320, height: 200 },
+      version: 3, id: "legacy", canvas: { width: 320, height: 200 },
       background: { source: "data:image/png;base64,legacy", width: 320, height: 200 },
     });
   });
@@ -65,9 +66,26 @@ describe("EditorDocument", () => {
       ...createLayerBase("group", 0), kind: "group", name: "Two shapes", children: migrated.layers.slice(0, 2).map((layer, order) => ({ ...layer, order })),
     };
     const restored = parseEditorDocument({ ...migrated, layers: [grouped] });
-    expect(restored.version).toBe(2);
+    expect(restored.version).toBe(3);
     expect(restored.layers[0]).toMatchObject({ kind: "group", name: "Two shapes" });
     expect(restored.layers[0]?.kind === "group" && restored.layers[0].children.map((layer) => layer.id)).toEqual(["image", "text"]);
+  });
+
+  it("adds the complete editable text contract while migrating a version-two project", () => {
+    const current = documentWithLayers();
+    const legacyText = {
+      ...current.layers[1], fontFallback: undefined, direction: undefined, verticalAlign: undefined,
+      lineHeight: undefined, letterSpacing: undefined, padding: undefined, backgroundColor: undefined,
+      borderColor: undefined, borderWidth: undefined, cornerRadius: undefined, shadowColor: undefined,
+      shadowBlur: undefined, shadowOffsetX: undefined, shadowOffsetY: undefined,
+    };
+    const migrated = parseEditorDocument({ ...current, version: 2, layers: [legacyText] });
+    expect(migrated.version).toBe(3);
+    expect(migrated.layers[0]).toMatchObject({
+      kind: "text", fontFallback: "sans-serif", direction: "auto", verticalAlign: "top",
+      lineHeight: 1.2, letterSpacing: 0, padding: 0, backgroundColor: null,
+      borderColor: null, borderWidth: 0, shadowColor: null, shadowBlur: 0,
+    });
   });
 
   it("rejects duplicate identifiers nested inside groups", () => {

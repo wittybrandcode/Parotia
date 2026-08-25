@@ -195,10 +195,18 @@ test("4.5 staged capture opens in the real editor, draws, and consumes its save 
     await expect(page.getByRole("option", { name: /^Text \d+/ })).toBeVisible();
     const layerText = page.getByRole("textbox", { name: "Layer text" });
     await expect(layerText).toHaveValue("Editable caption");
-    await layerText.fill("نص عربي قابل للتحرير");
-    await layerText.press("Enter");
-    await expect(layerText).toHaveValue("نص عربي قابل للتحرير");
-    await page.getByRole("combobox", { name: "Layer font" }).selectOption("Georgia");
+    await layerText.fill("نص عربي قابل للتحرير\nعلى أكثر من سطر");
+    await layerText.press("Control+Enter");
+    await expect(layerText).toHaveValue("نص عربي قابل للتحرير\nعلى أكثر من سطر");
+    await page.getByRole("combobox", { name: "Text direction" }).selectOption("rtl");
+    await page.getByLabel("Text line height").fill("1.5");
+    await page.getByLabel("Text line height").press("Enter");
+    await page.getByLabel("Text box width").fill("240");
+    await page.getByLabel("Text box width").press("Enter");
+    await page.getByLabel("Text background enabled").check();
+    await page.getByRole("combobox", { name: "Text preset" }).selectOption("quote");
+    await expect(page.getByRole("combobox", { name: "Layer font" })).toHaveValue("Georgia");
+    await expect(page.getByRole("button", { name: /local fonts/i })).toBeVisible();
 
     const layerList = page.getByRole("listbox", { name: "Document layers" });
     const rectangleLayer = layerList.getByRole("option", { name: /Rectangle 1/ });

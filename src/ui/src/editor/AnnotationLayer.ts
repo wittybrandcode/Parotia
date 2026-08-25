@@ -4,8 +4,9 @@
  * transform is explicitly committed.
  */
 import Konva from "konva";
-import { createLayerBase, type EditorLayer } from "./EditorDocument";
+import { createLayerBase, DEFAULT_EDITOR_TEXT_STYLE, type EditorLayer } from "./EditorDocument";
 import { snapLayerSelection, type SnapGuide } from "./EditorSnap";
+import { editorFontStack, resolveTextDirection } from "./EditorTypography";
 
 export type AnnotateTool = "freehand" | "line" | "rect" | "ellipse" | "arrow" | "text" | "callout";
 export type AnnotationMode = "idle" | "draw" | "select";
@@ -335,8 +336,8 @@ export function createAnnotationLayer(): AnnotationLayer {
       if (save && text && kind === "text") {
         const textY = y - options.fontSize / 2;
         const layer: EditorLayer = {
-          ...createLayerBase("text", layerCount, x, textY), kind: "text", text, fontSize: options.fontSize,
-          fontFamily: "sans-serif", fontWeight: 400, fontStyle: "normal", align: "left", fill: options.color,
+          ...createLayerBase("text", layerCount, x, textY), ...DEFAULT_EDITOR_TEXT_STYLE, kind: "text", text,
+          fontSize: options.fontSize, fill: options.color,
         };
         addShape(new Konva.Text({ x, y: textY, text, fontSize: options.fontSize, fontFamily: "sans-serif", fill: options.color, draggable: false }), layer);
       } else if (save && text) {
@@ -445,10 +446,27 @@ export function createAnnotationLayer(): AnnotationLayer {
       case "text":
         {
           const fontStyle = `${layer.fontWeight >= 600 ? "bold " : ""}${layer.fontStyle === "italic" ? "italic" : ""}`.trim() || "normal";
-        return new Konva.Text({
-          ...common, text: layer.text, fontFamily: layer.fontFamily, fontSize: layer.fontSize, fontStyle,
-          align: layer.align, fill: layer.fill, ...(layer.width === undefined ? {} : { width: layer.width }),
-        });
+          const contentWidth = layer.width === undefined ? undefined : Math.max(1, layer.width - layer.padding * 2);
+          const contentHeight = layer.height === undefined ? undefined : Math.max(1, layer.height - layer.padding * 2);
+          const text = new Konva.Text({
+            x: layer.padding, y: layer.padding, text: layer.text, fontFamily: editorFontStack(layer.fontFamily, layer.fontFallback),
+            fontSize: layer.fontSize, fontStyle, direction: resolveTextDirection(layer.text, layer.direction), align: layer.align,
+            verticalAlign: layer.verticalAlign, fill: layer.fill, lineHeight: layer.lineHeight, letterSpacing: layer.letterSpacing,
+            wrap: "word", ...(contentWidth === undefined ? {} : { width: contentWidth }), ...(contentHeight === undefined ? {} : { height: contentHeight }),
+            ...(layer.shadowColor === null ? {} : {
+              shadowColor: layer.shadowColor, shadowBlur: layer.shadowBlur,
+              shadowOffset: { x: layer.shadowOffsetX, y: layer.shadowOffsetY }, shadowEnabled: true,
+            }),
+          });
+          const width = layer.width ?? text.width() + layer.padding * 2;
+          const height = layer.height ?? text.height() + layer.padding * 2;
+          const group = new Konva.Group(common);
+          if (layer.backgroundColor !== null || layer.borderColor !== null) group.add(new Konva.Rect({
+            width, height, ...(layer.backgroundColor === null ? {} : { fill: layer.backgroundColor }),
+            ...(layer.borderColor === null ? {} : { stroke: layer.borderColor, strokeWidth: layer.borderWidth }), cornerRadius: layer.cornerRadius,
+          }));
+          group.add(text);
+          return group;
         }
       case "rectangle":
         return new Konva.Rect({ ...common, width: layer.width, height: layer.height, cornerRadius: layer.cornerRadius, ...(layer.fill === null ? {} : { fill: layer.fill }), stroke: layer.stroke, strokeWidth: layer.strokeWidth });

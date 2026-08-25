@@ -21,6 +21,8 @@ const mocks = vi.hoisted(() => {
     scaleY() { return Number(this.attrs.scaleY ?? 1); }
     rotation() { return Number(this.attrs.rotation ?? 0); }
     visible(value?: boolean) { if (value !== undefined) this.attrs.visible = value; return this.attrs.visible !== false; }
+    width(value?: number) { if (value !== undefined) this.attrs.width = value; return Number(this.attrs.width ?? 0); }
+    height(value?: number) { if (value !== undefined) this.attrs.height = value; return Number(this.attrs.height ?? 0); }
   }
   class Line extends Shape {
     points(value?: number[]) {
@@ -31,8 +33,6 @@ const mocks = vi.hoisted(() => {
   class Rect extends Shape {
     position(value?: { x: number; y: number }) { if (value) Object.assign(this.attrs, value); return { x: Number(this.attrs.x ?? 0), y: Number(this.attrs.y ?? 0) }; }
     size(value?: { width: number; height: number }) { if (value) Object.assign(this.attrs, value); }
-    width() { return Number(this.attrs.width ?? 0); }
-    height() { return Number(this.attrs.height ?? 0); }
   }
   class Ellipse extends Shape {
     position(value?: { x: number; y: number }) { if (value) Object.assign(this.attrs, value); return { x: Number(this.attrs.x ?? 0), y: Number(this.attrs.y ?? 0) }; }
@@ -109,7 +109,7 @@ vi.mock("konva", () => ({
 }));
 
 import { createAnnotationLayer, type AnnotateTool } from "@ui/src/editor/AnnotationLayer";
-import { identityTransform, type EditorLayer } from "@ui/src/editor/EditorDocument";
+import { DEFAULT_EDITOR_TEXT_STYLE, identityTransform, type EditorLayer } from "@ui/src/editor/EditorDocument";
 
 function rect(width: number, height: number): DOMRect {
   return { x: 0, y: 0, top: 0, left: 0, right: width, bottom: height, width, height, toJSON: () => ({}) } as DOMRect;
@@ -245,7 +245,7 @@ describe("AnnotationLayer", () => {
     const layers: EditorLayer[] = [
       { ...common("line", 1), kind: "line", points: [0, 0, 10, 10], stroke: "#fff", strokeWidth: 2, tension: 0.5 },
       { ...common("rect", 0), kind: "rectangle", width: 20, height: 10, cornerRadius: 0, fill: null, stroke: "#fff", strokeWidth: 2 },
-      { ...common("text", 2), kind: "text", text: "Caption", fontFamily: "Arial", fontSize: 20, fontWeight: 400, fontStyle: "normal", align: "left", fill: "#fff" },
+      { ...common("text", 2), ...DEFAULT_EDITOR_TEXT_STYLE, kind: "text", text: "Caption", fontFamily: "Arial", fontSize: 20, fill: "#fff" },
       { ...common("ellipse", 3), kind: "ellipse", radiusX: 10, radiusY: 5, fill: null, stroke: "#fff", strokeWidth: 2 },
       { ...common("arrow", 4), kind: "arrow", points: [0, 0, 20, 20], stroke: "#fff", strokeWidth: 2, pointerLength: 10, pointerWidth: 8 },
       { ...common("callout", 5), kind: "callout", text: "Note", width: 60, height: 30, fontFamily: "Arial", fontSize: 12, textColor: "#111", fill: "#fff", stroke: "#000", strokeWidth: 1 },
@@ -263,11 +263,32 @@ describe("AnnotationLayer", () => {
     editor.init(document.querySelector("#stage")!, 200, 100, new Image());
     const layer: EditorLayer = {
       id: "styled-text", name: "Styled text", order: 0, kind: "text", visible: true, locked: false, opacity: 1,
-      transform: identityTransform(), text: "Headline", fontFamily: "Georgia", fontSize: 30, fontWeight: 700,
+      transform: identityTransform(), ...DEFAULT_EDITOR_TEXT_STYLE, text: "Headline", fontFamily: "Georgia", fontSize: 30, fontWeight: 700,
       fontStyle: "italic", align: "center", fill: "#ffffff", width: 160,
     };
     await editor.loadLayers([layer]);
-    expect(mocks.state.stage!.layers[1]?.children[0]?.attrs).toMatchObject({ fontStyle: "bold italic", width: 160, align: "center" });
+    const textGroup = mocks.state.stage!.layers[1]?.children[0] as InstanceType<typeof mocks.Group>;
+    expect(textGroup.children[0]?.attrs).toMatchObject({ fontStyle: "bold italic", width: 160, align: "center" });
+  });
+
+  it("renders an editable multiline RTL text box with background, border and shadow", async () => {
+    const editor = createAnnotationLayer();
+    editor.init(document.querySelector("#stage")!, 400, 300, new Image());
+    const layer: EditorLayer = {
+      id: "arabic-text", name: "Arabic text", order: 0, kind: "text", visible: true, locked: false, opacity: 0.9,
+      transform: identityTransform(12, 18), ...DEFAULT_EDITOR_TEXT_STYLE, text: "مرحبا\nبالعالم", fontFamily: "Noto Sans Arabic",
+      fontFallback: "sans-serif", direction: "auto", align: "right", verticalAlign: "middle", width: 220, height: 100,
+      lineHeight: 1.4, letterSpacing: 0.5, padding: 10, backgroundColor: "#111111", borderColor: "#eeeeee",
+      borderWidth: 2, cornerRadius: 8, shadowColor: "#000000", shadowBlur: 4, shadowOffsetX: 2, shadowOffsetY: 3,
+    };
+    await editor.loadLayers([layer]);
+    const group = mocks.state.stage!.layers[1]?.children[0] as InstanceType<typeof mocks.Group>;
+    expect(group.attrs).toMatchObject({ id: "arabic-text", x: 12, y: 18, opacity: 0.9 });
+    expect(group.children[0]?.attrs).toMatchObject({ width: 220, height: 100, fill: "#111111", stroke: "#eeeeee", strokeWidth: 2, cornerRadius: 8 });
+    expect(group.children[1]?.attrs).toMatchObject({
+      text: "مرحبا\nبالعالم", direction: "rtl", align: "right", verticalAlign: "middle", width: 200, height: 80,
+      lineHeight: 1.4, letterSpacing: 0.5, shadowColor: "#000000", shadowBlur: 4, shadowOffset: { x: 2, y: 3 },
+    });
   });
 
   it("selects an unlocked layer and commits drag or transform geometry", async () => {

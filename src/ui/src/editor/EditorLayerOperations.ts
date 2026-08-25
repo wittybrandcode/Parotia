@@ -1,5 +1,6 @@
 import { createId } from "@shared/utils/id";
 import { createLayerBase, type EditorGroupLayer, type EditorLayer, type EditorTransform } from "./EditorDocument";
+import { estimateTextBox } from "./EditorTypography";
 
 export type LayerAlignment = "left" | "horizontal-center" | "right" | "top" | "vertical-center" | "bottom";
 export type LayerDistribution = "horizontal" | "vertical";
@@ -38,7 +39,10 @@ function fromEdges(left: number, top: number, right: number, bottom: number): La
 function localEdges(layer: Exclude<EditorLayer, EditorGroupLayer>): [number, number, number, number] {
   switch (layer.kind) {
     case "image": case "rectangle": case "callout": return [0, 0, layer.width, layer.height];
-    case "text": return [0, 0, layer.width ?? Math.max(layer.fontSize, layer.text.length * layer.fontSize * 0.62), layer.fontSize * 1.2];
+    case "text": {
+      const box = estimateTextBox(layer);
+      return [0, 0, box.width, box.height];
+    }
     case "ellipse": return [-layer.radiusX, -layer.radiusY, layer.radiusX, layer.radiusY];
     case "line": case "arrow": {
       const xs = layer.points.filter((_, index) => index % 2 === 0);

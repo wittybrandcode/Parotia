@@ -3,8 +3,10 @@ import {
   ArrowDown, ArrowRight, ArrowUp, Circle, Copy, Eye, EyeOff, GripVertical, ImagePlus, Layers3, Lock, MessageSquare,
   Minus, Square, Trash2, Type, Unlock,
 } from "lucide-react";
-import type { EditorDocument, EditorLayer } from "./EditorDocument";
+import type { EditorDocument, EditorLayer, EditorTextLayer } from "./EditorDocument";
 import type { LayerAlignment, LayerDistribution } from "./EditorLayerOperations";
+import { isSafeFontFamily, queryLocalFontFamilies, SAFE_FONT_FAMILIES, supportsLocalFontAccess } from "./EditorFonts";
+import { applyTextPreset, EDITOR_TEXT_PRESETS, type EditorTextPreset } from "./EditorTextPresets";
 
 interface LayerPanelProps {
   document: EditorDocument;
@@ -27,10 +29,18 @@ interface LayerPanelProps {
 
 type DropEdge = "before" | "after";
 
-const FONT_FAMILIES = ["sans-serif", "Arial", "Georgia", "Times New Roman", "Courier New", "Tahoma", "Trebuchet MS"];
-
 function safeColor(value: string | null, fallback = "#000000"): string {
   return value && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
+}
+
+function CommitTextArea({ value, direction, onCommit }: { value: string; direction: "auto" | "ltr" | "rtl"; onCommit(value: string): void }) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  const commit = (): void => { if (draft !== value) onCommit(draft); };
+  return <textarea aria-label="Layer text" dir={direction} rows={4} value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={commit} onKeyDown={(event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); commit(); event.currentTarget.blur(); }
+    if (event.key === "Escape") { setDraft(value); event.currentTarget.blur(); }
+  }} />;
 }
 
 function insertionEdge(element: HTMLElement, clientY: number): DropEdge {
@@ -76,7 +86,20 @@ export function LayerPanel({ document, selectedLayerIds, disabled, onSelect, onU
   const selectionAnchor = useRef<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; edge: DropEdge } | null>(null);
+  const [localFonts, setLocalFonts] = useState<string[]>([]);
+  const [localFontStatus, setLocalFontStatus] = useState<"idle" | "loading" | "ready" | "denied" | "unsupported">(() => supportsLocalFontAccess() ? "idle" : "unsupported");
+  const [localFontError, setLocalFontError] = useState<string | null>(null);
   const update = (next: EditorLayer, label: string): void => onUpdate(next, label);
+  const loadLocalFonts = async (): Promise<void> => {
+    setLocalFontStatus("loading"); setLocalFontError(null);
+    try {
+      const families = await queryLocalFontFamilies();
+      setLocalFonts(families); setLocalFontStatus("ready");
+    } catch (cause) {
+      setLocalFontStatus(supportsLocalFontAccess() ? "denied" : "unsupported");
+      setLocalFontError(cause instanceof Error ? cause.message : "Local font access was not granted");
+    }
+  };
   const selectRow = (layerId: string, shiftKey = false, toggle = false): void => {
     if (shiftKey && selectionAnchor.current) {
       const anchor = ordered.findIndex((layer) => layer.id === selectionAnchor.current);
@@ -206,21 +229,76 @@ export function LayerPanel({ document, selectedLayerIds, disabled, onSelect, onU
         <label>Rotation<CommitField ariaLabel="Layer rotation" type="number" step={1} value={Math.round(selected.transform.rotation * 100) / 100} onCommit={(value) => updateTransform(selected, "rotation", value, update)} /></label>
       </div>
 
-      {(selected.kind === "text" || selected.kind === "callout") && <>
-        <label>Text<CommitField ariaLabel="Layer text" value={selected.text} onCommit={(text) => update({ ...selected, text }, `Edit ${selected.name} text`)} /></label>
-        <label>Font<select aria-label="Layer font" value={selected.fontFamily} onChange={(event) => update({ ...selected, fontFamily: event.target.value }, `Change ${selected.name} font`)}>{FONT_FAMILIES.map((font) => <option key={font} value={font}>{font}</option>)}</select></label>
+      {selected.kind === "text" && <>
+        <label>Text<CommitTextArea value={selected.text} direction={selected.direction} onCommit={(text) => update({ ...selected, text }, `Edit ${selected.name} text`)} /></label>
+
+        <div className="nc-layer-section-title">Typography</div>
+        <label>Preset<select aria-label="Text preset" defaultValue="" onChange={(event) => {
+          if (!event.target.value) return;
+          update(applyTextPreset(selected, event.target.value as EditorTextPreset["id"]), `Apply ${event.target.value} text preset`);
+          event.currentTarget.value = "";
+        }}><option value="">Custom…</option>{EDITOR_TEXT_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select></label>
+        <label>Font<select aria-label="Layer font" value={selected.fontFamily} onChange={(event) => update({ ...selected, fontFamily: event.target.value }, `Change ${selected.name} font`)}>
+          {!([...SAFE_FONT_FAMILIES, ...localFonts] as string[]).includes(selected.fontFamily) && <option value={selected.fontFamily}>{selected.fontFamily} (project)</option>}
+          <optgroup label="Safe fonts">{SAFE_FONT_FAMILIES.map((font) => <option key={font} value={font}>{font}</option>)}</optgroup>
+          {localFonts.length > 0 && <optgroup label="Local fonts">{localFonts.map((font) => <option key={font} value={font}>{font}</option>)}</optgroup>}
+        </select></label>
+        <div className="nc-layer-font-access">
+          <button onClick={() => void loadLocalFonts()} disabled={disabled || localFontStatus === "loading" || localFontStatus === "unsupported"}>{localFontStatus === "loading" ? "Reading fonts…" : localFontStatus === "ready" ? "Refresh local fonts" : "Load local fonts"}</button>
+          <span>{localFontStatus === "ready" ? `${localFonts.length} families` : localFontStatus === "unsupported" ? "Not supported by this browser" : localFontStatus === "denied" ? "Permission not granted" : "Requires your permission"}</span>
+        </div>
+        {localFontError && <div className="nc-layer-font-warning" role="status">{localFontError}</div>}
+        {!isSafeFontFamily(selected.fontFamily) && !localFonts.includes(selected.fontFamily) && <div className="nc-layer-font-warning" role="status">
+          {localFontStatus === "ready" ? `“${selected.fontFamily}” is unavailable.` : `“${selected.fontFamily}” has not been verified on this device.`} The saved {selected.fontFallback} fallback will be used if needed.
+        </div>}
+        <label>Fallback<select aria-label="Font fallback" value={selected.fontFallback} onChange={(event) => update({ ...selected, fontFallback: event.target.value as typeof selected.fontFallback }, `Change ${selected.name} fallback`)}>
+          <option value="sans-serif">Sans serif</option><option value="serif">Serif</option><option value="monospace">Monospace</option>
+        </select></label>
         <label>Font size<CommitField ariaLabel="Layer font size" type="number" step={1} value={selected.fontSize} onCommit={(value) => {
           const size = Number(value); if (Number.isFinite(size) && size > 0) update({ ...selected, fontSize: size }, `Resize ${selected.name} text`);
         }} /></label>
-      </>}
-
-      {selected.kind === "text" && <>
         <div className="nc-layer-segmented" role="group" aria-label="Text style">
           <button aria-pressed={selected.fontWeight >= 600} className={selected.fontWeight >= 600 ? "active" : ""} onClick={() => update({ ...selected, fontWeight: selected.fontWeight >= 600 ? 400 : 700 }, `Change ${selected.name} weight`)}>B</button>
           <button aria-pressed={selected.fontStyle === "italic"} className={selected.fontStyle === "italic" ? "active" : ""} onClick={() => update({ ...selected, fontStyle: selected.fontStyle === "italic" ? "normal" : "italic" }, `Change ${selected.name} style`)}><i>I</i></button>
           {(["left", "center", "right"] as const).map((align) => <button key={align} aria-pressed={selected.align === align} className={selected.align === align ? "active" : ""} onClick={() => update({ ...selected, align }, `Align ${selected.name}`)}>{align.charAt(0).toUpperCase()}</button>)}
         </div>
+        <div className="nc-layer-property-grid">
+          <label>Direction<select aria-label="Text direction" value={selected.direction} onChange={(event) => update({ ...selected, direction: event.target.value as typeof selected.direction }, `Change ${selected.name} direction`)}><option value="auto">Auto</option><option value="ltr">LTR</option><option value="rtl">RTL</option></select></label>
+          <label>Vertical<select aria-label="Text vertical alignment" value={selected.verticalAlign} onChange={(event) => update({ ...selected, verticalAlign: event.target.value as typeof selected.verticalAlign }, `Change ${selected.name} vertical alignment`)}><option value="top">Top</option><option value="middle">Middle</option><option value="bottom">Bottom</option></select></label>
+          <label>Line height<CommitField ariaLabel="Text line height" type="number" step={0.05} value={selected.lineHeight} onCommit={(value) => updatePositiveTextNumber(selected, "lineHeight", value, update)} /></label>
+          <label>Letter space<CommitField ariaLabel="Text letter spacing" type="number" step={0.25} value={selected.letterSpacing} onCommit={(value) => updateFiniteTextNumber(selected, "letterSpacing", value, update)} /></label>
+          <label>Box width<CommitField ariaLabel="Text box width" type="number" step={1} value={selected.width ?? ""} onCommit={(value) => updateOptionalTextDimension(selected, "width", value, update)} /></label>
+          <label>Box height<CommitField ariaLabel="Text box height" type="number" step={1} value={selected.height ?? ""} onCommit={(value) => updateOptionalTextDimension(selected, "height", value, update)} /></label>
+          <label>Padding<CommitField ariaLabel="Text padding" type="number" step={1} value={selected.padding} onCommit={(value) => updateNonNegativeTextNumber(selected, "padding", value, update)} /></label>
+          <label>Corner radius<CommitField ariaLabel="Text corner radius" type="number" step={1} value={selected.cornerRadius} onCommit={(value) => updateNonNegativeTextNumber(selected, "cornerRadius", value, update)} /></label>
+        </div>
         <label className="nc-layer-color-field">Text color<input aria-label="Text color" type="color" value={safeColor(selected.fill)} onChange={(event) => update({ ...selected, fill: event.target.value }, `Change ${selected.name} color`)} /></label>
+
+        <div className="nc-layer-section-title">Box & effects</div>
+        <label className="nc-layer-check"><input aria-label="Text background enabled" type="checkbox" checked={selected.backgroundColor !== null} onChange={(event) => update({ ...selected, backgroundColor: event.target.checked ? "#000000" : null }, `Change ${selected.name} background`)} /> Background</label>
+        {selected.backgroundColor !== null && <label className="nc-layer-color-field">Background<input aria-label="Text background color" type="color" value={safeColor(selected.backgroundColor)} onChange={(event) => update({ ...selected, backgroundColor: event.target.value }, `Change ${selected.name} background`)} /></label>}
+        <label className="nc-layer-check"><input aria-label="Text border enabled" type="checkbox" checked={selected.borderColor !== null} onChange={(event) => update({ ...selected, borderColor: event.target.checked ? "#ffffff" : null, borderWidth: event.target.checked ? Math.max(1, selected.borderWidth) : selected.borderWidth }, `Change ${selected.name} border`)} /> Border</label>
+        {selected.borderColor !== null && <>
+          <label className="nc-layer-color-field">Border<input aria-label="Text border color" type="color" value={safeColor(selected.borderColor)} onChange={(event) => update({ ...selected, borderColor: event.target.value }, `Change ${selected.name} border`)} /></label>
+          <label>Border width<CommitField ariaLabel="Text border width" type="number" step={1} value={selected.borderWidth} onCommit={(value) => updateNonNegativeTextNumber(selected, "borderWidth", value, update)} /></label>
+        </>}
+        <label className="nc-layer-check"><input aria-label="Text shadow enabled" type="checkbox" checked={selected.shadowColor !== null} onChange={(event) => update({ ...selected, shadowColor: event.target.checked ? "#000000" : null, shadowBlur: event.target.checked ? Math.max(2, selected.shadowBlur) : selected.shadowBlur }, `Change ${selected.name} shadow`)} /> Shadow</label>
+        {selected.shadowColor !== null && <>
+          <label className="nc-layer-color-field">Shadow<input aria-label="Text shadow color" type="color" value={safeColor(selected.shadowColor)} onChange={(event) => update({ ...selected, shadowColor: event.target.value }, `Change ${selected.name} shadow`)} /></label>
+          <div className="nc-layer-property-grid">
+            <label>Blur<CommitField ariaLabel="Text shadow blur" type="number" step={1} value={selected.shadowBlur} onCommit={(value) => updateNonNegativeTextNumber(selected, "shadowBlur", value, update)} /></label>
+            <label>Offset X<CommitField ariaLabel="Text shadow offset X" type="number" step={1} value={selected.shadowOffsetX} onCommit={(value) => updateFiniteTextNumber(selected, "shadowOffsetX", value, update)} /></label>
+            <label>Offset Y<CommitField ariaLabel="Text shadow offset Y" type="number" step={1} value={selected.shadowOffsetY} onCommit={(value) => updateFiniteTextNumber(selected, "shadowOffsetY", value, update)} /></label>
+          </div>
+        </>}
+      </>}
+
+      {selected.kind === "callout" && <>
+        <label>Text<CommitField ariaLabel="Layer text" value={selected.text} onCommit={(text) => update({ ...selected, text }, `Edit ${selected.name} text`)} /></label>
+        <label>Font<select aria-label="Layer font" value={selected.fontFamily} onChange={(event) => update({ ...selected, fontFamily: event.target.value }, `Change ${selected.name} font`)}>{SAFE_FONT_FAMILIES.map((font) => <option key={font} value={font}>{font}</option>)}</select></label>
+        <label>Font size<CommitField ariaLabel="Layer font size" type="number" step={1} value={selected.fontSize} onCommit={(value) => {
+          const size = Number(value); if (Number.isFinite(size) && size > 0) update({ ...selected, fontSize: size }, `Resize ${selected.name} text`);
+        }} /></label>
       </>}
 
       {(selected.kind === "rectangle" || selected.kind === "ellipse") && <>
@@ -250,4 +328,34 @@ function updateTransform(layer: EditorLayer, key: keyof EditorLayer["transform"]
     ? { ...layer.transform, scaleX: value, scaleY: value }
     : { ...layer.transform, [key]: value };
   update({ ...layer, transform }, `Transform ${layer.name}`);
+}
+
+type PositiveTextNumberKey = "lineHeight";
+type NonNegativeTextNumberKey = "padding" | "cornerRadius" | "borderWidth" | "shadowBlur";
+type FiniteTextNumberKey = "letterSpacing" | "shadowOffsetX" | "shadowOffsetY";
+
+function updatePositiveTextNumber(layer: EditorTextLayer, key: PositiveTextNumberKey, rawValue: string, update: (layer: EditorLayer, label: string) => void): void {
+  const value = Number(rawValue);
+  if (Number.isFinite(value) && value > 0) update({ ...layer, [key]: value }, `Change ${layer.name} ${key}`);
+}
+
+function updateNonNegativeTextNumber(layer: EditorTextLayer, key: NonNegativeTextNumberKey, rawValue: string, update: (layer: EditorLayer, label: string) => void): void {
+  const value = Number(rawValue);
+  if (Number.isFinite(value) && value >= 0) update({ ...layer, [key]: value }, `Change ${layer.name} ${key}`);
+}
+
+function updateFiniteTextNumber(layer: EditorTextLayer, key: FiniteTextNumberKey, rawValue: string, update: (layer: EditorLayer, label: string) => void): void {
+  const value = Number(rawValue);
+  if (Number.isFinite(value)) update({ ...layer, [key]: value }, `Change ${layer.name} ${key}`);
+}
+
+function updateOptionalTextDimension(layer: EditorTextLayer, key: "width" | "height", rawValue: string, update: (layer: EditorLayer, label: string) => void): void {
+  if (!rawValue.trim()) {
+    const next = { ...layer };
+    delete next[key];
+    update(next, `Use automatic ${layer.name} ${key}`);
+    return;
+  }
+  const value = Number(rawValue);
+  if (Number.isFinite(value) && value > 0) update({ ...layer, [key]: value }, `Change ${layer.name} ${key}`);
 }

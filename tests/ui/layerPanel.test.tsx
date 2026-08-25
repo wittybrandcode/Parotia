@@ -1,6 +1,6 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createEditorDocument, type EditorDocument, type EditorLayer } from "@ui/src/editor/EditorDocument";
+import { createEditorDocument, DEFAULT_EDITOR_TEXT_STYLE, type EditorDocument, type EditorLayer } from "@ui/src/editor/EditorDocument";
 import { LayerPanel } from "@ui/src/editor/LayerPanel";
 
 const rectangle: EditorLayer = {
@@ -11,7 +11,7 @@ const rectangle: EditorLayer = {
 
 const textLayer: EditorLayer = {
   id: "text-id", name: "Text 2", order: 1, kind: "text", visible: true, locked: false, opacity: 0.8,
-  transform: { x: 30, y: 40, scaleX: 1, scaleY: 1, rotation: 0 }, text: "Editable text",
+  transform: { x: 30, y: 40, scaleX: 1, scaleY: 1, rotation: 0 }, ...DEFAULT_EDITOR_TEXT_STYLE, text: "Editable text",
   fontFamily: "Arial", fontSize: 24, fontWeight: 400, fontStyle: "normal", align: "left", fill: "#ffffff",
 };
 
@@ -83,6 +83,51 @@ describe("LayerPanel", () => {
     expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ fontFamily: "Georgia" }), "Change Text 2 font");
     expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ fontWeight: 700 }), "Change Text 2 weight");
     expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ fill: "#ff0000" }), "Change Text 2 color");
+  });
+
+  it("edits multiline direction, text-box metrics, effects and reusable presets", () => {
+    const onUpdate = vi.fn();
+    render(<LayerPanel document={documentWithLayers()} selectedLayerIds={["text-id"]} disabled={false}
+      onSelect={vi.fn()} onUpdate={onUpdate} onDelete={vi.fn()} onDuplicate={vi.fn()} onMove={vi.fn()} onReorder={vi.fn()}
+      onGroup={vi.fn()} onUngroup={vi.fn()} onAlign={vi.fn()} onDistribute={vi.fn()} onCopy={vi.fn()} onPaste={vi.fn()} onAddImage={vi.fn()} />);
+
+    const text = screen.getByRole("textbox", { name: "Layer text" });
+    fireEvent.change(text, { target: { value: "سطر أول\nسطر ثان" } });
+    fireEvent.keyDown(text, { key: "Enter", ctrlKey: true });
+    fireEvent.change(screen.getByRole("combobox", { name: "Text direction" }), { target: { value: "rtl" } });
+    fireEvent.change(screen.getByLabelText("Text line height"), { target: { value: "1.6" } });
+    fireEvent.blur(screen.getByLabelText("Text line height"));
+    fireEvent.change(screen.getByLabelText("Text box width"), { target: { value: "280" } });
+    fireEvent.blur(screen.getByLabelText("Text box width"));
+    fireEvent.click(screen.getByLabelText("Text background enabled"));
+    fireEvent.change(screen.getByRole("combobox", { name: "Text preset" }), { target: { value: "quote" } });
+
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ text: "سطر أول\nسطر ثان" }), "Edit Text 2 text");
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ direction: "rtl" }), "Change Text 2 direction");
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ lineHeight: 1.6 }), "Change Text 2 lineHeight");
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ width: 280 }), "Change Text 2 width");
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ backgroundColor: "#000000" }), "Change Text 2 background");
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ fontFamily: "Georgia", fontStyle: "italic" }), "Apply quote text preset");
+  });
+
+  it("loads local font family names only after the user requests browser permission", async () => {
+    const queryLocalFonts = vi.fn().mockResolvedValue([{ family: "Noto Sans Arabic" }, { family: "Inter" }, { family: "Inter" }]);
+    Object.defineProperty(window, "queryLocalFonts", { configurable: true, value: queryLocalFonts });
+    const onUpdate = vi.fn();
+    try {
+      render(<LayerPanel document={documentWithLayers()} selectedLayerIds={["text-id"]} disabled={false}
+        onSelect={vi.fn()} onUpdate={onUpdate} onDelete={vi.fn()} onDuplicate={vi.fn()} onMove={vi.fn()} onReorder={vi.fn()}
+        onGroup={vi.fn()} onUngroup={vi.fn()} onAlign={vi.fn()} onDistribute={vi.fn()} onCopy={vi.fn()} onPaste={vi.fn()} onAddImage={vi.fn()} />);
+
+      expect(queryLocalFonts).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("button", { name: "Load local fonts" }));
+      await waitFor(() => expect(screen.getByText("2 families")).toBeInTheDocument());
+      expect(queryLocalFonts).toHaveBeenCalledOnce();
+      fireEvent.change(screen.getByRole("combobox", { name: "Layer font" }), { target: { value: "Noto Sans Arabic" } });
+      expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ fontFamily: "Noto Sans Arabic" }), "Change Text 2 font");
+    } finally {
+      delete (window as Window & { queryLocalFonts?: unknown }).queryLocalFonts;
+    }
   });
 
   it("reorders layers once on drop and presents the insertion edge", () => {

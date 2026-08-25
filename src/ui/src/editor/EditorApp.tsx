@@ -372,7 +372,9 @@ export function EditorApp() {
       if (clipboardText.length > LAYER_CLIPBOARD_MAX_CHARS) throw new Error("Layer clipboard payload is too large");
       const value = JSON.parse(clipboardText) as { schema?: unknown; version?: unknown; layers?: unknown };
       if (value.schema === "parotia.editor-layers" && value.version === 1 && Array.isArray(value.layers)) {
-        source = parseEditorDocument({ ...history.document, layers: value.layers }).layers;
+        // Clipboard payloads have their own v1 schema and may contain text layers
+        // copied by an older editor. Route them through the v2 -> current migration.
+        source = parseEditorDocument({ ...history.document, version: 2, layers: value.layers }).layers;
       }
     } catch {
       // Fall back to the editor's internal clipboard.
