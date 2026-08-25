@@ -48,11 +48,21 @@ function scaled(value: number, factor: number): number {
 }
 
 /**
- * Converts a visual Transformer scale into real typographic geometry. Text
- * layers therefore return to a 1:1 transform after every resize and can never
- * retain independent horizontal/vertical glyph scaling.
+ * Converts a visual Transformer scale into persisted geometry. Point Text
+ * scales real typographic metrics uniformly; Paragraph Text changes only its
+ * container dimensions for reflow. Both return to a 1:1 layer transform.
  */
 export function bakeTextTransform(layer: EditorTextLayer, transform: EditorTransform): EditorTextLayer {
+  if (layer.textMode === "paragraph") {
+    const widthFactor = Math.max(Math.abs(transform.scaleX), Number.EPSILON);
+    const heightFactor = Math.max(Math.abs(transform.scaleY), Number.EPSILON);
+    return {
+      ...layer,
+      width: scaled(layer.width!, widthFactor),
+      height: scaled(layer.height!, heightFactor),
+      transform: { x: transform.x, y: transform.y, scaleX: 1, scaleY: 1, rotation: transform.rotation },
+    };
+  }
   const factor = Math.max(Math.abs(transform.scaleX), Math.abs(transform.scaleY), Number.EPSILON);
   return {
     ...layer,
@@ -64,10 +74,6 @@ export function bakeTextTransform(layer: EditorTextLayer, transform: EditorTrans
     shadowBlur: scaled(layer.shadowBlur, factor),
     shadowOffsetX: layer.shadowOffsetX * factor,
     shadowOffsetY: layer.shadowOffsetY * factor,
-    ...(layer.textMode === "paragraph" ? {
-      width: scaled(layer.width!, factor),
-      height: scaled(layer.height!, factor),
-    } : {}),
     transform: { x: transform.x, y: transform.y, scaleX: 1, scaleY: 1, rotation: transform.rotation },
   };
 }
