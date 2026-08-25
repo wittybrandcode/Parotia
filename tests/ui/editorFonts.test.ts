@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { isSafeFontFamily, queryLocalFontFamilies, supportsLocalFontAccess } from "@ui/src/editor/EditorFonts";
+import { isSafeFontFamily, localFontAccessAvailability, queryLocalFontFamilies, supportsLocalFontAccess } from "@ui/src/editor/EditorFonts";
 
 describe("EditorFonts", () => {
   it("detects Local Font Access and returns normalized unique families", async () => {
@@ -18,6 +18,19 @@ describe("EditorFonts", () => {
     await expect(queryLocalFontFamilies(unsupported)).rejects.toThrow(/not supported/i);
     const denied = { queryLocalFonts: vi.fn().mockRejectedValue(new DOMException("Permission denied", "NotAllowedError")) } as unknown as Window;
     await expect(queryLocalFontFamilies(denied)).rejects.toMatchObject({ name: "NotAllowedError" });
+  });
+
+  it("does not invoke the browser API when Permissions Policy blocks local fonts", async () => {
+    const queryLocalFonts = vi.fn();
+    const blocked = {
+      queryLocalFonts,
+      document: { permissionsPolicy: { allowsFeature: vi.fn().mockReturnValue(false) } },
+    } as unknown as Window;
+
+    expect(localFontAccessAvailability(blocked)).toBe("policy-blocked");
+    expect(supportsLocalFontAccess(blocked)).toBe(false);
+    await expect(queryLocalFontFamilies(blocked)).rejects.toMatchObject({ name: "NotAllowedError" });
+    expect(queryLocalFonts).not.toHaveBeenCalled();
   });
 
   it("distinguishes deterministic safe families from fonts that require local verification", () => {

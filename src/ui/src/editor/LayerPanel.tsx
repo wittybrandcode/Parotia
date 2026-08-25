@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import type { EditorArrowLayer, EditorDocument, EditorLayer, EditorTextLayer } from "./EditorDocument";
 import type { LayerAlignment, LayerDistribution } from "./EditorLayerOperations";
-import { isSafeFontFamily, queryLocalFontFamilies, SAFE_FONT_FAMILIES, supportsLocalFontAccess } from "./EditorFonts";
+import { isSafeFontFamily, localFontAccessAvailability, queryLocalFontFamilies, SAFE_FONT_FAMILIES } from "./EditorFonts";
 import { applyTextPreset, EDITOR_TEXT_PRESETS, type EditorTextPreset } from "./EditorTextPresets";
 import { applyShapePreset, EDITOR_SHAPE_PRESETS, isShapeLayer, isStylableLayer, reverseArrow, type EditorShapePreset } from "./EditorShapeStyles";
 
@@ -92,7 +92,10 @@ export function LayerPanel({ document, selectedLayerIds, disabled, onSelect, onU
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; edge: DropEdge } | null>(null);
   const [localFonts, setLocalFonts] = useState<string[]>([]);
-  const [localFontStatus, setLocalFontStatus] = useState<"idle" | "loading" | "ready" | "denied" | "unsupported">(() => supportsLocalFontAccess() ? "idle" : "unsupported");
+  const [localFontStatus, setLocalFontStatus] = useState<"idle" | "loading" | "ready" | "denied" | "blocked" | "unsupported">(() => {
+    const availability = localFontAccessAvailability();
+    return availability === "available" ? "idle" : availability === "policy-blocked" ? "blocked" : "unsupported";
+  });
   const [localFontError, setLocalFontError] = useState<string | null>(null);
   const update = (next: EditorLayer, label: string): void => onUpdate(next, label);
   const loadLocalFonts = async (): Promise<void> => {
@@ -101,7 +104,8 @@ export function LayerPanel({ document, selectedLayerIds, disabled, onSelect, onU
       const families = await queryLocalFontFamilies();
       setLocalFonts(families); setLocalFontStatus("ready");
     } catch (cause) {
-      setLocalFontStatus(supportsLocalFontAccess() ? "denied" : "unsupported");
+      const availability = localFontAccessAvailability();
+      setLocalFontStatus(availability === "policy-blocked" ? "blocked" : availability === "unsupported" ? "unsupported" : "denied");
       setLocalFontError(cause instanceof Error ? cause.message : "Local font access was not granted");
     }
   };
@@ -251,8 +255,8 @@ export function LayerPanel({ document, selectedLayerIds, disabled, onSelect, onU
           {localFonts.length > 0 && <optgroup label="Local fonts">{localFonts.map((font) => <option key={font} value={font}>{font}</option>)}</optgroup>}
         </select></label>
         <div className="nc-layer-font-access">
-          <button onClick={() => void loadLocalFonts()} disabled={disabled || localFontStatus === "loading" || localFontStatus === "unsupported"}>{localFontStatus === "loading" ? "Reading fonts…" : localFontStatus === "ready" ? "Refresh local fonts" : "Load local fonts"}</button>
-          <span>{localFontStatus === "ready" ? `${localFonts.length} families` : localFontStatus === "unsupported" ? "Not supported by this browser" : localFontStatus === "denied" ? "Permission not granted" : "Requires your permission"}</span>
+          <button onClick={() => void loadLocalFonts()} disabled={disabled || localFontStatus === "loading" || localFontStatus === "unsupported" || localFontStatus === "blocked"}>{localFontStatus === "loading" ? "Reading fonts…" : localFontStatus === "ready" ? "Refresh local fonts" : "Load local fonts"}</button>
+          <span>{localFontStatus === "ready" ? `${localFonts.length} families` : localFontStatus === "unsupported" ? "Not supported by this browser" : localFontStatus === "blocked" ? "Blocked by this page" : localFontStatus === "denied" ? "Permission not granted" : "Requires your permission"}</span>
         </div>
         {localFontError && <div className="nc-layer-font-warning" role="status">{localFontError}</div>}
         {!isSafeFontFamily(selected.fontFamily) && !localFonts.includes(selected.fontFamily) && <div className="nc-layer-font-warning" role="status">

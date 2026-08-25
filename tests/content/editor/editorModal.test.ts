@@ -17,6 +17,7 @@ describe("editor modal", () => {
     const container = shadow.querySelector<HTMLElement>("[data-parotia-editor]");
     const frame = shadow.querySelector<HTMLIFrameElement>("[data-parotia-editor-frame]");
     expect(container?.style.display).toBe("flex");
+    expect(frame?.getAttribute("allow")).toBe("local-fonts");
     expect(frame?.src).toContain("#");
     expect(frame?.src).toContain("editor-image%3Akey");
 
