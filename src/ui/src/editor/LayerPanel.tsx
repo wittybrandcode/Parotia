@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  ArrowDown, ArrowRight, ArrowUp, Circle, Copy, Eye, EyeOff, ImagePlus, Layers3, Lock, MessageSquare,
+  ArrowDown, ArrowRight, ArrowUp, Circle, Copy, Eye, EyeOff, GripVertical, ImagePlus, Layers3, Lock, MessageSquare,
   Minus, Square, Trash2, Type, Unlock,
 } from "lucide-react";
 import type { EditorDocument, EditorLayer } from "./EditorDocument";
@@ -14,13 +14,21 @@ interface LayerPanelProps {
   onDelete(layerId: string): void;
   onDuplicate(layerId: string): void;
   onMove(layerId: string, direction: -1 | 1): void;
+  onReorder(layerIds: string[]): void;
   onAddImage(): void;
 }
+
+type DropEdge = "before" | "after";
 
 const FONT_FAMILIES = ["sans-serif", "Arial", "Georgia", "Times New Roman", "Courier New", "Tahoma", "Trebuchet MS"];
 
 function safeColor(value: string | null, fallback = "#000000"): string {
   return value && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
+}
+
+function insertionEdge(element: HTMLElement, clientY: number): DropEdge {
+  const rect = element.getBoundingClientRect();
+  return clientY < rect.top + rect.height / 2 ? "before" : "after";
 }
 
 function layerIcon(kind: EditorLayer["kind"]) {
@@ -53,10 +61,27 @@ function CommitField({ value, type = "text", step, onCommit, ariaLabel }: {
   }} />;
 }
 
-export function LayerPanel({ document, selectedLayerId, disabled, onSelect, onUpdate, onDelete, onDuplicate, onMove, onAddImage }: LayerPanelProps) {
+export function LayerPanel({ document, selectedLayerId, disabled, onSelect, onUpdate, onDelete, onDuplicate, onMove, onReorder, onAddImage }: LayerPanelProps) {
   const ordered = [...document.layers].sort((a, b) => b.order - a.order);
   const selected = document.layers.find((layer) => layer.id === selectedLayerId) ?? null;
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ id: string; edge: DropEdge } | null>(null);
   const update = (next: EditorLayer, label: string): void => onUpdate(next, label);
+
+  const finishDrag = (): void => {
+    setDraggingId(null);
+    setDropTarget(null);
+  };
+
+  const dropLayer = (sourceId: string, targetId: string, edge: DropEdge): void => {
+    if (!sourceId || sourceId === targetId) { finishDrag(); return; }
+    const displayed = ordered.map((layer) => layer.id).filter((id) => id !== sourceId);
+    const targetIndex = displayed.indexOf(targetId);
+    if (targetIndex < 0) { finishDrag(); return; }
+    displayed.splice(targetIndex + (edge === "after" ? 1 : 0), 0, sourceId);
+    onReorder([...displayed].reverse());
+    finishDrag();
+  };
 
   return <aside className="nc-layer-panel" aria-label="Layers panel">
     <div className="nc-layer-panel-header">
@@ -68,13 +93,44 @@ export function LayerPanel({ document, selectedLayerId, disabled, onSelect, onUp
       {ordered.length === 0 && <div className="nc-layer-empty">Draw a shape, add text, or import an image to create the first editable layer.</div>}
       {ordered.map((layer) => <div
         key={layer.id}
-        className={`nc-layer-row ${layer.id === selectedLayerId ? "nc-layer-row-selected" : ""} ${!layer.visible ? "nc-layer-row-hidden" : ""}`}
+        className={`nc-layer-row ${layer.id === selectedLayerId ? "nc-layer-row-selected" : ""} ${!layer.visible ? "nc-layer-row-hidden" : ""} ${draggingId === layer.id ? "nc-layer-row-dragging" : ""} ${dropTarget?.id === layer.id ? `nc-layer-drop-${dropTarget.edge}` : ""}`}
         role="option"
         aria-selected={layer.id === selectedLayerId}
+        aria-grabbed={draggingId === layer.id}
+        aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
         tabIndex={0}
+        draggable={!disabled}
         onClick={() => onSelect(layer.id)}
-        onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onSelect(layer.id); }}
+        onKeyDown={(event) => {
+          if (event.altKey && event.key === "ArrowUp") { event.preventDefault(); onMove(layer.id, 1); }
+          else if (event.altKey && event.key === "ArrowDown") { event.preventDefault(); onMove(layer.id, -1); }
+          else if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(layer.id); }
+        }}
+        onDragStart={(event) => {
+          if (disabled || (event.target as HTMLElement).closest("button")) { event.preventDefault(); return; }
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", layer.id);
+          setDraggingId(layer.id);
+          setDropTarget(null);
+          onSelect(layer.id);
+        }}
+        onDragOver={(event) => {
+          const sourceId = draggingId || event.dataTransfer.getData("text/plain");
+          if (!sourceId || sourceId === layer.id) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+          const edge = insertionEdge(event.currentTarget, event.clientY);
+          setDropTarget({ id: layer.id, edge });
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          const sourceId = draggingId || event.dataTransfer.getData("text/plain");
+          const edge = insertionEdge(event.currentTarget, event.clientY);
+          dropLayer(sourceId, layer.id, edge);
+        }}
+        onDragEnd={finishDrag}
       >
+        <span className="nc-layer-grip" title="Drag to reorder"><GripVertical size={13} /></span>
         <span className="nc-layer-kind">{layerIcon(layer.kind)}</span>
         <span className="nc-layer-name" title={layer.name}>{layer.name}</span>
         <button onClick={(event) => { event.stopPropagation(); update({ ...layer, visible: !layer.visible }, `${layer.visible ? "Hide" : "Show"} ${layer.name}`); }} disabled={disabled} title={layer.visible ? "Hide layer" : "Show layer"} aria-label={`${layer.visible ? "Hide" : "Show"} ${layer.name}`}>{layer.visible ? <Eye size={13} /> : <EyeOff size={13} />}</button>

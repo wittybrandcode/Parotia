@@ -368,16 +368,41 @@ html, body, #root {
 
 .nc-layer-row {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) 24px 24px;
+  grid-template-columns: 16px 22px minmax(0, 1fr) 24px 24px;
   align-items: center;
+  position: relative;
   min-height: 34px;
   margin-bottom: 2px;
   padding: 2px 4px;
   border: 1px solid transparent;
   border-radius: 5px;
-  cursor: pointer;
+  cursor: grab;
   outline: none;
 }
+
+.nc-layer-row:active {
+  cursor: grabbing;
+}
+
+.nc-layer-row-dragging {
+  opacity: 0.35;
+}
+
+.nc-layer-drop-before::before,
+.nc-layer-drop-after::after {
+  position: absolute;
+  right: 3px;
+  left: 3px;
+  height: 2px;
+  border-radius: 999px;
+  background: #c1e899;
+  box-shadow: 0 0 5px rgba(193, 232, 153, 0.65);
+  content: "";
+  pointer-events: none;
+}
+
+.nc-layer-drop-before::before { top: -2px; }
+.nc-layer-drop-after::after { bottom: -2px; }
 
 .nc-layer-row:hover,
 .nc-layer-row:focus-visible {
@@ -397,6 +422,16 @@ html, body, #root {
 .nc-layer-kind {
   display: flex;
   color: #91aa7e;
+}
+
+.nc-layer-grip {
+  display: flex;
+  color: #555;
+}
+
+.nc-layer-row:hover .nc-layer-grip,
+.nc-layer-row:focus-visible .nc-layer-grip {
+  color: #999;
 }
 
 .nc-layer-name {

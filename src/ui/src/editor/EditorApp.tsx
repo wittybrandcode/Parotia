@@ -267,6 +267,23 @@ export function EditorApp() {
     syncLayers(nextDocument, layerId);
   }, [operating, refreshHistory, setSelection, syncLayers]);
 
+  const handleReorderLayers = useCallback((after: string[]): void => {
+    const history = historyRef.current;
+    if (!history || operating) return;
+    const before = history.document.layers.map((layer) => layer.id);
+    if (before.length !== after.length || before.every((id, index) => id === after[index])) return;
+    try {
+      const nextDocument = history.execute(reorderLayersCommand(before, after));
+      const selection = selectedLayerIdRef.current;
+      setDocumentState(nextDocument);
+      setSaved(false);
+      refreshHistory();
+      syncLayers(nextDocument, selection);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Failed to reorder the layers");
+    }
+  }, [operating, refreshHistory, syncLayers]);
+
   const handleImageFile = useCallback(async (file: File | undefined): Promise<void> => {
     if (!file) return;
     await runExclusive(async () => {
@@ -533,7 +550,7 @@ export function EditorApp() {
       </div>
       {loaded && documentState && <LayerPanel document={documentState} selectedLayerId={selectedLayerId} disabled={operating}
         onSelect={handleSelectLayer} onUpdate={handleUpdateLayer} onDelete={handleDeleteLayer}
-        onDuplicate={handleDuplicateLayer} onMove={handleMoveLayer} onAddImage={() => imageInputRef.current?.click()} />}
+        onDuplicate={handleDuplicateLayer} onMove={handleMoveLayer} onReorder={handleReorderLayers} onAddImage={() => imageInputRef.current?.click()} />}
     </div>
     <input ref={imageInputRef} className="nc-editor-file-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => {
       const file = event.target.files?.[0];

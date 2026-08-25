@@ -195,6 +195,16 @@ test("4.5 staged capture opens in the real editor, draws, and consumes its save 
     await expect(layerText).toHaveValue("نص عربي قابل للتحرير");
     await page.getByRole("combobox", { name: "Layer font" }).selectOption("Georgia");
 
+    const layerList = page.getByRole("listbox", { name: "Document layers" });
+    const rectangleLayer = layerList.getByRole("option", { name: /Rectangle 1/ });
+    const textLayer = layerList.getByRole("option", { name: /^Text \d+/ });
+    await rectangleLayer.dragTo(textLayer, { targetPosition: { x: 30, y: 1 } });
+    await expect(layerList.getByRole("option").first()).toContainText("Rectangle 1");
+    await page.getByRole("button", { name: "Undo" }).click();
+    await expect(layerList.getByRole("option").first()).toContainText(/^Text \d+/);
+    await page.getByRole("button", { name: "Redo" }).click();
+    await expect(layerList.getByRole("option").first()).toContainText("Rectangle 1");
+
     await page.getByRole("button", { name: /save/i }).click();
     await expect(page.getByRole("button", { name: /saved/i })).toBeDisabled();
     const leftovers = await page.evaluate(async (key) => chrome.storage.local.get(key), ticketKey);
