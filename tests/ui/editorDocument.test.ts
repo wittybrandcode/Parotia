@@ -36,7 +36,7 @@ describe("EditorDocument", () => {
     const restored = parseEditorDocument(serializeEditorDocument(document));
     expect(restored).toEqual(document);
     expect(restored.schema).toBe("parotia.editor-document");
-    expect(restored.version).toBe(4);
+    expect(restored.version).toBe(5);
     expect(restored.layers.map((layer) => layer.kind)).toEqual(["image", "text", "rectangle", "ellipse", "line", "arrow", "callout", "step"]);
   });
 
@@ -55,7 +55,7 @@ describe("EditorDocument", () => {
       backgroundDataUrl: "data:image/png;base64,legacy", createdAt: "2026-01-01", updatedAt: "2026-01-02", layers: [],
     });
     expect(migrated).toMatchObject({
-      version: 4, id: "legacy", canvas: { width: 320, height: 200 },
+      version: 5, id: "legacy", canvas: { width: 320, height: 200 },
       background: { source: "data:image/png;base64,legacy", width: 320, height: 200 },
     });
   });
@@ -67,7 +67,7 @@ describe("EditorDocument", () => {
       ...createLayerBase("group", 0), kind: "group", name: "Two shapes", children: migrated.layers.slice(0, 2).map((layer, order) => ({ ...layer, order })),
     };
     const restored = parseEditorDocument({ ...migrated, layers: [grouped] });
-    expect(restored.version).toBe(4);
+    expect(restored.version).toBe(5);
     expect(restored.layers[0]).toMatchObject({ kind: "group", name: "Two shapes" });
     expect(restored.layers[0]?.kind === "group" && restored.layers[0].children.map((layer) => layer.id)).toEqual(["image", "text"]);
   });
@@ -81,9 +81,9 @@ describe("EditorDocument", () => {
       shadowBlur: undefined, shadowOffsetX: undefined, shadowOffsetY: undefined,
     };
     const migrated = parseEditorDocument({ ...current, version: 2, layers: [legacyText] });
-    expect(migrated.version).toBe(4);
+    expect(migrated.version).toBe(5);
     expect(migrated.layers[0]).toMatchObject({
-      kind: "text", fontFallback: "sans-serif", direction: "auto", verticalAlign: "top",
+      kind: "text", textMode: "point", fontFallback: "sans-serif", direction: "auto", verticalAlign: "top",
       lineHeight: 1.2, letterSpacing: 0, padding: 0, backgroundColor: null,
       borderColor: null, borderWidth: 0, shadowColor: null, shadowBlur: 0,
     });
@@ -100,12 +100,26 @@ describe("EditorDocument", () => {
       return legacy;
     });
     const migrated = parseEditorDocument({ ...current, version: 3, layers: legacyLayers });
-    expect(migrated.version).toBe(4);
+    expect(migrated.version).toBe(5);
     expect(migrated.layers).toEqual([
       expect.objectContaining({ kind: "rectangle", strokeStyle: "solid" }),
       expect.objectContaining({ kind: "arrow", strokeStyle: "solid", pointerAtBeginning: false, pointerAtEnding: true }),
       expect.objectContaining({ kind: "callout", strokeStyle: "solid", cornerRadius: 6 }),
     ]);
+  });
+
+  it("migrates version-four boxed text to paragraph text and removes legacy distortion", () => {
+    const current = documentWithLayers();
+    const legacyText = {
+      ...current.layers[1], textMode: undefined, width: 320, height: undefined,
+      transform: { x: 20, y: 30, scaleX: 0.75, scaleY: 1.5, rotation: 10 },
+    };
+    const migrated = parseEditorDocument({ ...current, version: 4, layers: [legacyText] });
+    expect(migrated.layers[0]).toMatchObject({
+      kind: "text", textMode: "paragraph", width: 320,
+      transform: { scaleX: 1.5, scaleY: 1.5 },
+    });
+    expect(migrated.layers[0]?.kind === "text" && migrated.layers[0].height).toBeGreaterThan(0);
   });
 
   it("rejects duplicate identifiers nested inside groups", () => {

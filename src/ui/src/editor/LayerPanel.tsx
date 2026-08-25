@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  ArrowDown, ArrowRight, ArrowUp, Circle, ClipboardPaste, Copy, Eye, EyeOff, GripVertical, Hash, ImagePlus, Layers3, Lock, MessageSquare,
+  AlignCenter, AlignJustify, AlignLeft, AlignRight, ArrowDown, ArrowRight, ArrowUp, Circle, ClipboardPaste, Copy, Eye, EyeOff, GripVertical, Hash, ImagePlus, Layers3, Lock, MessageSquare,
   Minus, Paintbrush, RotateCcw, Square, Trash2, Type, Unlock,
 } from "lucide-react";
 import type { EditorArrowLayer, EditorDocument, EditorLayer, EditorTextLayer } from "./EditorDocument";
 import type { LayerAlignment, LayerDistribution } from "./EditorLayerOperations";
 import { isSafeFontFamily, localFontAccessAvailability, queryLocalFontFamilies, SAFE_FONT_FAMILIES } from "./EditorFonts";
+import { convertTextMode } from "./EditorTypography";
 import { applyTextPreset, EDITOR_TEXT_PRESETS, type EditorTextPreset } from "./EditorTextPresets";
 import { applyShapePreset, EDITOR_SHAPE_PRESETS, isShapeLayer, isStylableLayer, reverseArrow, type EditorShapePreset } from "./EditorShapeStyles";
 
@@ -235,8 +236,10 @@ export function LayerPanel({ document, selectedLayerIds, disabled, onSelect, onU
       <div className="nc-layer-property-grid">
         <label>X<CommitField ariaLabel="Layer X" type="number" step={1} value={Math.round(selected.transform.x * 100) / 100} onCommit={(value) => updateTransform(selected, "x", value, update)} /></label>
         <label>Y<CommitField ariaLabel="Layer Y" type="number" step={1} value={Math.round(selected.transform.y * 100) / 100} onCommit={(value) => updateTransform(selected, "y", value, update)} /></label>
-        <label>Scale X<CommitField ariaLabel="Layer scale X" type="number" step={0.05} value={Math.round(selected.transform.scaleX * 100) / 100} onCommit={(value) => updateTransform(selected, "scaleX", value, update)} /></label>
-        <label>Scale Y<CommitField ariaLabel="Layer scale Y" type="number" step={0.05} value={Math.round(selected.transform.scaleY * 100) / 100} onCommit={(value) => updateTransform(selected, "scaleY", value, update)} /></label>
+        {selected.kind !== "text" && <>
+          <label>{selected.kind === "group" ? "Scale" : "Scale X"}<CommitField ariaLabel="Layer scale X" type="number" step={0.05} value={Math.round(selected.transform.scaleX * 100) / 100} onCommit={(value) => updateTransform(selected, "scaleX", value, update)} /></label>
+          {selected.kind !== "group" && <label>Scale Y<CommitField ariaLabel="Layer scale Y" type="number" step={0.05} value={Math.round(selected.transform.scaleY * 100) / 100} onCommit={(value) => updateTransform(selected, "scaleY", value, update)} /></label>}
+        </>}
         <label>Rotation<CommitField ariaLabel="Layer rotation" type="number" step={1} value={Math.round(selected.transform.rotation * 100) / 100} onCommit={(value) => updateTransform(selected, "rotation", value, update)} /></label>
       </div>
 
@@ -244,6 +247,9 @@ export function LayerPanel({ document, selectedLayerIds, disabled, onSelect, onU
         <label>Text<CommitTextArea value={selected.text} direction={selected.direction} onCommit={(text) => update({ ...selected, text }, `Edit ${selected.name} text`)} /></label>
 
         <div className="nc-layer-section-title">Typography</div>
+        <label>Text type<select aria-label="Text type" value={selected.textMode} onChange={(event) => update(convertTextMode(selected, event.target.value as EditorTextLayer["textMode"]), `Convert ${selected.name} to ${event.target.value} text`)}>
+          <option value="point">Point text</option><option value="paragraph">Paragraph text</option>
+        </select></label>
         <label>Preset<select aria-label="Text preset" defaultValue="" onChange={(event) => {
           if (!event.target.value) return;
           update(applyTextPreset(selected, event.target.value as EditorTextPreset["id"]), `Apply ${event.target.value} text preset`);
@@ -271,15 +277,25 @@ export function LayerPanel({ document, selectedLayerIds, disabled, onSelect, onU
         <div className="nc-layer-segmented" role="group" aria-label="Text style">
           <button aria-pressed={selected.fontWeight >= 600} className={selected.fontWeight >= 600 ? "active" : ""} onClick={() => update({ ...selected, fontWeight: selected.fontWeight >= 600 ? 400 : 700 }, `Change ${selected.name} weight`)}>B</button>
           <button aria-pressed={selected.fontStyle === "italic"} className={selected.fontStyle === "italic" ? "active" : ""} onClick={() => update({ ...selected, fontStyle: selected.fontStyle === "italic" ? "normal" : "italic" }, `Change ${selected.name} style`)}><i>I</i></button>
-          {(["left", "center", "right"] as const).map((align) => <button key={align} aria-pressed={selected.align === align} className={selected.align === align ? "active" : ""} onClick={() => update({ ...selected, align }, `Align ${selected.name}`)}>{align.charAt(0).toUpperCase()}</button>)}
+        </div>
+        <div className="nc-layer-section-title">Paragraph</div>
+        <div className="nc-layer-segmented" role="group" aria-label="Text horizontal alignment">
+          {([
+            ["left", "Align text left", <AlignLeft key="left-icon" size={14} />],
+            ["center", "Align text center", <AlignCenter key="center-icon" size={14} />],
+            ["right", "Align text right", <AlignRight key="right-icon" size={14} />],
+            ...(selected.textMode === "paragraph" ? [["justify", "Justify text", <AlignJustify key="justify-icon" size={14} />] as const] : []),
+          ] as const).map(([align, label, icon]) => <button key={align} aria-label={label} title={label} aria-pressed={selected.align === align} className={selected.align === align ? "active" : ""} onClick={() => update({ ...selected, align: align as EditorTextLayer["align"] }, `Align ${selected.name}`)}>{icon}</button>)}
         </div>
         <div className="nc-layer-property-grid">
           <label>Direction<select aria-label="Text direction" value={selected.direction} onChange={(event) => update({ ...selected, direction: event.target.value as typeof selected.direction }, `Change ${selected.name} direction`)}><option value="auto">Auto</option><option value="ltr">LTR</option><option value="rtl">RTL</option></select></label>
-          <label>Vertical<select aria-label="Text vertical alignment" value={selected.verticalAlign} onChange={(event) => update({ ...selected, verticalAlign: event.target.value as typeof selected.verticalAlign }, `Change ${selected.name} vertical alignment`)}><option value="top">Top</option><option value="middle">Middle</option><option value="bottom">Bottom</option></select></label>
+          {selected.textMode === "paragraph" && <label>Vertical<select aria-label="Text vertical alignment" value={selected.verticalAlign} onChange={(event) => update({ ...selected, verticalAlign: event.target.value as typeof selected.verticalAlign }, `Change ${selected.name} vertical alignment`)}><option value="top">Top</option><option value="middle">Middle</option><option value="bottom">Bottom</option></select></label>}
           <label>Line height<CommitField ariaLabel="Text line height" type="number" step={0.05} value={selected.lineHeight} onCommit={(value) => updatePositiveTextNumber(selected, "lineHeight", value, update)} /></label>
           <label>Letter space<CommitField ariaLabel="Text letter spacing" type="number" step={0.25} value={selected.letterSpacing} onCommit={(value) => updateFiniteTextNumber(selected, "letterSpacing", value, update)} /></label>
-          <label>Box width<CommitField ariaLabel="Text box width" type="number" step={1} value={selected.width ?? ""} onCommit={(value) => updateOptionalTextDimension(selected, "width", value, update)} /></label>
-          <label>Box height<CommitField ariaLabel="Text box height" type="number" step={1} value={selected.height ?? ""} onCommit={(value) => updateOptionalTextDimension(selected, "height", value, update)} /></label>
+          {selected.textMode === "paragraph" && <>
+            <label>Box width<CommitField ariaLabel="Text box width" type="number" step={1} value={selected.width!} onCommit={(value) => updateParagraphDimension(selected, "width", value, update)} /></label>
+            <label>Box height<CommitField ariaLabel="Text box height" type="number" step={1} value={selected.height!} onCommit={(value) => updateParagraphDimension(selected, "height", value, update)} /></label>
+          </>}
           <label>Padding<CommitField ariaLabel="Text padding" type="number" step={1} value={selected.padding} onCommit={(value) => updateNonNegativeTextNumber(selected, "padding", value, update)} /></label>
           <label>Corner radius<CommitField ariaLabel="Text corner radius" type="number" step={1} value={selected.cornerRadius} onCommit={(value) => updateNonNegativeTextNumber(selected, "cornerRadius", value, update)} /></label>
         </div>
@@ -381,7 +397,7 @@ export function LayerPanel({ document, selectedLayerIds, disabled, onSelect, onU
 function updateTransform(layer: EditorLayer, key: keyof EditorLayer["transform"], rawValue: string, update: (layer: EditorLayer, label: string) => void): void {
   const value = Number(rawValue);
   if (!Number.isFinite(value) || ((key === "scaleX" || key === "scaleY") && value === 0)) return;
-  const transform = layer.kind === "group" && (key === "scaleX" || key === "scaleY")
+  const transform = (layer.kind === "group" || layer.kind === "text") && (key === "scaleX" || key === "scaleY")
     ? { ...layer.transform, scaleX: value, scaleY: value }
     : { ...layer.transform, [key]: value };
   update({ ...layer, transform }, `Transform ${layer.name}`);
@@ -406,13 +422,8 @@ function updateFiniteTextNumber(layer: EditorTextLayer, key: FiniteTextNumberKey
   if (Number.isFinite(value)) update({ ...layer, [key]: value }, `Change ${layer.name} ${key}`);
 }
 
-function updateOptionalTextDimension(layer: EditorTextLayer, key: "width" | "height", rawValue: string, update: (layer: EditorLayer, label: string) => void): void {
-  if (!rawValue.trim()) {
-    const next = { ...layer };
-    delete next[key];
-    update(next, `Use automatic ${layer.name} ${key}`);
-    return;
-  }
+function updateParagraphDimension(layer: EditorTextLayer, key: "width" | "height", rawValue: string, update: (layer: EditorLayer, label: string) => void): void {
+  if (layer.textMode !== "paragraph") return;
   const value = Number(rawValue);
   if (Number.isFinite(value) && value > 0) update({ ...layer, [key]: value }, `Change ${layer.name} ${key}`);
 }

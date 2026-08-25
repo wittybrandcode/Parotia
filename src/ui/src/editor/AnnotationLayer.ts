@@ -6,10 +6,10 @@
 import Konva from "konva";
 import { createLayerBase, DEFAULT_EDITOR_TEXT_STYLE, type EditorLayer } from "./EditorDocument";
 import { snapLayerSelection, type SnapGuide } from "./EditorSnap";
-import { editorFontStack, resolveTextDirection } from "./EditorTypography";
+import { bakeTextTransform, editorFontStack, resolveTextDirection } from "./EditorTypography";
 import { nextStepNumber, strokeDash } from "./EditorShapeStyles";
 
-export type AnnotateTool = "freehand" | "line" | "rect" | "ellipse" | "arrow" | "text" | "callout" | "step";
+export type AnnotateTool = "freehand" | "line" | "rect" | "ellipse" | "arrow" | "text" | "paragraph" | "callout" | "step";
 export type AnnotationMode = "idle" | "draw" | "select";
 
 export interface AnnotationOptions {
@@ -52,7 +52,7 @@ export function createAnnotationLayer(): AnnotationLayer {
   let currentTool: AnnotateTool = "freehand";
   let currentMode: AnnotationMode = "idle";
   let selectedLayerIds: string[] = [];
-  let pendingInput: HTMLInputElement | null = null;
+  let pendingInput: HTMLInputElement | HTMLTextAreaElement | null = null;
   let stageWidth = 0;
   let stageHeight = 0;
   let layerCount = 0;
@@ -88,7 +88,7 @@ export function createAnnotationLayer(): AnnotationLayer {
     onCommit?.(layer);
   }
 
-  function committedLayer(shape: Konva.Shape, tool: Exclude<AnnotateTool, "text" | "callout" | "step">): EditorLayer {
+  function committedLayer(shape: Konva.Shape, tool: Exclude<AnnotateTool, "text" | "paragraph" | "callout" | "step">): EditorLayer {
     if (tool === "freehand" || tool === "line") {
       const line = shape as Konva.Line;
       return { ...createLayerBase("line", layerCount), kind: "line", points: [...line.points()], stroke: options.color, strokeWidth: options.strokeWidth, strokeStyle: "solid", tension: tool === "freehand" ? 0.5 : 0 };
@@ -126,6 +126,8 @@ export function createAnnotationLayer(): AnnotationLayer {
         return new Konva.Line({ ...base, points: [pos.x, pos.y, pos.x, pos.y], lineCap: "round" });
       case "rect":
         return new Konva.Rect({ ...base, x: pos.x, y: pos.y, width: 0, height: 0 });
+      case "paragraph":
+        return new Konva.Rect({ ...base, x: pos.x, y: pos.y, width: 0, height: 0, dash: [6, 4] });
       case "ellipse":
         return new Konva.Ellipse({ ...base, x: pos.x, y: pos.y, radiusX: 0, radiusY: 0 });
       case "arrow":
@@ -161,8 +163,15 @@ export function createAnnotationLayer(): AnnotationLayer {
       const node = layerNode(id);
       return node && model?.visible && !model.locked ? [node] : [];
     }) : [];
+    const requiresUniformTransform = nodes.some((node) => {
+      const kind = layerModels.get(node.id())?.kind;
+      return kind === "text" || kind === "group";
+    });
     transformer?.nodes(nodes);
-    if (transformer && typeof transformer.keepRatio === "function") transformer.keepRatio(nodes.some((node) => layerModels.get(node.id())?.kind === "group"));
+    if (transformer && typeof transformer.keepRatio === "function") transformer.keepRatio(requiresUniformTransform);
+    if (transformer && typeof transformer.enabledAnchors === "function") transformer.enabledAnchors(requiresUniformTransform
+      ? ["top-left", "top-right", "bottom-left", "bottom-right"]
+      : ["top-left", "top-center", "top-right", "middle-right", "bottom-right", "bottom-center", "bottom-left", "middle-left"]);
     transformer?.getLayer()?.batchDraw();
   }
 
@@ -218,11 +227,12 @@ export function createAnnotationLayer(): AnnotationLayer {
     const after = before.map((model) => {
       const node = layerNode(model.id);
       if (!node) return model;
-      const transformed: EditorLayer = { ...model, transform: { x: node.x(), y: node.y(), scaleX: node.scaleX(), scaleY: node.scaleY(), rotation: node.rotation() } };
+      const transform = { x: node.x(), y: node.y(), scaleX: node.scaleX(), scaleY: node.scaleY(), rotation: node.rotation() };
+      const transformed: EditorLayer = model.kind === "text" ? bakeTextTransform(model, transform) : { ...model, transform };
       layerModels.set(model.id, transformed);
       return transformed;
     });
-    if (before.some((entry, index) => JSON.stringify(entry.transform) !== JSON.stringify(after[index]?.transform))) onTransform?.(before, after);
+    if (before.some((entry, index) => JSON.stringify(entry) !== JSON.stringify(after[index]))) onTransform?.(before, after);
   }
 
   function onPointerDown(event: Konva.KonvaEventObject<PointerEvent>): void {
@@ -276,7 +286,7 @@ export function createAnnotationLayer(): AnnotationLayer {
       line.points([...line.points(), pos.x, pos.y]);
     } else if (currentTool === "line" || currentTool === "arrow") {
       (activeShape as Konva.Line).points([startX, startY, pos.x, pos.y]);
-    } else if (currentTool === "rect") {
+    } else if (currentTool === "rect" || currentTool === "paragraph") {
       const rect = activeShape as Konva.Rect;
       rect.position({ x: Math.min(startX, pos.x), y: Math.min(startY, pos.y) });
       rect.size({ width: Math.abs(pos.x - startX), height: Math.abs(pos.y - startY) });
@@ -305,9 +315,16 @@ export function createAnnotationLayer(): AnnotationLayer {
     const shape = activeShape;
     activeShape = null;
     isDrawing = false;
-    if (shouldDiscard(shape)) shape.destroy();
+    if (currentTool === "paragraph") {
+      const paragraphBox = shape as Konva.Rect;
+      const position = paragraphBox.position();
+      const width = paragraphBox.width() >= 24 ? paragraphBox.width() : Math.min(360, Math.max(240, stageWidth - position.x - 24));
+      const height = paragraphBox.height() >= 24 ? paragraphBox.height() : Math.min(180, Math.max(96, stageHeight - position.y - 24));
+      shape.destroy();
+      placeText(position.x, position.y, "paragraph", { width, height });
+    } else if (shouldDiscard(shape)) shape.destroy();
     else {
-      const layer = committedLayer(shape, currentTool as Exclude<AnnotateTool, "text" | "callout" | "step">);
+      const layer = committedLayer(shape, currentTool as Exclude<AnnotateTool, "text" | "paragraph" | "callout" | "step">);
       shape.id(layer.id);
       shape.name(`editor-layer ${layer.kind}`);
       layerModels.set(layer.id, layer);
@@ -317,21 +334,23 @@ export function createAnnotationLayer(): AnnotationLayer {
     annotationLayer.batchDraw();
   }
 
-  function placeText(x: number, y: number, kind: "text" | "callout"): void {
+  function placeText(x: number, y: number, kind: "text" | "paragraph" | "callout", box?: { width: number; height: number }): void {
     if (!stage || !annotationLayer || pendingInput) return;
     const rect = stage.container().getBoundingClientRect();
     const scale = rect.width / stage.width();
-    const input = document.createElement("input");
+    const input = document.createElement(kind === "paragraph" ? "textarea" : "input");
     let finished = false;
     pendingInput = input;
     input.className = "nc-editor-inline-text-input";
-    input.setAttribute("aria-label", kind === "text" ? "Enter text" : "Enter callout text");
+    input.setAttribute("aria-label", kind === "text" ? "Enter point text" : kind === "paragraph" ? "Enter paragraph text" : "Enter callout text");
     input.setAttribute("dir", "auto");
-    input.placeholder = kind === "text" ? "Type text…" : "Type callout…";
+    input.placeholder = kind === "text" ? "Type point text…" : kind === "paragraph" ? "Type paragraph text…  Ctrl+Enter to finish" : "Type callout…";
+    const isParagraph = kind === "paragraph";
     Object.assign(input.style, {
-      position: "fixed", left: `${rect.left + x * scale}px`, top: `${rect.top + (y - options.fontSize / 2) * scale}px`,
+      position: "fixed", left: `${rect.left + x * scale}px`, top: `${rect.top + (isParagraph ? y : y - options.fontSize / 2) * scale}px`,
       fontSize: `${options.fontSize * scale}px`, color: options.color, background: "rgba(0,0,0,0.75)",
       border: `1px solid ${options.color}`, borderRadius: "4px", padding: "2px 6px", outline: "none", minWidth: "80px", zIndex: "2147483647",
+      ...(isParagraph && box ? { width: `${box.width * scale}px`, height: `${box.height * scale}px`, resize: "none", lineHeight: "1.2" } : {}),
     });
     const finish = (save: boolean): void => {
       if (finished) return;
@@ -344,6 +363,14 @@ export function createAnnotationLayer(): AnnotationLayer {
           fontSize: options.fontSize, fill: options.color,
         };
         addShape(new Konva.Text({ x, y: textY, text, fontSize: options.fontSize, fontFamily: "sans-serif", fill: options.color, draggable: false }), layer);
+      } else if (save && text && kind === "paragraph" && box) {
+        const layer: EditorLayer = {
+          ...createLayerBase("text", layerCount, x, y), ...DEFAULT_EDITOR_TEXT_STYLE, kind: "text", textMode: "paragraph", text,
+          width: box.width, height: box.height, fontSize: options.fontSize, fill: options.color,
+        };
+        const group = new Konva.Group({ x, y, draggable: false });
+        group.add(new Konva.Text({ text, width: box.width, height: box.height, fontSize: options.fontSize, fontFamily: "sans-serif", fill: options.color, wrap: "word" }));
+        addShape(group, layer);
       } else if (save && text) {
         const width = 240;
         const height = 96;
@@ -363,8 +390,9 @@ export function createAnnotationLayer(): AnnotationLayer {
       pendingInput = null;
     };
     input.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") { event.preventDefault(); finish(true); }
-      if (event.key === "Escape") { event.preventDefault(); finish(false); }
+      const keyboardEvent = event as KeyboardEvent;
+      if (keyboardEvent.key === "Enter" && (!isParagraph || keyboardEvent.ctrlKey || keyboardEvent.metaKey)) { keyboardEvent.preventDefault(); finish(true); }
+      if (keyboardEvent.key === "Escape") { keyboardEvent.preventDefault(); finish(false); }
     });
     input.addEventListener("blur", () => finish(true));
     document.body.appendChild(input);
@@ -472,7 +500,7 @@ export function createAnnotationLayer(): AnnotationLayer {
             x: layer.padding, y: layer.padding, text: layer.text, fontFamily: editorFontStack(layer.fontFamily, layer.fontFallback),
             fontSize: layer.fontSize, fontStyle, direction: resolveTextDirection(layer.text, layer.direction), align: layer.align,
             verticalAlign: layer.verticalAlign, fill: layer.fill, lineHeight: layer.lineHeight, letterSpacing: layer.letterSpacing,
-            wrap: "word", ...(contentWidth === undefined ? {} : { width: contentWidth }), ...(contentHeight === undefined ? {} : { height: contentHeight }),
+            wrap: layer.textMode === "paragraph" ? "word" : "none", ...(contentWidth === undefined ? {} : { width: contentWidth }), ...(contentHeight === undefined ? {} : { height: contentHeight }),
             ...(layer.shadowColor === null ? {} : {
               shadowColor: layer.shadowColor, shadowBlur: layer.shadowBlur,
               shadowOffset: { x: layer.shadowOffsetX, y: layer.shadowOffsetY }, shadowEnabled: true,
@@ -561,16 +589,16 @@ export function createAnnotationLayer(): AnnotationLayer {
   function setTool(tool: AnnotateTool): void {
     currentTool = tool;
     if (!stage) return;
-    stage.container().style.cursor = tool === "text" || tool === "callout" ? "text" : tool === "step" ? "crosshair" : "none";
-    cursorCircle?.visible(currentMode === "draw" && tool !== "text" && tool !== "callout" && tool !== "step");
+    stage.container().style.cursor = tool === "text" || tool === "paragraph" || tool === "callout" ? "text" : tool === "step" ? "crosshair" : "none";
+    cursorCircle?.visible(currentMode === "draw" && tool !== "text" && tool !== "paragraph" && tool !== "callout" && tool !== "step");
   }
 
   function setMode(mode: AnnotationMode): void {
     currentMode = mode;
     if (mode !== "select") clearSnapGuides();
     if (!stage) return;
-    stage.container().style.cursor = mode === "select" ? "default" : mode === "draw" && (currentTool === "text" || currentTool === "callout") ? "text" : mode === "draw" && currentTool === "step" ? "crosshair" : mode === "draw" ? "none" : "default";
-    cursorCircle?.visible(mode === "draw" && currentTool !== "text" && currentTool !== "callout" && currentTool !== "step");
+    stage.container().style.cursor = mode === "select" ? "default" : mode === "draw" && (currentTool === "text" || currentTool === "paragraph" || currentTool === "callout") ? "text" : mode === "draw" && currentTool === "step" ? "crosshair" : mode === "draw" ? "none" : "default";
+    cursorCircle?.visible(mode === "draw" && currentTool !== "text" && currentTool !== "paragraph" && currentTool !== "callout" && currentTool !== "step");
     updateSelectionPresentation();
   }
 

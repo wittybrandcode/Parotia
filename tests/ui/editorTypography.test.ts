@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_EDITOR_TEXT_STYLE, identityTransform, type EditorTextLayer } from "@ui/src/editor/EditorDocument";
-import { editorFontStack, estimateTextBox, resolveTextDirection } from "@ui/src/editor/EditorTypography";
+import { bakeTextTransform, convertTextMode, editorFontStack, estimateTextBox, resolveTextDirection } from "@ui/src/editor/EditorTypography";
 import { applyTextPreset } from "@ui/src/editor/EditorTextPresets";
 
 function textLayer(overrides: Partial<EditorTextLayer> = {}): EditorTextLayer {
@@ -36,5 +36,23 @@ describe("EditorTypography", () => {
     const preset = applyTextPreset(original, "quote");
     expect(preset).toMatchObject({ id: "text", text: "Keep me", fontFamily: "Georgia", fontFallback: "serif", fontStyle: "italic" });
     expect(applyTextPreset(original, "missing" as "headline")).toBe(original);
+  });
+
+  it("converts point and paragraph text without leaving invalid box geometry", () => {
+    const point = textLayer();
+    const paragraph = convertTextMode(point, "paragraph");
+    expect(paragraph).toMatchObject({ textMode: "paragraph", width: expect.any(Number), height: expect.any(Number) });
+    expect(convertTextMode({ ...paragraph, align: "justify" }, "point")).toMatchObject({ textMode: "point", align: "left" });
+    expect(convertTextMode({ ...paragraph, align: "justify" }, "point")).not.toHaveProperty("width");
+  });
+
+  it("bakes the largest visual scale into font and paragraph metrics", () => {
+    const paragraph = convertTextMode(textLayer({ fontSize: 20, padding: 5, letterSpacing: 2 }), "paragraph");
+    const resized = bakeTextTransform(paragraph, { x: 12, y: 18, scaleX: 1.5, scaleY: 2, rotation: 15 });
+    expect(resized).toMatchObject({
+      fontSize: 40, padding: 10, letterSpacing: 4,
+      width: paragraph.width! * 2, height: paragraph.height! * 2,
+      transform: { x: 12, y: 18, scaleX: 1, scaleY: 1, rotation: 15 },
+    });
   });
 });

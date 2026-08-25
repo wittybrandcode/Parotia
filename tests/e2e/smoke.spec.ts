@@ -164,7 +164,7 @@ test("4.5 staged capture opens in the real editor, draws, and consumes its save 
     await expect(page.getByTitle("Freehand")).toBeVisible();
     await expect(page.getByTitle("Callout")).toBeVisible();
     await expect(page.getByTitle("Step marker")).toBeVisible();
-    await expect(page.getByRole("slider", { name: "Text size" })).toBeVisible();
+    await expect(page.getByRole("spinbutton", { name: "Text size" })).toBeVisible();
     const snapToggle = page.getByRole("button", { name: "Snap" });
     await expect(snapToggle).toHaveAttribute("aria-pressed", "true");
     await snapToggle.click();
@@ -182,7 +182,8 @@ test("4.5 staged capture opens in the real editor, draws, and consumes its save 
     await page.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.8);
     await page.mouse.up();
 
-    const textTool = page.getByTitle("Text");
+    const textTool = page.getByTitle("Point text");
+    await expect(page.getByTitle("Paragraph text — drag a box")).toBeVisible();
     await textTool.click();
     await expect(textTool).toHaveClass(/nc-editor-shape-btn-active/);
     const editorSurface = page.locator(".nc-editor-konva-container");
@@ -200,6 +201,8 @@ test("4.5 staged capture opens in the real editor, draws, and consumes its save 
     await layerText.press("Control+Enter");
     await expect(layerText).toHaveValue("نص عربي قابل للتحرير\nعلى أكثر من سطر");
     await page.getByRole("combobox", { name: "Text direction" }).selectOption("rtl");
+    await page.getByRole("combobox", { name: "Text type" }).selectOption("paragraph");
+    await page.getByRole("button", { name: "Justify text" }).click();
     await page.getByLabel("Text line height").fill("1.5");
     await page.getByLabel("Text line height").press("Enter");
     await page.getByLabel("Text box width").fill("240");
@@ -208,6 +211,20 @@ test("4.5 staged capture opens in the real editor, draws, and consumes its save 
     await page.getByRole("combobox", { name: "Text preset" }).selectOption("quote");
     await expect(page.getByRole("combobox", { name: "Layer font" })).toHaveValue("Georgia");
     await expect(page.getByRole("button", { name: /local fonts/i })).toBeVisible();
+
+    const paragraphTool = page.getByTitle("Paragraph text — drag a box");
+    await paragraphTool.click();
+    await page.mouse.move(box.x + box.width * 0.1, box.y + box.height * 0.15);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.45, box.y + box.height * 0.38);
+    await page.mouse.up();
+    const paragraphInput = page.getByRole("textbox", { name: "Enter paragraph text" });
+    await expect(paragraphInput).toBeVisible();
+    await paragraphInput.fill("Paragraph line one\nParagraph line two");
+    await paragraphInput.press("Control+Enter");
+    await expect(page.getByRole("option", { name: /^Text \d+/ })).toHaveCount(2);
+    await page.keyboard.press("Delete");
+    await expect(page.getByRole("option", { name: /^Text \d+/ })).toHaveCount(1);
 
     const layerList = page.getByRole("listbox", { name: "Document layers" });
     const rectangleLayer = layerList.getByRole("option", { name: /Rectangle 1/ });
