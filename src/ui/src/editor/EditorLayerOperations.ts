@@ -44,6 +44,7 @@ function localEdges(layer: Exclude<EditorLayer, EditorGroupLayer>): [number, num
       return [0, 0, box.width, box.height];
     }
     case "ellipse": return [-layer.radiusX, -layer.radiusY, layer.radiusX, layer.radiusY];
+    case "step": return [-layer.radius, -layer.radius, layer.radius, layer.radius];
     case "line": case "arrow": {
       const xs = layer.points.filter((_, index) => index % 2 === 0);
       const ys = layer.points.filter((_, index) => index % 2 === 1);

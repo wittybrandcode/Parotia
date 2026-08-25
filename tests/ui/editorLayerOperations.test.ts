@@ -3,7 +3,7 @@ import { identityTransform, type EditorLayer } from "@ui/src/editor/EditorDocume
 import { alignLayers, cloneLayers, distributeLayers, groupLayers, layerBounds, ungroupLayers } from "@ui/src/editor/EditorLayerOperations";
 
 function rectangle(id: string, order: number, x: number, y: number, width = 20, height = 10): EditorLayer {
-  return { id, name: id, order, kind: "rectangle", visible: true, locked: false, opacity: 1, transform: identityTransform(x, y), width, height, cornerRadius: 0, fill: null, stroke: "#fff", strokeWidth: 1 };
+  return { id, name: id, order, kind: "rectangle", visible: true, locked: false, opacity: 1, transform: identityTransform(x, y), width, height, cornerRadius: 0, fill: null, stroke: "#fff", strokeWidth: 1, strokeStyle: "solid" };
 }
 
 describe("EditorLayerOperations", () => {

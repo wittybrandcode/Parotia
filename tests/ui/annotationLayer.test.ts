@@ -187,6 +187,23 @@ describe("AnnotationLayer", () => {
     expect(mocks.state.stage!.layers[1]?.children[0]).toBeInstanceOf(mocks.Group);
   });
 
+  it("creates consecutive editable step markers with automatic numbering", () => {
+    const editor = createAnnotationLayer();
+    const listener = vi.fn();
+    editor.init(document.querySelector("#stage")!, 300, 200, new Image());
+    editor.setMode("draw");
+    editor.setTool("step");
+    editor.setCommitListener(listener);
+    mocks.state.stage!.pointer = { x: 40, y: 50 };
+    mocks.state.stage!.emit("click");
+    mocks.state.stage!.pointer = { x: 90, y: 100 };
+    mocks.state.stage!.emit("click");
+
+    expect(listener.mock.calls.map((call) => (call[0] as EditorLayer).kind === "step" ? (call[0] as Extract<EditorLayer, { kind: "step" }>).number : 0)).toEqual([1, 2]);
+    expect(mocks.state.stage!.layers[1]?.children).toHaveLength(2);
+    expect(mocks.state.stage!.layers[1]?.children[0]).toBeInstanceOf(mocks.Group);
+  });
+
   it("cancels pending text, exports without the cursor, and destroys idempotently", () => {
     const editor = createAnnotationLayer();
     editor.init(document.querySelector("#stage")!, 200, 100, new Image());
@@ -243,19 +260,22 @@ describe("AnnotationLayer", () => {
     editor.init(document.querySelector("#stage")!, 200, 100, new Image());
     const common = (id: string, order: number) => ({ id, name: id, order, visible: true, locked: false, opacity: 1, transform: identityTransform() });
     const layers: EditorLayer[] = [
-      { ...common("line", 1), kind: "line", points: [0, 0, 10, 10], stroke: "#fff", strokeWidth: 2, tension: 0.5 },
-      { ...common("rect", 0), kind: "rectangle", width: 20, height: 10, cornerRadius: 0, fill: null, stroke: "#fff", strokeWidth: 2 },
+      { ...common("line", 1), kind: "line", points: [0, 0, 10, 10], stroke: "#fff", strokeWidth: 2, strokeStyle: "solid", tension: 0.5 },
+      { ...common("rect", 0), kind: "rectangle", width: 20, height: 10, cornerRadius: 0, fill: null, stroke: "#fff", strokeWidth: 2, strokeStyle: "solid" },
       { ...common("text", 2), ...DEFAULT_EDITOR_TEXT_STYLE, kind: "text", text: "Caption", fontFamily: "Arial", fontSize: 20, fill: "#fff" },
-      { ...common("ellipse", 3), kind: "ellipse", radiusX: 10, radiusY: 5, fill: null, stroke: "#fff", strokeWidth: 2 },
-      { ...common("arrow", 4), kind: "arrow", points: [0, 0, 20, 20], stroke: "#fff", strokeWidth: 2, pointerLength: 10, pointerWidth: 8 },
-      { ...common("callout", 5), kind: "callout", text: "Note", width: 60, height: 30, fontFamily: "Arial", fontSize: 12, textColor: "#111", fill: "#fff", stroke: "#000", strokeWidth: 1 },
+      { ...common("ellipse", 3), kind: "ellipse", radiusX: 10, radiusY: 5, fill: null, stroke: "#fff", strokeWidth: 2, strokeStyle: "solid" },
+      { ...common("arrow", 4), kind: "arrow", points: [0, 0, 20, 20], stroke: "#fff", strokeWidth: 2, strokeStyle: "solid", pointerLength: 10, pointerWidth: 8, pointerAtBeginning: false, pointerAtEnding: true },
+      { ...common("callout", 5), kind: "callout", text: "Note", width: 60, height: 30, cornerRadius: 6, fontFamily: "Arial", fontSize: 12, textColor: "#111", fill: "#fff", stroke: "#000", strokeWidth: 1, strokeStyle: "solid" },
+      { ...common("step", 6), kind: "step", number: 3, radius: 18, fontFamily: "Arial", fontSize: 14, textColor: "#111", fill: "#fff", stroke: "#000", strokeWidth: 2, strokeStyle: "dotted" },
     ];
     await editor.loadLayers(layers);
     const children = mocks.state.stage!.layers[1]!.children;
-    expect(children).toHaveLength(6);
+    expect(children).toHaveLength(7);
     expect(children[0]?.attrs.width).toBe(20);
     expect(children[1]?.attrs.tension).toBe(0.5);
     expect(children[5]).toBeInstanceOf(mocks.Group);
+    expect(children[6]).toBeInstanceOf(mocks.Group);
+    expect((children[6] as InstanceType<typeof mocks.Group>).children[0]?.attrs).toMatchObject({ radius: 18, dash: [2, 4] });
   });
 
   it("rebuilds text width plus bold and italic font variants", async () => {
@@ -298,7 +318,7 @@ describe("AnnotationLayer", () => {
     editor.init(document.querySelector("#stage")!, 200, 100, new Image());
     const layer: EditorLayer = {
       id: "rect-one", name: "Rectangle 1", order: 0, kind: "rectangle", visible: true, locked: false, opacity: 1,
-      transform: identityTransform(10, 20), width: 40, height: 30, cornerRadius: 0, fill: null, stroke: "#fff", strokeWidth: 2,
+      transform: identityTransform(10, 20), width: 40, height: 30, cornerRadius: 0, fill: null, stroke: "#fff", strokeWidth: 2, strokeStyle: "solid",
     };
     await editor.loadLayers([layer]);
     editor.setSelectionListener(selection);
@@ -327,7 +347,7 @@ describe("AnnotationLayer", () => {
     editor.init(document.querySelector("#stage")!, 200, 100, new Image());
     const layer: EditorLayer = {
       id: "locked", name: "Locked", order: 0, kind: "rectangle", visible: true, locked: true, opacity: 1,
-      transform: identityTransform(), width: 20, height: 10, cornerRadius: 0, fill: null, stroke: "#fff", strokeWidth: 2,
+      transform: identityTransform(), width: 20, height: 10, cornerRadius: 0, fill: null, stroke: "#fff", strokeWidth: 2, strokeStyle: "solid",
     };
     await editor.loadLayers([layer]);
     editor.setMode("select");
@@ -347,7 +367,7 @@ describe("AnnotationLayer", () => {
     const editor = createAnnotationLayer();
     const transform = vi.fn();
     editor.init(document.querySelector("#stage")!, 200, 100, new Image());
-    const first: EditorLayer = { id: "first", name: "First", order: 0, kind: "rectangle", visible: true, locked: false, opacity: 1, transform: identityTransform(10, 20), width: 20, height: 10, cornerRadius: 0, fill: null, stroke: "#fff", strokeWidth: 1 };
+    const first: EditorLayer = { id: "first", name: "First", order: 0, kind: "rectangle", visible: true, locked: false, opacity: 1, transform: identityTransform(10, 20), width: 20, height: 10, cornerRadius: 0, fill: null, stroke: "#fff", strokeWidth: 1, strokeStyle: "solid" };
     const second: EditorLayer = { ...first, id: "second", name: "Second", order: 1, transform: identityTransform(40, 50) };
     await editor.loadLayers([first, second]);
     editor.setTransformListener(transform);
@@ -371,7 +391,7 @@ describe("AnnotationLayer", () => {
     const editor = createAnnotationLayer();
     const selection = vi.fn();
     editor.init(document.querySelector("#stage")!, 200, 100, new Image());
-    const first: EditorLayer = { id: "first", name: "First", order: 0, kind: "rectangle", visible: true, locked: false, opacity: 1, transform: identityTransform(10, 20), width: 20, height: 10, cornerRadius: 0, fill: null, stroke: "#fff", strokeWidth: 1 };
+    const first: EditorLayer = { id: "first", name: "First", order: 0, kind: "rectangle", visible: true, locked: false, opacity: 1, transform: identityTransform(10, 20), width: 20, height: 10, cornerRadius: 0, fill: null, stroke: "#fff", strokeWidth: 1, strokeStyle: "solid" };
     const second: EditorLayer = { ...first, id: "second", name: "Second", order: 1, transform: identityTransform(40, 50) };
     await editor.loadLayers([first, second]);
     editor.setSelectionListener(selection);
@@ -398,7 +418,7 @@ describe("AnnotationLayer", () => {
   it("snaps dragging to canvas geometry, draws guides, and allows Alt bypass", async () => {
     const editor = createAnnotationLayer();
     editor.init(document.querySelector("#stage")!, 200, 100, new Image());
-    const layer: EditorLayer = { id: "snap", name: "Snap", order: 0, kind: "rectangle", visible: true, locked: false, opacity: 1, transform: identityTransform(12, 12), width: 20, height: 10, cornerRadius: 0, fill: null, stroke: "#fff", strokeWidth: 1 };
+    const layer: EditorLayer = { id: "snap", name: "Snap", order: 0, kind: "rectangle", visible: true, locked: false, opacity: 1, transform: identityTransform(12, 12), width: 20, height: 10, cornerRadius: 0, fill: null, stroke: "#fff", strokeWidth: 1, strokeStyle: "solid" };
     await editor.loadLayers([layer]);
     editor.setMode("select");
     editor.selectLayer(layer.id);

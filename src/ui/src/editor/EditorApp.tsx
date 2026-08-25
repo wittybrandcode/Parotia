@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowRight, Circle, Copy, Download, Magnet, Maximize2, MessageSquare, Minus, MousePointer2, Pencil, Redo2, Scissors, Share2, SlidersHorizontal, Square, Type, Undo2, X, ZoomIn, ZoomOut } from "lucide-react";
+import { ArrowRight, Circle, Copy, Download, Hash, Magnet, Maximize2, MessageSquare, Minus, MousePointer2, Pencil, Redo2, Scissors, Share2, SlidersHorizontal, Square, Type, Undo2, X, ZoomIn, ZoomOut } from "lucide-react";
 import { createCanvasEngine, type CanvasEngine } from "./CanvasEngine";
 import { createCropTool, type CropRect, type CropTool } from "./CropTool";
 import { createAnnotationLayer, type AnnotationLayer, type AnnotateTool } from "./AnnotationLayer";
@@ -9,6 +9,7 @@ import { addLayerCommand, EditorDocumentHistory, reorderLayersCommand, replaceDo
 import { alignLayers, cloneLayers, distributeLayers, groupLayers, translateLayer, ungroupLayers, type LayerAlignment, type LayerDistribution } from "./EditorLayerOperations";
 import { createEditorViewport, type EditorViewport, type ViewportState } from "./EditorViewport";
 import { LayerPanel } from "./LayerPanel";
+import { applyEditorLayerStyle, canApplyEditorLayerStyle, continueStepSequence, copyEditorLayerStyle, type EditorLayerStyle } from "./EditorShapeStyles";
 import {
   assessEditorImage,
   detectedDeviceMemoryGb,
@@ -68,6 +69,7 @@ export function EditorApp() {
   const layerSyncRef = useRef(Promise.resolve());
   const selectedLayerIdsRef = useRef<string[]>([]);
   const layerClipboardRef = useRef<EditorLayer[]>([]);
+  const layerStyleClipboardRef = useRef<EditorLayerStyle | null>(null);
 
   const [loaded, setLoaded] = useState(false);
   const [tool, setTool] = useState<ActiveTool>("select");
@@ -84,6 +86,7 @@ export function EditorApp() {
   const [textSize, setTextSize] = useState(24);
   const [shapeKind, setShapeKind] = useState<AnnotateTool>("freehand");
   const [snappingEnabled, setSnappingEnabled] = useState(true);
+  const [canPasteStyle, setCanPasteStyle] = useState(false);
   const [documentState, setDocumentState] = useState<EditorDocument | null>(null);
   const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([]);
   const [viewportState, setViewportState] = useState<ViewportState>({ scale: 1, percent: 100, mode: "FIT", offsetX: 0, offsetY: 0 });
@@ -251,7 +254,7 @@ export function EditorApp() {
     const selected = new Set(layerIds);
     const source = history.document.layers.filter((layer) => selected.has(layer.id));
     if (!source.length) return;
-    const duplicates = cloneLayers(source).map((layer, index) => ({ ...layer, order: history.document.layers.length + index }));
+    const duplicates = continueStepSequence(cloneLayers(source), history.document.layers).map((layer, index) => ({ ...layer, order: history.document.layers.length + index }));
     const nextDocument = history.execute(replaceLayerCollectionCommand(history.document.layers, [...history.document.layers, ...duplicates], `Duplicate ${source.length} layer${source.length === 1 ? "" : "s"}`));
     setDocumentState(nextDocument);
     setSelection(duplicates.map((layer) => layer.id));
@@ -380,11 +383,36 @@ export function EditorApp() {
       // Fall back to the editor's internal clipboard.
     }
     if (!source.length) return;
-    const copies = cloneLayers(source).map((layer, index) => ({ ...layer, order: history.document.layers.length + index }));
+    const copies = continueStepSequence(cloneLayers(source), history.document.layers).map((layer, index) => ({ ...layer, order: history.document.layers.length + index }));
     const nextDocument = history.execute(replaceLayerCollectionCommand(history.document.layers, [...history.document.layers, ...copies], `Paste ${copies.length} layer${copies.length === 1 ? "" : "s"}`));
     const selection = copies.map((layer) => layer.id);
     setDocumentState(nextDocument); setSelection(selection); setSaved(false); refreshHistory(); syncLayers(nextDocument, selection);
   }, [operating, refreshHistory, setSelection, syncLayers]);
+
+  const handleCopyLayerStyle = useCallback((layerId: string): void => {
+    const layer = historyRef.current?.document.layers.find((entry) => entry.id === layerId);
+    const style = layer ? copyEditorLayerStyle(layer) : null;
+    if (!style) return;
+    layerStyleClipboardRef.current = style;
+    setCanPasteStyle(true);
+  }, []);
+
+  const handlePasteLayerStyle = useCallback((layerIds: string[]): void => {
+    const history = historyRef.current;
+    const style = layerStyleClipboardRef.current;
+    if (!history || !style || operating) return;
+    const selected = new Set(layerIds);
+    const changes = history.document.layers.flatMap((layer) => {
+      if (!selected.has(layer.id) || layer.locked || !canApplyEditorLayerStyle(layer, style)) return [];
+      const after = applyEditorLayerStyle(layer, style);
+      return JSON.stringify(layer) === JSON.stringify(after) ? [] : [{ before: layer, after }];
+    });
+    if (!changes.length) return;
+    const before = changes.map((entry) => entry.before);
+    const after = changes.map((entry) => entry.after);
+    const nextDocument = history.execute(replaceLayersCommand(before, after, `Paste style to ${before.length} layer${before.length === 1 ? "" : "s"}`));
+    setDocumentState(nextDocument); setSaved(false); refreshHistory(); syncLayers(nextDocument, layerIds);
+  }, [operating, refreshHistory, syncLayers]);
 
   const nudgeSelectedLayers = useCallback((x: number, y: number): void => {
     const history = historyRef.current;
@@ -568,6 +596,8 @@ export function EditorApp() {
       }
       else if (modifier && event.key.toLowerCase() === "g" && event.shiftKey) { event.preventDefault(); handleUngroupLayers(); }
       else if (modifier && event.key.toLowerCase() === "g") { event.preventDefault(); handleGroupLayers(); }
+      else if (modifier && event.altKey && event.key.toLowerCase() === "c" && selectedLayerIdsRef.current.length === 1) { event.preventDefault(); handleCopyLayerStyle(selectedLayerIdsRef.current[0]!); }
+      else if (modifier && event.altKey && event.key.toLowerCase() === "v") { event.preventDefault(); handlePasteLayerStyle(selectedLayerIdsRef.current); }
       else if (modifier && event.key.toLowerCase() === "c" && selectedLayerIdsRef.current.length) { event.preventDefault(); void handleCopyLayers(); }
       else if (modifier && event.key.toLowerCase() === "v") { event.preventDefault(); void handlePasteLayers(); }
       else if (modifier && event.key.toLowerCase() === "d" && selectedLayerIdsRef.current.length) { event.preventDefault(); handleDuplicateLayers(selectedLayerIdsRef.current); }
@@ -585,7 +615,7 @@ export function EditorApp() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [handleCopyLayers, handleDeleteLayers, handleDuplicateLayers, handleGroupLayers, handlePasteLayers, handleUngroupLayers, nudgeSelectedLayers, restoreHistory, setSelection]);
+  }, [handleCopyLayers, handleCopyLayerStyle, handleDeleteLayers, handleDuplicateLayers, handleGroupLayers, handlePasteLayers, handlePasteLayerStyle, handleUngroupLayers, nudgeSelectedLayers, restoreHistory, setSelection]);
 
   const exportCanvas = useCallback((): HTMLCanvasElement => {
     const engine = engineRef.current;
@@ -684,7 +714,13 @@ export function EditorApp() {
         onSelect={handleSelectLayers} onUpdate={handleUpdateLayer} onDelete={handleDeleteLayers}
         onDuplicate={handleDuplicateLayers} onMove={handleMoveLayer} onReorder={handleReorderLayers}
         onGroup={handleGroupLayers} onUngroup={handleUngroupLayers} onAlign={handleAlignLayers} onDistribute={handleDistributeLayers}
-        onCopy={() => void handleCopyLayers()} onPaste={() => void handlePasteLayers()} onAddImage={() => imageInputRef.current?.click()} />}
+        onCopy={() => void handleCopyLayers()} onPaste={() => void handlePasteLayers()}
+        onCopyStyle={handleCopyLayerStyle} onPasteStyle={handlePasteLayerStyle}
+        canPasteStyle={canPasteStyle && Boolean(layerStyleClipboardRef.current && selectedLayerIds.some((id) => {
+          const layer = documentState.layers.find((entry) => entry.id === id);
+          return layer && canApplyEditorLayerStyle(layer, layerStyleClipboardRef.current);
+        }))}
+        onAddImage={() => imageInputRef.current?.click()} />}
     </div>
     <input ref={imageInputRef} className="nc-editor-file-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => {
       const file = event.target.files?.[0];
@@ -716,6 +752,7 @@ const SHAPE_OPTIONS: { kind: AnnotateTool; icon: React.ReactNode; tip: string }[
   { kind: "rect", icon: <Square size={13} />, tip: "Rectangle" }, { kind: "ellipse", icon: <Circle size={13} />, tip: "Ellipse" },
   { kind: "arrow", icon: <ArrowRight size={13} />, tip: "Arrow" }, { kind: "text", icon: <Type size={13} />, tip: "Text" },
   { kind: "callout", icon: <MessageSquare size={13} />, tip: "Callout" },
+  { kind: "step", icon: <Hash size={13} />, tip: "Step marker" },
 ];
 
 function ShapePicker({ kind, disabled, onChange }: { kind: AnnotateTool; disabled?: boolean; onChange: (kind: AnnotateTool) => void }) {

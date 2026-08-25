@@ -1,7 +1,9 @@
 import { createId } from "@shared/utils/id";
 
 export const EDITOR_DOCUMENT_SCHEMA = "parotia.editor-document" as const;
-export const EDITOR_DOCUMENT_VERSION = 3 as const;
+export const EDITOR_DOCUMENT_VERSION = 4 as const;
+
+export type EditorStrokeStyle = "solid" | "dashed" | "dotted";
 
 export interface EditorTransform {
   x: number;
@@ -66,6 +68,7 @@ export interface EditorShapeStyle {
   fill: string | null;
   stroke: string;
   strokeWidth: number;
+  strokeStyle: EditorStrokeStyle;
 }
 
 export interface EditorRectangleLayer extends EditorLayerBase, EditorShapeStyle {
@@ -86,6 +89,7 @@ export interface EditorLineLayer extends EditorLayerBase {
   points: number[];
   stroke: string;
   strokeWidth: number;
+  strokeStyle: EditorStrokeStyle;
   tension: number;
 }
 
@@ -94,8 +98,11 @@ export interface EditorArrowLayer extends EditorLayerBase {
   points: number[];
   stroke: string;
   strokeWidth: number;
+  strokeStyle: EditorStrokeStyle;
   pointerLength: number;
   pointerWidth: number;
+  pointerAtBeginning: boolean;
+  pointerAtEnding: boolean;
 }
 
 export interface EditorCalloutLayer extends EditorLayerBase, EditorShapeStyle {
@@ -103,6 +110,16 @@ export interface EditorCalloutLayer extends EditorLayerBase, EditorShapeStyle {
   text: string;
   width: number;
   height: number;
+  cornerRadius: number;
+  fontFamily: string;
+  fontSize: number;
+  textColor: string;
+}
+
+export interface EditorStepLayer extends EditorLayerBase, EditorShapeStyle {
+  kind: "step";
+  number: number;
+  radius: number;
   fontFamily: string;
   fontSize: number;
   textColor: string;
@@ -121,6 +138,7 @@ export type EditorLayer =
   | EditorLineLayer
   | EditorArrowLayer
   | EditorCalloutLayer
+  | EditorStepLayer
   | EditorGroupLayer;
 
 export interface EditorBackground {
@@ -230,7 +248,14 @@ function shapeStyle(value: JsonRecord, path: string): EditorShapeStyle {
     fill: value.fill === null ? null : string(value.fill, `${path}.fill`, true),
     stroke: string(value.stroke, `${path}.stroke`, true),
     strokeWidth: positive(value.strokeWidth, `${path}.strokeWidth`),
+    strokeStyle: enumValue(value.strokeStyle, `${path}.strokeStyle`, ["solid", "dashed", "dotted"] as const),
   };
+}
+
+function positiveInteger(value: unknown, name: string): number {
+  const result = positive(value, name);
+  if (!Number.isInteger(result)) throw new Error(`${name} must be an integer`);
+  return result;
 }
 
 function points(value: unknown, path: string): number[] {
@@ -245,7 +270,7 @@ function normalizeLayers(value: unknown[], path: string): EditorLayer[] {
 function layer(value: unknown, path: string): EditorLayer {
   const item = record(value, path);
   const common = base(item, path);
-  const kind = enumValue(item.kind, `${path}.kind`, ["image", "text", "rectangle", "ellipse", "line", "arrow", "callout", "group"] as const);
+  const kind = enumValue(item.kind, `${path}.kind`, ["image", "text", "rectangle", "ellipse", "line", "arrow", "callout", "step", "group"] as const);
   switch (kind) {
     case "image":
       return { ...common, kind, source: string(item.source, `${path}.source`), width: positive(item.width, `${path}.width`), height: positive(item.height, `${path}.height`) };
@@ -271,15 +296,22 @@ function layer(value: unknown, path: string): EditorLayer {
       };
     }
     case "rectangle":
-      return { ...common, ...shapeStyle(item, path), kind, width: positive(item.width, `${path}.width`), height: positive(item.height, `${path}.height`), cornerRadius: finite(item.cornerRadius, `${path}.cornerRadius`) };
+      return { ...common, ...shapeStyle(item, path), kind, width: positive(item.width, `${path}.width`), height: positive(item.height, `${path}.height`), cornerRadius: nonNegative(item.cornerRadius, `${path}.cornerRadius`) };
     case "ellipse":
       return { ...common, ...shapeStyle(item, path), kind, radiusX: positive(item.radiusX, `${path}.radiusX`), radiusY: positive(item.radiusY, `${path}.radiusY`) };
     case "line":
-      return { ...common, kind, points: points(item.points, path), stroke: string(item.stroke, `${path}.stroke`), strokeWidth: positive(item.strokeWidth, `${path}.strokeWidth`), tension: finite(item.tension, `${path}.tension`) };
+      return { ...common, kind, points: points(item.points, path), stroke: string(item.stroke, `${path}.stroke`), strokeWidth: positive(item.strokeWidth, `${path}.strokeWidth`), strokeStyle: enumValue(item.strokeStyle, `${path}.strokeStyle`, ["solid", "dashed", "dotted"] as const), tension: finite(item.tension, `${path}.tension`) };
     case "arrow":
-      return { ...common, kind, points: points(item.points, path), stroke: string(item.stroke, `${path}.stroke`), strokeWidth: positive(item.strokeWidth, `${path}.strokeWidth`), pointerLength: positive(item.pointerLength, `${path}.pointerLength`), pointerWidth: positive(item.pointerWidth, `${path}.pointerWidth`) };
+      return {
+        ...common, kind, points: points(item.points, path), stroke: string(item.stroke, `${path}.stroke`), strokeWidth: positive(item.strokeWidth, `${path}.strokeWidth`),
+        strokeStyle: enumValue(item.strokeStyle, `${path}.strokeStyle`, ["solid", "dashed", "dotted"] as const),
+        pointerLength: positive(item.pointerLength, `${path}.pointerLength`), pointerWidth: positive(item.pointerWidth, `${path}.pointerWidth`),
+        pointerAtBeginning: boolean(item.pointerAtBeginning, `${path}.pointerAtBeginning`), pointerAtEnding: boolean(item.pointerAtEnding, `${path}.pointerAtEnding`),
+      };
     case "callout":
-      return { ...common, ...shapeStyle(item, path), kind, text: string(item.text, `${path}.text`, true), width: positive(item.width, `${path}.width`), height: positive(item.height, `${path}.height`), fontFamily: string(item.fontFamily, `${path}.fontFamily`), fontSize: positive(item.fontSize, `${path}.fontSize`), textColor: string(item.textColor, `${path}.textColor`) };
+      return { ...common, ...shapeStyle(item, path), kind, text: string(item.text, `${path}.text`, true), width: positive(item.width, `${path}.width`), height: positive(item.height, `${path}.height`), cornerRadius: nonNegative(item.cornerRadius, `${path}.cornerRadius`), fontFamily: string(item.fontFamily, `${path}.fontFamily`), fontSize: positive(item.fontSize, `${path}.fontSize`), textColor: string(item.textColor, `${path}.textColor`) };
+    case "step":
+      return { ...common, ...shapeStyle(item, path), kind, number: positiveInteger(item.number, `${path}.number`), radius: positive(item.radius, `${path}.radius`), fontFamily: string(item.fontFamily, `${path}.fontFamily`), fontSize: positive(item.fontSize, `${path}.fontSize`), textColor: string(item.textColor, `${path}.textColor`) };
     case "group":
       if (!Array.isArray(item.children) || item.children.length === 0) throw new Error(`${path}.children must contain at least one layer`);
       if (common.transform.scaleX <= 0 || common.transform.scaleY <= 0 || Math.abs(common.transform.scaleX - common.transform.scaleY) > 1e-6) throw new Error(`${path}.transform must use a positive uniform scale`);
@@ -326,9 +358,9 @@ function parseCurrentVersion(value: unknown): EditorDocument {
 function migrate(value: unknown): unknown {
   const item = record(value, "document");
   if (item.schema !== EDITOR_DOCUMENT_SCHEMA) return value;
-  if (item.version === 1 || item.version === 2) return {
+  if (item.version === 1 || item.version === 2 || item.version === 3) return {
     ...item, version: EDITOR_DOCUMENT_VERSION,
-    layers: Array.isArray(item.layers) ? item.layers.map(migrateTextLayer) : item.layers,
+    layers: Array.isArray(item.layers) ? item.layers.map(migrateLayer) : item.layers,
   };
   if (item.version !== 0) return value;
   const now = typeof item.updatedAt === "string" ? item.updatedAt : new Date().toISOString();
@@ -340,11 +372,11 @@ function migrate(value: unknown): unknown {
     updatedAt: now,
     canvas: { width: item.width, height: item.height, backgroundColor: null },
     background: { kind: "image", source: item.backgroundDataUrl, width: item.width, height: item.height },
-    layers: Array.isArray(item.layers) ? item.layers.map(migrateTextLayer) : [],
+    layers: Array.isArray(item.layers) ? item.layers.map(migrateLayer) : [],
   };
 }
 
-function migrateTextLayer(value: unknown): unknown {
+function migrateLayer(value: unknown): unknown {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const item = value as JsonRecord;
   if (item.kind === "text") {
@@ -354,8 +386,15 @@ function migrateTextLayer(value: unknown): unknown {
     }
     return migrated;
   }
-  if (item.kind === "group" && Array.isArray(item.children)) return { ...item, children: item.children.map(migrateTextLayer) };
-  return value;
+  const migrated: JsonRecord = { ...item };
+  if (["rectangle", "ellipse", "line", "arrow", "callout"].includes(String(item.kind)) && migrated.strokeStyle === undefined) migrated.strokeStyle = "solid";
+  if (item.kind === "arrow") {
+    if (migrated.pointerAtBeginning === undefined) migrated.pointerAtBeginning = false;
+    if (migrated.pointerAtEnding === undefined) migrated.pointerAtEnding = true;
+  }
+  if (item.kind === "callout" && migrated.cornerRadius === undefined) migrated.cornerRadius = 6;
+  if (item.kind === "group" && Array.isArray(item.children)) migrated.children = item.children.map(migrateLayer);
+  return migrated;
 }
 
 export function identityTransform(x = 0, y = 0): EditorTransform {

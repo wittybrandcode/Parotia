@@ -163,6 +163,7 @@ test("4.5 staged capture opens in the real editor, draws, and consumes its save 
     await expect(page.getByText(/create the first editable layer/i)).toBeVisible();
     await expect(page.getByTitle("Freehand")).toBeVisible();
     await expect(page.getByTitle("Callout")).toBeVisible();
+    await expect(page.getByTitle("Step marker")).toBeVisible();
     await expect(page.getByRole("slider", { name: "Text size" })).toBeVisible();
     const snapToggle = page.getByRole("button", { name: "Snap" });
     await expect(snapToggle).toHaveAttribute("aria-pressed", "true");
@@ -233,6 +234,35 @@ test("4.5 staged capture opens in the real editor, draws, and consumes its save 
     await expect(layerList.getByRole("option")).toHaveCount(4);
     await page.getByRole("button", { name: "Undo" }).click();
     await expect(layerList.getByRole("option")).toHaveCount(2);
+
+    await page.getByText("Draw", { exact: true }).click();
+    await page.getByTitle("Step marker").click();
+    await page.mouse.click(box.x + box.width * 0.35, box.y + box.height * 0.35);
+    await page.mouse.click(box.x + box.width * 0.55, box.y + box.height * 0.55);
+    await expect(layerList.getByRole("option", { name: /Step 1/ })).toBeVisible();
+    await expect(layerList.getByRole("option", { name: /Step 2/ })).toBeVisible();
+    await page.keyboard.press("Control+D");
+    await expect(layerList.getByRole("option", { name: /Step 3/ })).toBeVisible();
+    await page.getByRole("button", { name: "Undo" }).click();
+
+    await rectangleLayer.click();
+    await page.getByRole("button", { name: "Copy layer style" }).click();
+    await layerList.getByRole("option", { name: /Step 1/ }).click();
+    await page.getByRole("button", { name: "Paste layer style" }).click();
+    await expect(page.getByLabel("Layer stroke color")).toHaveValue("#c1e899");
+    await page.getByRole("combobox", { name: "Shape preset" }).selectOption("alert");
+    await expect(page.getByRole("combobox", { name: "Layer stroke style" })).toHaveValue("dashed");
+
+    await page.getByText("Draw", { exact: true }).click();
+    await page.getByTitle("Arrow").click();
+    await page.mouse.move(box.x + box.width * 0.15, box.y + box.height * 0.75);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.75, box.y + box.height * 0.25);
+    await page.mouse.up();
+    await page.getByRole("combobox", { name: "Arrow heads" }).selectOption("both");
+    await page.getByRole("combobox", { name: "Layer stroke style" }).selectOption("dotted");
+    await page.getByRole("button", { name: "Reverse direction" }).click();
+    await expect(page.getByRole("combobox", { name: "Arrow heads" })).toHaveValue("both");
 
     await page.getByRole("button", { name: /save/i }).click();
     await expect(page.getByRole("button", { name: /saved/i })).toBeDisabled();

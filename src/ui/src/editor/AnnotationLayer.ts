@@ -7,8 +7,9 @@ import Konva from "konva";
 import { createLayerBase, DEFAULT_EDITOR_TEXT_STYLE, type EditorLayer } from "./EditorDocument";
 import { snapLayerSelection, type SnapGuide } from "./EditorSnap";
 import { editorFontStack, resolveTextDirection } from "./EditorTypography";
+import { nextStepNumber, strokeDash } from "./EditorShapeStyles";
 
-export type AnnotateTool = "freehand" | "line" | "rect" | "ellipse" | "arrow" | "text" | "callout";
+export type AnnotateTool = "freehand" | "line" | "rect" | "ellipse" | "arrow" | "text" | "callout" | "step";
 export type AnnotationMode = "idle" | "draw" | "select";
 
 export interface AnnotationOptions {
@@ -87,16 +88,17 @@ export function createAnnotationLayer(): AnnotationLayer {
     onCommit?.(layer);
   }
 
-  function committedLayer(shape: Konva.Shape, tool: Exclude<AnnotateTool, "text" | "callout">): EditorLayer {
+  function committedLayer(shape: Konva.Shape, tool: Exclude<AnnotateTool, "text" | "callout" | "step">): EditorLayer {
     if (tool === "freehand" || tool === "line") {
       const line = shape as Konva.Line;
-      return { ...createLayerBase("line", layerCount), kind: "line", points: [...line.points()], stroke: options.color, strokeWidth: options.strokeWidth, tension: tool === "freehand" ? 0.5 : 0 };
+      return { ...createLayerBase("line", layerCount), kind: "line", points: [...line.points()], stroke: options.color, strokeWidth: options.strokeWidth, strokeStyle: "solid", tension: tool === "freehand" ? 0.5 : 0 };
     }
     if (tool === "arrow") {
       const arrow = shape as Konva.Arrow;
       return {
         ...createLayerBase("arrow", layerCount), kind: "arrow", points: [...arrow.points()], stroke: options.color,
-        strokeWidth: options.strokeWidth, pointerLength: Math.max(options.strokeWidth * 3, 10), pointerWidth: Math.max(options.strokeWidth * 2, 8),
+        strokeWidth: options.strokeWidth, strokeStyle: "solid", pointerLength: Math.max(options.strokeWidth * 3, 10), pointerWidth: Math.max(options.strokeWidth * 2, 8),
+        pointerAtBeginning: false, pointerAtEnding: true,
       };
     }
     if (tool === "rect") {
@@ -104,14 +106,14 @@ export function createAnnotationLayer(): AnnotationLayer {
       const position = rect.position();
       return {
         ...createLayerBase("rectangle", layerCount, position.x, position.y), kind: "rectangle", width: rect.width(), height: rect.height(),
-        cornerRadius: 0, fill: null, stroke: options.color, strokeWidth: options.strokeWidth,
+        cornerRadius: 0, fill: null, stroke: options.color, strokeWidth: options.strokeWidth, strokeStyle: "solid",
       };
     }
     const ellipse = shape as Konva.Ellipse;
     const position = ellipse.position();
     return {
       ...createLayerBase("ellipse", layerCount, position.x, position.y), kind: "ellipse", radiusX: ellipse.radiusX(), radiusY: ellipse.radiusY(),
-      fill: null, stroke: options.color, strokeWidth: options.strokeWidth,
+      fill: null, stroke: options.color, strokeWidth: options.strokeWidth, strokeStyle: "solid",
     };
   }
 
@@ -130,6 +132,7 @@ export function createAnnotationLayer(): AnnotationLayer {
         return new Konva.Arrow({ ...base, points: [pos.x, pos.y, pos.x, pos.y], fill: options.color, pointerLength: Math.max(options.strokeWidth * 3, 10), pointerWidth: Math.max(options.strokeWidth * 2, 8) });
       case "text":
       case "callout":
+      case "step":
         return null;
     }
   }
@@ -244,7 +247,7 @@ export function createAnnotationLayer(): AnnotationLayer {
     // Text editors are opened from the completed click/tap event. Creating and
     // focusing an input during pointerdown lets the remainder of that same
     // click blur and remove it before the user can type.
-    if (currentTool === "text" || currentTool === "callout") return;
+    if (currentTool === "text" || currentTool === "callout" || currentTool === "step") return;
     startX = pos.x;
     startY = pos.y;
     activeShape = makeShape(pos);
@@ -255,9 +258,10 @@ export function createAnnotationLayer(): AnnotationLayer {
   }
 
   function onTextActivate(): void {
-    if (currentMode !== "draw" || pendingInput || (currentTool !== "text" && currentTool !== "callout")) return;
+    if (currentMode !== "draw" || pendingInput || (currentTool !== "text" && currentTool !== "callout" && currentTool !== "step")) return;
     const pos = pointer();
-    placeText(pos.x, pos.y, currentTool);
+    if (currentTool === "step") placeStep(pos.x, pos.y);
+    else placeText(pos.x, pos.y, currentTool);
   }
 
   function onPointerMove(): void {
@@ -303,7 +307,7 @@ export function createAnnotationLayer(): AnnotationLayer {
     isDrawing = false;
     if (shouldDiscard(shape)) shape.destroy();
     else {
-      const layer = committedLayer(shape, currentTool as Exclude<AnnotateTool, "text" | "callout">);
+      const layer = committedLayer(shape, currentTool as Exclude<AnnotateTool, "text" | "callout" | "step">);
       shape.id(layer.id);
       shape.name(`editor-layer ${layer.kind}`);
       layerModels.set(layer.id, layer);
@@ -346,7 +350,7 @@ export function createAnnotationLayer(): AnnotationLayer {
         const layer: EditorLayer = {
           ...createLayerBase("callout", layerCount, x, y), kind: "callout", text, width, height,
           fontFamily: "sans-serif", fontSize: options.fontSize, textColor: "#111111", fill: options.color,
-          stroke: options.color, strokeWidth: Math.max(1, options.strokeWidth),
+          stroke: options.color, strokeWidth: Math.max(1, options.strokeWidth), strokeStyle: "solid", cornerRadius: 6,
         };
         const group = new Konva.Group({ x, y, draggable: false });
         group.add(
@@ -365,6 +369,22 @@ export function createAnnotationLayer(): AnnotationLayer {
     input.addEventListener("blur", () => finish(true));
     document.body.appendChild(input);
     input.focus();
+  }
+
+  function placeStep(x: number, y: number): void {
+    const number = nextStepNumber([...layerModels.values()]);
+    const radius = Math.max(18, options.fontSize * 0.7);
+    const layer: EditorLayer = {
+      ...createLayerBase("step", layerCount, x, y), kind: "step", name: `Step ${number}`, number, radius,
+      fill: options.color, stroke: "#111111", strokeWidth: Math.max(2, options.strokeWidth), strokeStyle: "solid",
+      fontFamily: "sans-serif", fontSize: Math.max(14, options.fontSize * 0.8), textColor: "#111111",
+    };
+    const group = new Konva.Group({ x, y, draggable: false });
+    group.add(
+      new Konva.Circle({ radius, fill: options.color, stroke: "#111111", strokeWidth: Math.max(2, options.strokeWidth) }),
+      new Konva.Text({ x: -radius, y: -radius, width: radius * 2, height: radius * 2, text: String(number), fontFamily: "sans-serif", fontSize: layer.fontSize, fontStyle: "bold", fill: "#111111", align: "center", verticalAlign: "middle" }),
+    );
+    addShape(group, layer);
   }
 
   function init(container: HTMLDivElement, width: number, height: number, backgroundImage: HTMLImageElement): void {
@@ -469,18 +489,26 @@ export function createAnnotationLayer(): AnnotationLayer {
           return group;
         }
       case "rectangle":
-        return new Konva.Rect({ ...common, width: layer.width, height: layer.height, cornerRadius: layer.cornerRadius, ...(layer.fill === null ? {} : { fill: layer.fill }), stroke: layer.stroke, strokeWidth: layer.strokeWidth });
+        return new Konva.Rect({ ...common, width: layer.width, height: layer.height, cornerRadius: layer.cornerRadius, ...(layer.fill === null ? {} : { fill: layer.fill }), stroke: layer.stroke, strokeWidth: layer.strokeWidth, dash: strokeDash(layer.strokeStyle, layer.strokeWidth) });
       case "ellipse":
-        return new Konva.Ellipse({ ...common, radiusX: layer.radiusX, radiusY: layer.radiusY, ...(layer.fill === null ? {} : { fill: layer.fill }), stroke: layer.stroke, strokeWidth: layer.strokeWidth });
+        return new Konva.Ellipse({ ...common, radiusX: layer.radiusX, radiusY: layer.radiusY, ...(layer.fill === null ? {} : { fill: layer.fill }), stroke: layer.stroke, strokeWidth: layer.strokeWidth, dash: strokeDash(layer.strokeStyle, layer.strokeWidth) });
       case "line":
-        return new Konva.Line({ ...common, points: layer.points, stroke: layer.stroke, strokeWidth: layer.strokeWidth, tension: layer.tension, lineCap: "round", lineJoin: "round" });
+        return new Konva.Line({ ...common, points: layer.points, stroke: layer.stroke, strokeWidth: layer.strokeWidth, dash: strokeDash(layer.strokeStyle, layer.strokeWidth), tension: layer.tension, lineCap: "round", lineJoin: "round" });
       case "arrow":
-        return new Konva.Arrow({ ...common, points: layer.points, stroke: layer.stroke, fill: layer.stroke, strokeWidth: layer.strokeWidth, pointerLength: layer.pointerLength, pointerWidth: layer.pointerWidth });
+        return new Konva.Arrow({ ...common, points: layer.points, stroke: layer.stroke, fill: layer.stroke, strokeWidth: layer.strokeWidth, dash: strokeDash(layer.strokeStyle, layer.strokeWidth), pointerLength: layer.pointerLength, pointerWidth: layer.pointerWidth, pointerAtBeginning: layer.pointerAtBeginning, pointerAtEnding: layer.pointerAtEnding });
       case "callout": {
         const group = new Konva.Group(common);
         group.add(
-          new Konva.Rect({ width: layer.width, height: layer.height, ...(layer.fill === null ? {} : { fill: layer.fill }), stroke: layer.stroke, strokeWidth: layer.strokeWidth, cornerRadius: 6 }),
+          new Konva.Rect({ width: layer.width, height: layer.height, ...(layer.fill === null ? {} : { fill: layer.fill }), stroke: layer.stroke, strokeWidth: layer.strokeWidth, dash: strokeDash(layer.strokeStyle, layer.strokeWidth), cornerRadius: layer.cornerRadius }),
           new Konva.Text({ text: layer.text, width: layer.width, height: layer.height, padding: 8, fontFamily: layer.fontFamily, fontSize: layer.fontSize, fill: layer.textColor, verticalAlign: "middle", align: "center" }),
+        );
+        return group;
+      }
+      case "step": {
+        const group = new Konva.Group(common);
+        group.add(
+          new Konva.Circle({ radius: layer.radius, ...(layer.fill === null ? {} : { fill: layer.fill }), stroke: layer.stroke, strokeWidth: layer.strokeWidth, dash: strokeDash(layer.strokeStyle, layer.strokeWidth) }),
+          new Konva.Text({ x: -layer.radius, y: -layer.radius, width: layer.radius * 2, height: layer.radius * 2, text: String(layer.number), fontFamily: layer.fontFamily, fontSize: layer.fontSize, fontStyle: "bold", fill: layer.textColor, align: "center", verticalAlign: "middle" }),
         );
         return group;
       }
@@ -533,16 +561,16 @@ export function createAnnotationLayer(): AnnotationLayer {
   function setTool(tool: AnnotateTool): void {
     currentTool = tool;
     if (!stage) return;
-    stage.container().style.cursor = tool === "text" || tool === "callout" ? "text" : "none";
-    cursorCircle?.visible(currentMode === "draw" && tool !== "text" && tool !== "callout");
+    stage.container().style.cursor = tool === "text" || tool === "callout" ? "text" : tool === "step" ? "crosshair" : "none";
+    cursorCircle?.visible(currentMode === "draw" && tool !== "text" && tool !== "callout" && tool !== "step");
   }
 
   function setMode(mode: AnnotationMode): void {
     currentMode = mode;
     if (mode !== "select") clearSnapGuides();
     if (!stage) return;
-    stage.container().style.cursor = mode === "select" ? "default" : mode === "draw" && (currentTool === "text" || currentTool === "callout") ? "text" : mode === "draw" ? "none" : "default";
-    cursorCircle?.visible(mode === "draw" && currentTool !== "text" && currentTool !== "callout");
+    stage.container().style.cursor = mode === "select" ? "default" : mode === "draw" && (currentTool === "text" || currentTool === "callout") ? "text" : mode === "draw" && currentTool === "step" ? "crosshair" : mode === "draw" ? "none" : "default";
+    cursorCircle?.visible(mode === "draw" && currentTool !== "text" && currentTool !== "callout" && currentTool !== "step");
     updateSelectionPresentation();
   }
 

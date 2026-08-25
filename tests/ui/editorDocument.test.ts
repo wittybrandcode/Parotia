@@ -17,11 +17,12 @@ function layers(): EditorLayer[] {
   return [
     { ...common("image", 0), kind: "image", source: "data:image/png;base64,a", width: 20, height: 10 },
     { ...common("text", 1), ...DEFAULT_EDITOR_TEXT_STYLE, kind: "text", text: "مرحبا", fontFamily: "Arial", align: "right", fill: "#fff" },
-    { ...common("rectangle", 2), kind: "rectangle", width: 40, height: 30, cornerRadius: 2, fill: null, stroke: "#f00", strokeWidth: 3 },
-    { ...common("ellipse", 3), kind: "ellipse", radiusX: 20, radiusY: 10, fill: "#000", stroke: "#fff", strokeWidth: 2 },
-    { ...common("line", 4), kind: "line", points: [0, 0, 10, 10], stroke: "#fff", strokeWidth: 2, tension: 0.5 },
-    { ...common("arrow", 5), kind: "arrow", points: [0, 0, 30, 20], stroke: "#fff", strokeWidth: 4, pointerLength: 12, pointerWidth: 8 },
-    { ...common("callout", 6), kind: "callout", text: "Note", width: 100, height: 60, fontFamily: "Arial", fontSize: 16, textColor: "#111", fill: "#fff", stroke: "#000", strokeWidth: 1 },
+    { ...common("rectangle", 2), kind: "rectangle", width: 40, height: 30, cornerRadius: 2, fill: null, stroke: "#f00", strokeWidth: 3, strokeStyle: "solid" },
+    { ...common("ellipse", 3), kind: "ellipse", radiusX: 20, radiusY: 10, fill: "#000", stroke: "#fff", strokeWidth: 2, strokeStyle: "dashed" },
+    { ...common("line", 4), kind: "line", points: [0, 0, 10, 10], stroke: "#fff", strokeWidth: 2, strokeStyle: "dotted", tension: 0.5 },
+    { ...common("arrow", 5), kind: "arrow", points: [0, 0, 30, 20], stroke: "#fff", strokeWidth: 4, strokeStyle: "solid", pointerLength: 12, pointerWidth: 8, pointerAtBeginning: false, pointerAtEnding: true },
+    { ...common("callout", 6), kind: "callout", text: "Note", width: 100, height: 60, cornerRadius: 6, fontFamily: "Arial", fontSize: 16, textColor: "#111", fill: "#fff", stroke: "#000", strokeWidth: 1, strokeStyle: "solid" },
+    { ...common("step", 7), kind: "step", number: 1, radius: 18, fontFamily: "Arial", fontSize: 16, textColor: "#111", fill: "#fff", stroke: "#000", strokeWidth: 2, strokeStyle: "solid" },
   ];
 }
 
@@ -35,15 +36,15 @@ describe("EditorDocument", () => {
     const restored = parseEditorDocument(serializeEditorDocument(document));
     expect(restored).toEqual(document);
     expect(restored.schema).toBe("parotia.editor-document");
-    expect(restored.version).toBe(3);
-    expect(restored.layers.map((layer) => layer.kind)).toEqual(["image", "text", "rectangle", "ellipse", "line", "arrow", "callout"]);
+    expect(restored.version).toBe(4);
+    expect(restored.layers.map((layer) => layer.kind)).toEqual(["image", "text", "rectangle", "ellipse", "line", "arrow", "callout", "step"]);
   });
 
   it("normalizes layer order and returns detached serialized data", () => {
     const document = documentWithLayers();
     document.layers.reverse();
     const restored = parseEditorDocument(document);
-    expect(restored.layers.map((layer) => layer.id)).toEqual(["image", "text", "rectangle", "ellipse", "line", "arrow", "callout"]);
+    expect(restored.layers.map((layer) => layer.id)).toEqual(["image", "text", "rectangle", "ellipse", "line", "arrow", "callout", "step"]);
     restored.layers[0]!.name = "Changed";
     expect(document.layers.find((layer) => layer.id === "image")?.name).toBe("image");
   });
@@ -54,7 +55,7 @@ describe("EditorDocument", () => {
       backgroundDataUrl: "data:image/png;base64,legacy", createdAt: "2026-01-01", updatedAt: "2026-01-02", layers: [],
     });
     expect(migrated).toMatchObject({
-      version: 3, id: "legacy", canvas: { width: 320, height: 200 },
+      version: 4, id: "legacy", canvas: { width: 320, height: 200 },
       background: { source: "data:image/png;base64,legacy", width: 320, height: 200 },
     });
   });
@@ -66,7 +67,7 @@ describe("EditorDocument", () => {
       ...createLayerBase("group", 0), kind: "group", name: "Two shapes", children: migrated.layers.slice(0, 2).map((layer, order) => ({ ...layer, order })),
     };
     const restored = parseEditorDocument({ ...migrated, layers: [grouped] });
-    expect(restored.version).toBe(3);
+    expect(restored.version).toBe(4);
     expect(restored.layers[0]).toMatchObject({ kind: "group", name: "Two shapes" });
     expect(restored.layers[0]?.kind === "group" && restored.layers[0].children.map((layer) => layer.id)).toEqual(["image", "text"]);
   });
@@ -80,12 +81,31 @@ describe("EditorDocument", () => {
       shadowBlur: undefined, shadowOffsetX: undefined, shadowOffsetY: undefined,
     };
     const migrated = parseEditorDocument({ ...current, version: 2, layers: [legacyText] });
-    expect(migrated.version).toBe(3);
+    expect(migrated.version).toBe(4);
     expect(migrated.layers[0]).toMatchObject({
       kind: "text", fontFallback: "sans-serif", direction: "auto", verticalAlign: "top",
       lineHeight: 1.2, letterSpacing: 0, padding: 0, backgroundColor: null,
       borderColor: null, borderWidth: 0, shadowColor: null, shadowBlur: 0,
     });
+  });
+
+  it("migrates version-three shape styles, arrow heads and callout corners", () => {
+    const current = documentWithLayers();
+    const legacyLayers = current.layers.filter((entry) => ["rectangle", "arrow", "callout"].includes(entry.kind)).map((entry) => {
+      const legacy = { ...entry } as Record<string, unknown>;
+      delete legacy.strokeStyle;
+      delete legacy.pointerAtBeginning;
+      delete legacy.pointerAtEnding;
+      if (entry.kind === "callout") delete legacy.cornerRadius;
+      return legacy;
+    });
+    const migrated = parseEditorDocument({ ...current, version: 3, layers: legacyLayers });
+    expect(migrated.version).toBe(4);
+    expect(migrated.layers).toEqual([
+      expect.objectContaining({ kind: "rectangle", strokeStyle: "solid" }),
+      expect.objectContaining({ kind: "arrow", strokeStyle: "solid", pointerAtBeginning: false, pointerAtEnding: true }),
+      expect.objectContaining({ kind: "callout", strokeStyle: "solid", cornerRadius: 6 }),
+    ]);
   });
 
   it("rejects duplicate identifiers nested inside groups", () => {
@@ -106,6 +126,8 @@ describe("EditorDocument", () => {
     ["duplicate identifiers", { ...documentWithLayers(), layers: [layers()[0], layers()[0]] }],
     ["invalid opacity", { ...documentWithLayers(), layers: [{ ...layers()[0], opacity: 2 }] }],
     ["invalid points", { ...documentWithLayers(), layers: [{ ...layers()[4], points: [0, 1, 2] }] }],
+    ["invalid corner radius", { ...documentWithLayers(), layers: [{ ...layers()[2], cornerRadius: -1 }] }],
+    ["invalid step number", { ...documentWithLayers(), layers: [{ ...layers()[7], number: 1.5 }] }],
   ])("rejects %s", (_name, value) => {
     expect(() => parseEditorDocument(value)).toThrow();
   });

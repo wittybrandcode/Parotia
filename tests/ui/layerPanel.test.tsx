@@ -6,13 +6,26 @@ import { LayerPanel } from "@ui/src/editor/LayerPanel";
 const rectangle: EditorLayer = {
   id: "rect-id", name: "Rectangle 1", order: 0, kind: "rectangle", visible: true, locked: false, opacity: 1,
   transform: { x: 10, y: 20, scaleX: 1, scaleY: 1, rotation: 0 }, width: 80, height: 60,
-  cornerRadius: 0, fill: null, stroke: "#c1e899", strokeWidth: 3,
+  cornerRadius: 0, fill: null, stroke: "#c1e899", strokeWidth: 3, strokeStyle: "solid",
 };
 
 const textLayer: EditorLayer = {
   id: "text-id", name: "Text 2", order: 1, kind: "text", visible: true, locked: false, opacity: 0.8,
   transform: { x: 30, y: 40, scaleX: 1, scaleY: 1, rotation: 0 }, ...DEFAULT_EDITOR_TEXT_STYLE, text: "Editable text",
   fontFamily: "Arial", fontSize: 24, fontWeight: 400, fontStyle: "normal", align: "left", fill: "#ffffff",
+};
+
+const arrowLayer: EditorLayer = {
+  id: "arrow-id", name: "Arrow 3", order: 2, kind: "arrow", visible: true, locked: false, opacity: 1,
+  transform: { x: 10, y: 10, scaleX: 1, scaleY: 1, rotation: 0 }, points: [0, 0, 80, 40],
+  stroke: "#ffffff", strokeWidth: 3, strokeStyle: "solid", pointerLength: 12, pointerWidth: 10,
+  pointerAtBeginning: false, pointerAtEnding: true,
+};
+
+const stepLayer: EditorLayer = {
+  id: "step-id", name: "Step 1", order: 3, kind: "step", visible: true, locked: false, opacity: 1,
+  transform: { x: 50, y: 50, scaleX: 1, scaleY: 1, rotation: 0 }, number: 1, radius: 18,
+  fill: "#c1e899", stroke: "#111111", strokeWidth: 2, strokeStyle: "solid", fontFamily: "Arial", fontSize: 16, textColor: "#111111",
 };
 
 function documentWithLayers(): EditorDocument {
@@ -128,6 +141,38 @@ describe("LayerPanel", () => {
     } finally {
       delete (window as Window & { queryLocalFonts?: unknown }).queryLocalFonts;
     }
+  });
+
+  it("edits advanced shape, arrow and step properties and exposes the style clipboard", () => {
+    const onUpdate = vi.fn();
+    const onCopyStyle = vi.fn();
+    const onPasteStyle = vi.fn();
+    const document = { ...documentWithLayers(), layers: [rectangle, textLayer, arrowLayer, stepLayer] };
+    const props = {
+      document, disabled: false, onUpdate, onCopyStyle, onPasteStyle, canPasteStyle: true,
+      onSelect: vi.fn(), onDelete: vi.fn(), onDuplicate: vi.fn(), onMove: vi.fn(), onReorder: vi.fn(),
+      onGroup: vi.fn(), onUngroup: vi.fn(), onAlign: vi.fn(), onDistribute: vi.fn(), onCopy: vi.fn(), onPaste: vi.fn(), onAddImage: vi.fn(),
+    };
+    const { rerender } = render(<LayerPanel {...props} selectedLayerIds={["arrow-id"]} />);
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Layer stroke style" }), { target: { value: "dashed" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Arrow heads" }), { target: { value: "both" } });
+    fireEvent.click(screen.getByRole("button", { name: "Reverse direction" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Shape preset" }), { target: { value: "alert" } });
+    fireEvent.click(screen.getByRole("button", { name: "Copy layer style" }));
+    fireEvent.click(screen.getByRole("button", { name: "Paste layer style" }));
+
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ strokeStyle: "dashed" }), "Change Arrow 3 stroke style");
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ pointerAtBeginning: true, pointerAtEnding: true }), "Change Arrow 3 heads");
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ points: [80, 40, 0, 0] }), "Reverse Arrow 3");
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ stroke: "#1a1a1a", strokeStyle: "dashed" }), "Apply alert shape preset");
+    expect(onCopyStyle).toHaveBeenCalledWith("arrow-id");
+    expect(onPasteStyle).toHaveBeenCalledWith(["arrow-id"]);
+
+    rerender(<LayerPanel {...props} selectedLayerIds={["step-id"]} />);
+    fireEvent.change(screen.getByLabelText("Step number"), { target: { value: "7" } });
+    fireEvent.blur(screen.getByLabelText("Step number"));
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ number: 7, name: "Step 7" }), "Renumber Step 1");
   });
 
   it("reorders layers once on drop and presents the insertion edge", () => {

@@ -153,6 +153,7 @@ describe("image editor", () => {
     expect(screen.getByTitle("Freehand")).toBeVisible();
     expect(screen.getByTitle("Text")).toBeVisible();
     expect(screen.getByTitle("Callout")).toBeVisible();
+    expect(screen.getByTitle("Step marker")).toBeVisible();
     expect(screen.getByLabelText("Drawing color")).toBeVisible();
     expect(screen.getByLabelText("Drawing width")).toBeVisible();
     expect(screen.getByLabelText("Text size")).toBeVisible();

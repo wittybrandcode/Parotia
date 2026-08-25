@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  ArrowDown, ArrowRight, ArrowUp, Circle, Copy, Eye, EyeOff, GripVertical, ImagePlus, Layers3, Lock, MessageSquare,
-  Minus, Square, Trash2, Type, Unlock,
+  ArrowDown, ArrowRight, ArrowUp, Circle, ClipboardPaste, Copy, Eye, EyeOff, GripVertical, Hash, ImagePlus, Layers3, Lock, MessageSquare,
+  Minus, Paintbrush, RotateCcw, Square, Trash2, Type, Unlock,
 } from "lucide-react";
-import type { EditorDocument, EditorLayer, EditorTextLayer } from "./EditorDocument";
+import type { EditorArrowLayer, EditorDocument, EditorLayer, EditorTextLayer } from "./EditorDocument";
 import type { LayerAlignment, LayerDistribution } from "./EditorLayerOperations";
 import { isSafeFontFamily, queryLocalFontFamilies, SAFE_FONT_FAMILIES, supportsLocalFontAccess } from "./EditorFonts";
 import { applyTextPreset, EDITOR_TEXT_PRESETS, type EditorTextPreset } from "./EditorTextPresets";
+import { applyShapePreset, EDITOR_SHAPE_PRESETS, isShapeLayer, isStylableLayer, reverseArrow, type EditorShapePreset } from "./EditorShapeStyles";
 
 interface LayerPanelProps {
   document: EditorDocument;
@@ -24,6 +25,9 @@ interface LayerPanelProps {
   onDistribute(direction: LayerDistribution): void;
   onCopy(): void;
   onPaste(): void;
+  onCopyStyle?(layerId: string): void;
+  onPasteStyle?(layerIds: string[]): void;
+  canPasteStyle?: boolean;
   onAddImage(): void;
 }
 
@@ -57,6 +61,7 @@ function layerIcon(kind: EditorLayer["kind"]) {
     case "line": return <Minus size={14} />;
     case "arrow": return <ArrowRight size={14} />;
     case "callout": return <MessageSquare size={14} />;
+    case "step": return <Hash size={14} />;
     case "group": return <Layers3 size={14} />;
   }
 }
@@ -79,7 +84,7 @@ function CommitField({ value, type = "text", step, onCommit, ariaLabel }: {
   }} />;
 }
 
-export function LayerPanel({ document, selectedLayerIds, disabled, onSelect, onUpdate, onDelete, onDuplicate, onMove, onReorder, onGroup, onUngroup, onAlign, onDistribute, onCopy, onPaste, onAddImage }: LayerPanelProps) {
+export function LayerPanel({ document, selectedLayerIds, disabled, onSelect, onUpdate, onDelete, onDuplicate, onMove, onReorder, onGroup, onUngroup, onAlign, onDistribute, onCopy, onPaste, onCopyStyle = () => undefined, onPasteStyle = () => undefined, canPasteStyle = false, onAddImage }: LayerPanelProps) {
   const ordered = [...document.layers].sort((a, b) => b.order - a.order);
   const selectedSet = new Set(selectedLayerIds);
   const selected = selectedLayerIds.length === 1 ? document.layers.find((layer) => layer.id === selectedLayerIds[0]) ?? null : null;
@@ -140,6 +145,8 @@ export function LayerPanel({ document, selectedLayerIds, disabled, onSelect, onU
       title="Ungroup selected groups (Ctrl+Shift+G)">Ungroup</button>
       <button onClick={onCopy} disabled={disabled || !selectedLayerIds.length} title="Copy selected layers (Ctrl+C)"><Copy size={13} /></button>
       <button onClick={onPaste} disabled={disabled} title="Paste layers (Ctrl+V)">Paste</button>
+      <button onClick={() => selected && onCopyStyle(selected.id)} disabled={disabled || !selected || !isStylableLayer(selected)} title="Copy layer style (Ctrl+Alt+C)" aria-label="Copy layer style"><Paintbrush size={13} /></button>
+      <button onClick={() => onPasteStyle(selectedLayerIds)} disabled={disabled || !canPasteStyle || !selectedLayerIds.length} title="Paste layer style (Ctrl+Alt+V)" aria-label="Paste layer style"><ClipboardPaste size={13} /></button>
       <button onClick={() => onDuplicate(selectedLayerIds)} disabled={disabled || !selectedLayerIds.length} title="Duplicate selected layers (Ctrl+D)">Duplicate</button>
       <button className="nc-layer-danger" onClick={() => onDelete(selectedLayerIds)} disabled={disabled || !selectedLayerIds.length} title="Delete selected layers"><Trash2 size={13} /></button>
     </div>
@@ -301,21 +308,67 @@ export function LayerPanel({ document, selectedLayerIds, disabled, onSelect, onU
         }} /></label>
       </>}
 
-      {(selected.kind === "rectangle" || selected.kind === "ellipse") && <>
+      {isShapeLayer(selected) && <>
+        <div className="nc-layer-section-title">Shape appearance</div>
+        <label>Preset<select aria-label="Shape preset" defaultValue="" onChange={(event) => {
+          if (!event.target.value) return;
+          update(applyShapePreset(selected, event.target.value as EditorShapePreset["id"]), `Apply ${event.target.value} shape preset`);
+          event.currentTarget.value = "";
+        }}><option value="">Custom…</option>{EDITOR_SHAPE_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select></label>
+      </>}
+
+      {(selected.kind === "rectangle" || selected.kind === "ellipse" || selected.kind === "callout" || selected.kind === "step") && <>
         <label className="nc-layer-check"><input aria-label="Shape fill enabled" type="checkbox" checked={selected.fill !== null} onChange={(event) => update({ ...selected, fill: event.target.checked ? safeColor(selected.stroke) : null }, `Change ${selected.name} fill`)} /> Fill shape</label>
         {selected.fill !== null && <label className="nc-layer-color-field">Fill color<input aria-label="Shape fill color" type="color" value={safeColor(selected.fill)} onChange={(event) => update({ ...selected, fill: event.target.value }, `Change ${selected.name} fill`)} /></label>}
       </>}
 
-      {(selected.kind === "rectangle" || selected.kind === "ellipse" || selected.kind === "line" || selected.kind === "arrow" || selected.kind === "callout") && <>
+      {isShapeLayer(selected) && <>
         <label className="nc-layer-color-field">Stroke color<input aria-label="Layer stroke color" type="color" value={safeColor(selected.stroke)} onChange={(event) => update({ ...selected, stroke: event.target.value }, `Change ${selected.name} stroke`)} /></label>
         <label>Stroke width<CommitField ariaLabel="Layer stroke width" type="number" step={1} value={selected.strokeWidth} onCommit={(value) => {
           const width = Number(value); if (Number.isFinite(width) && width > 0) update({ ...selected, strokeWidth: width }, `Change ${selected.name} stroke width`);
         }} /></label>
+        <label>Stroke style<select aria-label="Layer stroke style" value={selected.strokeStyle} onChange={(event) => update({ ...selected, strokeStyle: event.target.value as typeof selected.strokeStyle }, `Change ${selected.name} stroke style`)}><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></select></label>
+      </>}
+
+      {(selected.kind === "rectangle" || selected.kind === "callout") && <label>Corner radius<CommitField ariaLabel="Shape corner radius" type="number" step={1} value={selected.cornerRadius} onCommit={(value) => updateShapeNonNegativeNumber(selected, "cornerRadius", value, update)} /></label>}
+
+      {selected.kind === "rectangle" && <div className="nc-layer-property-grid">
+        <label>Width<CommitField ariaLabel="Shape width" type="number" step={1} value={selected.width} onCommit={(value) => updateShapePositiveNumber(selected, "width", value, update)} /></label>
+        <label>Height<CommitField ariaLabel="Shape height" type="number" step={1} value={selected.height} onCommit={(value) => updateShapePositiveNumber(selected, "height", value, update)} /></label>
+      </div>}
+
+      {selected.kind === "ellipse" && <div className="nc-layer-property-grid">
+        <label>Radius X<CommitField ariaLabel="Shape radius X" type="number" step={1} value={selected.radiusX} onCommit={(value) => updateShapePositiveNumber(selected, "radiusX", value, update)} /></label>
+        <label>Radius Y<CommitField ariaLabel="Shape radius Y" type="number" step={1} value={selected.radiusY} onCommit={(value) => updateShapePositiveNumber(selected, "radiusY", value, update)} /></label>
+      </div>}
+
+      {selected.kind === "arrow" && <>
+        <div className="nc-layer-section-title">Arrow heads</div>
+        <label>Heads<select aria-label="Arrow heads" value={arrowHeadMode(selected)} onChange={(event) => update(setArrowHeadMode(selected, event.target.value), `Change ${selected.name} heads`)}><option value="end">End</option><option value="start">Start</option><option value="both">Both</option><option value="none">None</option></select></label>
+        <button className="nc-layer-wide-action" onClick={() => update(reverseArrow(selected), `Reverse ${selected.name}`)}><RotateCcw size={13} /> Reverse direction</button>
+        <div className="nc-layer-property-grid">
+          <label>Head length<CommitField ariaLabel="Arrow head length" type="number" step={1} value={selected.pointerLength} onCommit={(value) => updateShapePositiveNumber(selected, "pointerLength", value, update)} /></label>
+          <label>Head width<CommitField ariaLabel="Arrow head width" type="number" step={1} value={selected.pointerWidth} onCommit={(value) => updateShapePositiveNumber(selected, "pointerWidth", value, update)} /></label>
+        </div>
       </>}
 
       {selected.kind === "callout" && <>
-        <label className="nc-layer-color-field">Callout fill<input aria-label="Callout fill color" type="color" value={safeColor(selected.fill, "#c1e899")} onChange={(event) => update({ ...selected, fill: event.target.value }, `Change ${selected.name} fill`)} /></label>
+        <div className="nc-layer-property-grid">
+          <label>Width<CommitField ariaLabel="Callout width" type="number" step={1} value={selected.width} onCommit={(value) => updateShapePositiveNumber(selected, "width", value, update)} /></label>
+          <label>Height<CommitField ariaLabel="Callout height" type="number" step={1} value={selected.height} onCommit={(value) => updateShapePositiveNumber(selected, "height", value, update)} /></label>
+        </div>
         <label className="nc-layer-color-field">Callout text<input aria-label="Callout text color" type="color" value={safeColor(selected.textColor)} onChange={(event) => update({ ...selected, textColor: event.target.value }, `Change ${selected.name} text color`)} /></label>
+      </>}
+
+      {selected.kind === "step" && <>
+        <div className="nc-layer-section-title">Step marker</div>
+        <div className="nc-layer-property-grid">
+          <label>Number<CommitField ariaLabel="Step number" type="number" step={1} value={selected.number} onCommit={(value) => updateStepNumber(selected, value, update)} /></label>
+          <label>Radius<CommitField ariaLabel="Step radius" type="number" step={1} value={selected.radius} onCommit={(value) => updateShapePositiveNumber(selected, "radius", value, update)} /></label>
+          <label>Font size<CommitField ariaLabel="Step font size" type="number" step={1} value={selected.fontSize} onCommit={(value) => updateShapePositiveNumber(selected, "fontSize", value, update)} /></label>
+        </div>
+        <label>Font<select aria-label="Step font" value={selected.fontFamily} onChange={(event) => update({ ...selected, fontFamily: event.target.value }, `Change ${selected.name} font`)}>{SAFE_FONT_FAMILIES.map((font) => <option key={font} value={font}>{font}</option>)}</select></label>
+        <label className="nc-layer-color-field">Number color<input aria-label="Step text color" type="color" value={safeColor(selected.textColor)} onChange={(event) => update({ ...selected, textColor: event.target.value }, `Change ${selected.name} text color`)} /></label>
       </>}
     </div> : <div className="nc-layer-no-selection">{selectedLayerIds.length > 1 ? `${selectedLayerIds.length} layers selected. Use the arrange controls or drag the selection on canvas.` : "Select a layer to edit its properties."}</div>}
   </aside>;
@@ -358,4 +411,30 @@ function updateOptionalTextDimension(layer: EditorTextLayer, key: "width" | "hei
   }
   const value = Number(rawValue);
   if (Number.isFinite(value) && value > 0) update({ ...layer, [key]: value }, `Change ${layer.name} ${key}`);
+}
+
+function updateShapePositiveNumber<T extends EditorLayer, K extends keyof T>(layer: T, key: K, rawValue: string, update: (layer: EditorLayer, label: string) => void): void {
+  const value = Number(rawValue);
+  if (Number.isFinite(value) && value > 0) update({ ...layer, [key]: value } as EditorLayer, `Change ${layer.name} ${String(key)}`);
+}
+
+function updateShapeNonNegativeNumber<T extends EditorLayer, K extends keyof T>(layer: T, key: K, rawValue: string, update: (layer: EditorLayer, label: string) => void): void {
+  const value = Number(rawValue);
+  if (Number.isFinite(value) && value >= 0) update({ ...layer, [key]: value } as EditorLayer, `Change ${layer.name} ${String(key)}`);
+}
+
+function updateStepNumber(layer: Extract<EditorLayer, { kind: "step" }>, rawValue: string, update: (layer: EditorLayer, label: string) => void): void {
+  const value = Number(rawValue);
+  if (Number.isInteger(value) && value > 0) update({ ...layer, number: value, name: `Step ${value}` }, `Renumber ${layer.name}`);
+}
+
+function arrowHeadMode(layer: EditorArrowLayer): "start" | "end" | "both" | "none" {
+  if (layer.pointerAtBeginning && layer.pointerAtEnding) return "both";
+  if (layer.pointerAtBeginning) return "start";
+  if (layer.pointerAtEnding) return "end";
+  return "none";
+}
+
+function setArrowHeadMode(layer: EditorArrowLayer, mode: string): EditorArrowLayer {
+  return { ...layer, pointerAtBeginning: mode === "start" || mode === "both", pointerAtEnding: mode === "end" || mode === "both" };
 }

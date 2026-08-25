@@ -681,6 +681,23 @@ html, body, #root {
   color: #c1e899;
 }
 
+.nc-layer-wide-action {
+  display: flex;
+  width: calc(100% - 24px);
+  min-height: 29px;
+  gap: 6px;
+  margin: 8px 12px 0;
+  border: 1px solid #333 !important;
+  background: #171717 !important;
+  color: #aaa !important;
+  font-size: 10px;
+}
+
+.nc-layer-wide-action:hover:not(:disabled) {
+  border-color: #597544 !important;
+  color: #c1e899 !important;
+}
+
 .nc-layer-property-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

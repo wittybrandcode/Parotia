@@ -15,7 +15,7 @@ import {
 function rectangle(id: string, order: number, width = 20): EditorLayer {
   return {
     id, name: id, order, kind: "rectangle", visible: true, locked: false, opacity: 1,
-    transform: identityTransform(), width, height: 10, cornerRadius: 0, fill: null, stroke: "#fff", strokeWidth: 2,
+    transform: identityTransform(), width, height: 10, cornerRadius: 0, fill: null, stroke: "#fff", strokeWidth: 2, strokeStyle: "solid",
   };
 }
 

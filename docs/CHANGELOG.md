@@ -6,6 +6,14 @@ All notable changes to Parotia are documented here.
 
 ## [Unreleased]
 
+### Professional layers, typography and shapes
+
+- Added a non-destructive layer workspace with multi-selection, grouping, alignment, distribution, drag ordering, locking, visibility, clipboard workflows, keyboard controls and smart snapping guides.
+- Added professional editable typography: multiline RTL/LTR text, explicit font fallback, local-font discovery after user permission, text boxes, spacing, backgrounds, borders, shadows and reusable presets.
+- Added editable shape geometry and solid/dashed/dotted strokes, configurable arrow heads and direction reversal, automatically continued numbered step markers, type-safe style copy/paste and four editorial shape presets.
+- Advanced the editor document to schema v4 with strict validation and recursive migration from v0/v1/v2/v3; copied legacy layers are migrated before insertion.
+- Expanded the real Chromium workflow to cover Arabic text, text presets, numbered steps, style transfer, advanced arrows and final native-resolution save.
+
 ### Non-destructive editor document foundation
 
 - Replaced PNG-per-gesture history with a versioned `EditorDocument` and reversible `EditorDocumentHistory` command timeline bounded by both entry count and retained bytes.
