@@ -1,20 +1,27 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowDown, ArrowRight, ArrowUp, Circle, Copy, Eye, EyeOff, GripVertical, ImagePlus, Layers3, Lock, MessageSquare,
   Minus, Square, Trash2, Type, Unlock,
 } from "lucide-react";
 import type { EditorDocument, EditorLayer } from "./EditorDocument";
+import type { LayerAlignment, LayerDistribution } from "./EditorLayerOperations";
 
 interface LayerPanelProps {
   document: EditorDocument;
-  selectedLayerId: string | null;
+  selectedLayerIds: string[];
   disabled: boolean;
-  onSelect(layerId: string): void;
+  onSelect(layerIds: string[]): void;
   onUpdate(layer: EditorLayer, label: string): void;
-  onDelete(layerId: string): void;
-  onDuplicate(layerId: string): void;
+  onDelete(layerIds: string[]): void;
+  onDuplicate(layerIds: string[]): void;
   onMove(layerId: string, direction: -1 | 1): void;
   onReorder(layerIds: string[]): void;
+  onGroup(): void;
+  onUngroup(): void;
+  onAlign(alignment: LayerAlignment): void;
+  onDistribute(direction: LayerDistribution): void;
+  onCopy(): void;
+  onPaste(): void;
   onAddImage(): void;
 }
 
@@ -40,6 +47,7 @@ function layerIcon(kind: EditorLayer["kind"]) {
     case "line": return <Minus size={14} />;
     case "arrow": return <ArrowRight size={14} />;
     case "callout": return <MessageSquare size={14} />;
+    case "group": return <Layers3 size={14} />;
   }
 }
 
@@ -61,12 +69,24 @@ function CommitField({ value, type = "text", step, onCommit, ariaLabel }: {
   }} />;
 }
 
-export function LayerPanel({ document, selectedLayerId, disabled, onSelect, onUpdate, onDelete, onDuplicate, onMove, onReorder, onAddImage }: LayerPanelProps) {
+export function LayerPanel({ document, selectedLayerIds, disabled, onSelect, onUpdate, onDelete, onDuplicate, onMove, onReorder, onGroup, onUngroup, onAlign, onDistribute, onCopy, onPaste, onAddImage }: LayerPanelProps) {
   const ordered = [...document.layers].sort((a, b) => b.order - a.order);
-  const selected = document.layers.find((layer) => layer.id === selectedLayerId) ?? null;
+  const selectedSet = new Set(selectedLayerIds);
+  const selected = selectedLayerIds.length === 1 ? document.layers.find((layer) => layer.id === selectedLayerIds[0]) ?? null : null;
+  const selectionAnchor = useRef<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; edge: DropEdge } | null>(null);
   const update = (next: EditorLayer, label: string): void => onUpdate(next, label);
+  const selectRow = (layerId: string, shiftKey = false, toggle = false): void => {
+    if (shiftKey && selectionAnchor.current) {
+      const anchor = ordered.findIndex((layer) => layer.id === selectionAnchor.current);
+      const current = ordered.findIndex((layer) => layer.id === layerId);
+      if (anchor >= 0 && current >= 0) onSelect(ordered.slice(Math.min(anchor, current), Math.max(anchor, current) + 1).map((layer) => layer.id));
+      return;
+    }
+    selectionAnchor.current = layerId;
+    onSelect(toggle ? (selectedSet.has(layerId) ? selectedLayerIds.filter((id) => id !== layerId) : [...selectedLayerIds, layerId]) : [layerId]);
+  };
 
   const finishDrag = (): void => {
     setDraggingId(null);
@@ -89,22 +109,46 @@ export function LayerPanel({ document, selectedLayerId, disabled, onSelect, onUp
       <button onClick={onAddImage} disabled={disabled} title="Add image layer" aria-label="Add image layer"><ImagePlus size={15} /></button>
     </div>
 
-    <div className="nc-layer-list" role="listbox" aria-label="Document layers">
+    <div className="nc-layer-actions" role="toolbar" aria-label="Layer actions">
+      <button onClick={onGroup} disabled={disabled || selectedLayerIds.length < 2 || selectedLayerIds.some((id) => document.layers.find((layer) => layer.id === id)?.locked)} title="Group selected layers (Ctrl+G)">Group</button>
+      <button onClick={onUngroup} disabled={disabled
+        || !selectedLayerIds.some((id) => document.layers.find((layer) => layer.id === id)?.kind === "group")
+        || selectedLayerIds.some((id) => { const layer = document.layers.find((entry) => entry.id === id); return layer?.kind === "group" && layer.locked; })}
+      title="Ungroup selected groups (Ctrl+Shift+G)">Ungroup</button>
+      <button onClick={onCopy} disabled={disabled || !selectedLayerIds.length} title="Copy selected layers (Ctrl+C)"><Copy size={13} /></button>
+      <button onClick={onPaste} disabled={disabled} title="Paste layers (Ctrl+V)">Paste</button>
+      <button onClick={() => onDuplicate(selectedLayerIds)} disabled={disabled || !selectedLayerIds.length} title="Duplicate selected layers (Ctrl+D)">Duplicate</button>
+      <button className="nc-layer-danger" onClick={() => onDelete(selectedLayerIds)} disabled={disabled || !selectedLayerIds.length} title="Delete selected layers"><Trash2 size={13} /></button>
+    </div>
+
+    {selectedLayerIds.length >= 2 && <div className="nc-layer-arrange" role="toolbar" aria-label="Align and distribute selected layers">
+      <span>Align</span>
+      <button onClick={() => onAlign("left")} title="Align left" aria-label="Align left">L</button>
+      <button onClick={() => onAlign("horizontal-center")} title="Align horizontal centers" aria-label="Align horizontal centers">↔</button>
+      <button onClick={() => onAlign("right")} title="Align right" aria-label="Align right">R</button>
+      <button onClick={() => onAlign("top")} title="Align top" aria-label="Align top">T</button>
+      <button onClick={() => onAlign("vertical-center")} title="Align vertical centers" aria-label="Align vertical centers">↕</button>
+      <button onClick={() => onAlign("bottom")} title="Align bottom" aria-label="Align bottom">B</button>
+      <button onClick={() => onDistribute("horizontal")} disabled={selectedLayerIds.length < 3} title="Distribute horizontally" aria-label="Distribute horizontally">⇆</button>
+      <button onClick={() => onDistribute("vertical")} disabled={selectedLayerIds.length < 3} title="Distribute vertically" aria-label="Distribute vertically">⇅</button>
+    </div>}
+
+    <div className="nc-layer-list" role="listbox" aria-label="Document layers" aria-multiselectable="true">
       {ordered.length === 0 && <div className="nc-layer-empty">Draw a shape, add text, or import an image to create the first editable layer.</div>}
       {ordered.map((layer) => <div
         key={layer.id}
-        className={`nc-layer-row ${layer.id === selectedLayerId ? "nc-layer-row-selected" : ""} ${!layer.visible ? "nc-layer-row-hidden" : ""} ${draggingId === layer.id ? "nc-layer-row-dragging" : ""} ${dropTarget?.id === layer.id ? `nc-layer-drop-${dropTarget.edge}` : ""}`}
+        className={`nc-layer-row ${selectedSet.has(layer.id) ? "nc-layer-row-selected" : ""} ${!layer.visible ? "nc-layer-row-hidden" : ""} ${draggingId === layer.id ? "nc-layer-row-dragging" : ""} ${dropTarget?.id === layer.id ? `nc-layer-drop-${dropTarget.edge}` : ""}`}
         role="option"
-        aria-selected={layer.id === selectedLayerId}
+        aria-selected={selectedSet.has(layer.id)}
         aria-grabbed={draggingId === layer.id}
         aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
         tabIndex={0}
         draggable={!disabled}
-        onClick={() => onSelect(layer.id)}
+        onClick={(event) => selectRow(layer.id, event.shiftKey, event.ctrlKey || event.metaKey)}
         onKeyDown={(event) => {
           if (event.altKey && event.key === "ArrowUp") { event.preventDefault(); onMove(layer.id, 1); }
           else if (event.altKey && event.key === "ArrowDown") { event.preventDefault(); onMove(layer.id, -1); }
-          else if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(layer.id); }
+          else if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectRow(layer.id, event.shiftKey, event.ctrlKey || event.metaKey); }
         }}
         onDragStart={(event) => {
           if (disabled || (event.target as HTMLElement).closest("button")) { event.preventDefault(); return; }
@@ -112,7 +156,7 @@ export function LayerPanel({ document, selectedLayerId, disabled, onSelect, onUp
           event.dataTransfer.setData("text/plain", layer.id);
           setDraggingId(layer.id);
           setDropTarget(null);
-          onSelect(layer.id);
+          if (!selectedSet.has(layer.id)) selectRow(layer.id);
         }}
         onDragOver={(event) => {
           const sourceId = draggingId || event.dataTransfer.getData("text/plain");
@@ -144,8 +188,8 @@ export function LayerPanel({ document, selectedLayerId, disabled, onSelect, onUp
         <div>
           <button onClick={() => onMove(selected.id, 1)} disabled={disabled || selected.order >= document.layers.length - 1} title="Move layer up" aria-label="Move layer up"><ArrowUp size={13} /></button>
           <button onClick={() => onMove(selected.id, -1)} disabled={disabled || selected.order <= 0} title="Move layer down" aria-label="Move layer down"><ArrowDown size={13} /></button>
-          <button onClick={() => onDuplicate(selected.id)} disabled={disabled} title="Duplicate layer" aria-label="Duplicate layer"><Copy size={13} /></button>
-          <button className="nc-layer-danger" onClick={() => onDelete(selected.id)} disabled={disabled} title="Delete layer" aria-label="Delete layer"><Trash2 size={13} /></button>
+          <button onClick={() => onDuplicate([selected.id])} disabled={disabled} title="Duplicate layer" aria-label="Duplicate layer"><Copy size={13} /></button>
+          <button className="nc-layer-danger" onClick={() => onDelete([selected.id])} disabled={disabled} title="Delete layer" aria-label="Delete layer"><Trash2 size={13} /></button>
         </div>
       </div>
 
@@ -195,12 +239,15 @@ export function LayerPanel({ document, selectedLayerId, disabled, onSelect, onUp
         <label className="nc-layer-color-field">Callout fill<input aria-label="Callout fill color" type="color" value={safeColor(selected.fill, "#c1e899")} onChange={(event) => update({ ...selected, fill: event.target.value }, `Change ${selected.name} fill`)} /></label>
         <label className="nc-layer-color-field">Callout text<input aria-label="Callout text color" type="color" value={safeColor(selected.textColor)} onChange={(event) => update({ ...selected, textColor: event.target.value }, `Change ${selected.name} text color`)} /></label>
       </>}
-    </div> : <div className="nc-layer-no-selection">Select a layer to edit its properties.</div>}
+    </div> : <div className="nc-layer-no-selection">{selectedLayerIds.length > 1 ? `${selectedLayerIds.length} layers selected. Use the arrange controls or drag the selection on canvas.` : "Select a layer to edit its properties."}</div>}
   </aside>;
 }
 
 function updateTransform(layer: EditorLayer, key: keyof EditorLayer["transform"], rawValue: string, update: (layer: EditorLayer, label: string) => void): void {
   const value = Number(rawValue);
   if (!Number.isFinite(value) || ((key === "scaleX" || key === "scaleY") && value === 0)) return;
-  update({ ...layer, transform: { ...layer.transform, [key]: value } }, `Transform ${layer.name}`);
+  const transform = layer.kind === "group" && (key === "scaleX" || key === "scaleY")
+    ? { ...layer.transform, scaleX: value, scaleY: value }
+    : { ...layer.transform, [key]: value };
+  update({ ...layer, transform }, `Transform ${layer.name}`);
 }

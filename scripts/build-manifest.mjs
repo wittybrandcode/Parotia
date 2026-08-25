@@ -39,7 +39,10 @@ const manifest = {
   // `unlimitedStorage` is needed because full-page captures at 2x DPR can
   // exceed the default 5 MB chrome.storage.local quota while staging data
   // between the content script and the service worker.
-  permissions: ["activeTab", "scripting", "storage", "tabs", "unlimitedStorage", "downloads"],
+  // Clipboard permissions support explicit Copy/Paste actions in the editor:
+  // final PNG output and versioned editable-layer payloads. No background
+  // clipboard reads occur; every read is initiated by the user in the editor.
+  permissions: ["activeTab", "scripting", "storage", "tabs", "unlimitedStorage", "downloads", "clipboardRead", "clipboardWrite"],
   optional_permissions: [],
   content_scripts: [],
   content_security_policy: {

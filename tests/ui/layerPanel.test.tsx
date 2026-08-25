@@ -30,8 +30,9 @@ describe("LayerPanel", () => {
     const onMove = vi.fn();
     const onReorder = vi.fn();
     const onAddImage = vi.fn();
-    render(<LayerPanel document={documentWithLayers()} selectedLayerId="rect-id" disabled={false}
-      onSelect={onSelect} onUpdate={onUpdate} onDelete={onDelete} onDuplicate={onDuplicate} onMove={onMove} onReorder={onReorder} onAddImage={onAddImage} />);
+    render(<LayerPanel document={documentWithLayers()} selectedLayerIds={["rect-id"]} disabled={false}
+      onSelect={onSelect} onUpdate={onUpdate} onDelete={onDelete} onDuplicate={onDuplicate} onMove={onMove} onReorder={onReorder}
+      onGroup={vi.fn()} onUngroup={vi.fn()} onAlign={vi.fn()} onDistribute={vi.fn()} onCopy={vi.fn()} onPaste={vi.fn()} onAddImage={onAddImage} />);
 
     const list = screen.getByRole("listbox", { name: "Document layers" });
     expect(within(list).getAllByRole("option").map((row) => row.textContent)).toEqual(expect.arrayContaining([expect.stringContaining("Text 2"), expect.stringContaining("Rectangle 1")]));
@@ -48,8 +49,8 @@ describe("LayerPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add image layer" }));
     fireEvent.keyDown(screen.getByRole("option", { name: /Rectangle 1/ }), { key: "ArrowUp", altKey: true });
     expect(onMove).toHaveBeenCalledWith("rect-id", 1);
-    expect(onDuplicate).toHaveBeenCalledWith("rect-id");
-    expect(onDelete).toHaveBeenCalledWith("rect-id");
+    expect(onDuplicate).toHaveBeenCalledWith(["rect-id"]);
+    expect(onDelete).toHaveBeenCalledWith(["rect-id"]);
     expect(onAddImage).toHaveBeenCalledTimes(1);
   });
 
@@ -57,9 +58,10 @@ describe("LayerPanel", () => {
     const onUpdate = vi.fn();
     const props = {
       document: documentWithLayers(), disabled: false, onUpdate,
-      onSelect: vi.fn(), onDelete: vi.fn(), onDuplicate: vi.fn(), onMove: vi.fn(), onReorder: vi.fn(), onAddImage: vi.fn(),
+      onSelect: vi.fn(), onDelete: vi.fn(), onDuplicate: vi.fn(), onMove: vi.fn(), onReorder: vi.fn(),
+      onGroup: vi.fn(), onUngroup: vi.fn(), onAlign: vi.fn(), onDistribute: vi.fn(), onCopy: vi.fn(), onPaste: vi.fn(), onAddImage: vi.fn(),
     };
-    const { rerender } = render(<LayerPanel {...props} selectedLayerId="rect-id" />);
+    const { rerender } = render(<LayerPanel {...props} selectedLayerIds={["rect-id"]} />);
 
     fireEvent.change(screen.getByLabelText("Layer X"), { target: { value: "42" } });
     fireEvent.blur(screen.getByLabelText("Layer X"));
@@ -71,7 +73,7 @@ describe("LayerPanel", () => {
     fireEvent.blur(screen.getByLabelText("Layer stroke width"));
     expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ strokeWidth: 8 }), "Change Rectangle 1 stroke width");
 
-    rerender(<LayerPanel {...props} selectedLayerId="text-id" />);
+    rerender(<LayerPanel {...props} selectedLayerIds={["text-id"]} />);
     fireEvent.change(screen.getByLabelText("Layer text"), { target: { value: "Rewritten" } });
     fireEvent.blur(screen.getByLabelText("Layer text"));
     fireEvent.change(screen.getByLabelText("Layer font"), { target: { value: "Georgia" } });
@@ -86,9 +88,9 @@ describe("LayerPanel", () => {
   it("reorders layers once on drop and presents the insertion edge", () => {
     const onReorder = vi.fn();
     const onSelect = vi.fn();
-    render(<LayerPanel document={documentWithLayers()} selectedLayerId={null} disabled={false}
+    render(<LayerPanel document={documentWithLayers()} selectedLayerIds={[]} disabled={false}
       onSelect={onSelect} onUpdate={vi.fn()} onDelete={vi.fn()} onDuplicate={vi.fn()} onMove={vi.fn()}
-      onReorder={onReorder} onAddImage={vi.fn()} />);
+      onReorder={onReorder} onGroup={vi.fn()} onUngroup={vi.fn()} onAlign={vi.fn()} onDistribute={vi.fn()} onCopy={vi.fn()} onPaste={vi.fn()} onAddImage={vi.fn()} />);
     const textRow = screen.getByRole("option", { name: /Text 2/ });
     const values = new Map<string, string>();
     const dataTransfer = {
@@ -98,7 +100,7 @@ describe("LayerPanel", () => {
     };
 
     fireEvent.dragStart(textRow, { dataTransfer });
-    expect(onSelect).toHaveBeenCalledWith("text-id");
+    expect(onSelect).toHaveBeenCalledWith(["text-id"]);
     const rectangleRow = screen.getByRole("option", { name: /Rectangle 1/ });
     fireEvent.dragOver(rectangleRow, { dataTransfer });
     expect(rectangleRow).toHaveClass("nc-layer-drop-after");
@@ -107,5 +109,24 @@ describe("LayerPanel", () => {
     expect(onReorder).toHaveBeenCalledOnce();
     expect(onReorder).toHaveBeenCalledWith(["text-id", "rect-id"]);
     expect(rectangleRow).not.toHaveClass("nc-layer-drop-after");
+  });
+
+  it("supports additive and range selection plus grouping and arrangement actions", () => {
+    const onSelect = vi.fn();
+    const onGroup = vi.fn();
+    const onAlign = vi.fn();
+    const props = {
+      document: documentWithLayers(), selectedLayerIds: ["text-id", "rect-id"], disabled: false, onSelect,
+      onUpdate: vi.fn(), onDelete: vi.fn(), onDuplicate: vi.fn(), onMove: vi.fn(), onReorder: vi.fn(),
+      onGroup, onUngroup: vi.fn(), onAlign, onDistribute: vi.fn(), onCopy: vi.fn(), onPaste: vi.fn(), onAddImage: vi.fn(),
+    };
+    render(<LayerPanel {...props} />);
+    expect(screen.getAllByRole("option").every((row) => row.getAttribute("aria-selected") === "true")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Group" }));
+    fireEvent.click(screen.getByRole("button", { name: "Align left" }));
+    expect(onGroup).toHaveBeenCalledOnce();
+    expect(onAlign).toHaveBeenCalledWith("left");
+    fireEvent.click(screen.getByRole("option", { name: /Text 2/ }), { ctrlKey: true });
+    expect(onSelect).toHaveBeenCalledWith(["rect-id"]);
   });
 });

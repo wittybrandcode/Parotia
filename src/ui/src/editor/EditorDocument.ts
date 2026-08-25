@@ -1,7 +1,7 @@
 import { createId } from "@shared/utils/id";
 
 export const EDITOR_DOCUMENT_SCHEMA = "parotia.editor-document" as const;
-export const EDITOR_DOCUMENT_VERSION = 1 as const;
+export const EDITOR_DOCUMENT_VERSION = 2 as const;
 
 export interface EditorTransform {
   x: number;
@@ -86,6 +86,11 @@ export interface EditorCalloutLayer extends EditorLayerBase, EditorShapeStyle {
   textColor: string;
 }
 
+export interface EditorGroupLayer extends EditorLayerBase {
+  kind: "group";
+  children: EditorLayer[];
+}
+
 export type EditorLayer =
   | EditorImageLayer
   | EditorTextLayer
@@ -93,7 +98,8 @@ export type EditorLayer =
   | EditorEllipseLayer
   | EditorLineLayer
   | EditorArrowLayer
-  | EditorCalloutLayer;
+  | EditorCalloutLayer
+  | EditorGroupLayer;
 
 export interface EditorBackground {
   kind: "image";
@@ -177,73 +183,86 @@ function transform(value: unknown, name: string): EditorTransform {
   };
 }
 
-function base(value: JsonRecord, index: number): EditorLayerBase {
-  const opacity = finite(value.opacity, `layers[${index}].opacity`);
-  if (opacity < 0 || opacity > 1) throw new Error(`layers[${index}].opacity must be between 0 and 1`);
+function base(value: JsonRecord, path: string): EditorLayerBase {
+  const opacity = finite(value.opacity, `${path}.opacity`);
+  if (opacity < 0 || opacity > 1) throw new Error(`${path}.opacity must be between 0 and 1`);
   return {
-    id: string(value.id, `layers[${index}].id`),
-    name: string(value.name, `layers[${index}].name`),
-    order: finite(value.order, `layers[${index}].order`),
-    visible: boolean(value.visible, `layers[${index}].visible`),
-    locked: boolean(value.locked, `layers[${index}].locked`),
+    id: string(value.id, `${path}.id`),
+    name: string(value.name, `${path}.name`),
+    order: finite(value.order, `${path}.order`),
+    visible: boolean(value.visible, `${path}.visible`),
+    locked: boolean(value.locked, `${path}.locked`),
     opacity,
-    transform: transform(value.transform, `layers[${index}].transform`),
+    transform: transform(value.transform, `${path}.transform`),
   };
 }
 
-function shapeStyle(value: JsonRecord, index: number): EditorShapeStyle {
+function shapeStyle(value: JsonRecord, path: string): EditorShapeStyle {
   return {
-    fill: value.fill === null ? null : string(value.fill, `layers[${index}].fill`, true),
-    stroke: string(value.stroke, `layers[${index}].stroke`, true),
-    strokeWidth: positive(value.strokeWidth, `layers[${index}].strokeWidth`),
+    fill: value.fill === null ? null : string(value.fill, `${path}.fill`, true),
+    stroke: string(value.stroke, `${path}.stroke`, true),
+    strokeWidth: positive(value.strokeWidth, `${path}.strokeWidth`),
   };
 }
 
-function points(value: unknown, index: number): number[] {
-  if (!Array.isArray(value) || value.length < 4 || value.length % 2 !== 0) throw new Error(`layers[${index}].points must contain coordinate pairs`);
-  return value.map((point, pointIndex) => finite(point, `layers[${index}].points[${pointIndex}]`));
+function points(value: unknown, path: string): number[] {
+  if (!Array.isArray(value) || value.length < 4 || value.length % 2 !== 0) throw new Error(`${path}.points must contain coordinate pairs`);
+  return value.map((point, pointIndex) => finite(point, `${path}.points[${pointIndex}]`));
 }
 
-function layer(value: unknown, index: number): EditorLayer {
-  const item = record(value, `layers[${index}]`);
-  const common = base(item, index);
-  const kind = enumValue(item.kind, `layers[${index}].kind`, ["image", "text", "rectangle", "ellipse", "line", "arrow", "callout"] as const);
+function normalizeLayers(value: unknown[], path: string): EditorLayer[] {
+  return value.map((entry, index) => layer(entry, `${path}[${index}]`)).sort((a, b) => a.order - b.order).map((entry, order) => ({ ...entry, order }));
+}
+
+function layer(value: unknown, path: string): EditorLayer {
+  const item = record(value, path);
+  const common = base(item, path);
+  const kind = enumValue(item.kind, `${path}.kind`, ["image", "text", "rectangle", "ellipse", "line", "arrow", "callout", "group"] as const);
   switch (kind) {
     case "image":
-      return { ...common, kind, source: string(item.source, `layers[${index}].source`), width: positive(item.width, `layers[${index}].width`), height: positive(item.height, `layers[${index}].height`) };
+      return { ...common, kind, source: string(item.source, `${path}.source`), width: positive(item.width, `${path}.width`), height: positive(item.height, `${path}.height`) };
     case "text": {
-      const width = item.width === undefined ? undefined : positive(item.width, `layers[${index}].width`);
+      const width = item.width === undefined ? undefined : positive(item.width, `${path}.width`);
       return {
-        ...common, kind, text: string(item.text, `layers[${index}].text`, true), fontFamily: string(item.fontFamily, `layers[${index}].fontFamily`),
-        fontSize: positive(item.fontSize, `layers[${index}].fontSize`), fontWeight: positive(item.fontWeight, `layers[${index}].fontWeight`),
-        fontStyle: enumValue(item.fontStyle, `layers[${index}].fontStyle`, ["normal", "italic"] as const),
-        align: enumValue(item.align, `layers[${index}].align`, ["left", "center", "right"] as const), fill: string(item.fill, `layers[${index}].fill`),
+        ...common, kind, text: string(item.text, `${path}.text`, true), fontFamily: string(item.fontFamily, `${path}.fontFamily`),
+        fontSize: positive(item.fontSize, `${path}.fontSize`), fontWeight: positive(item.fontWeight, `${path}.fontWeight`),
+        fontStyle: enumValue(item.fontStyle, `${path}.fontStyle`, ["normal", "italic"] as const),
+        align: enumValue(item.align, `${path}.align`, ["left", "center", "right"] as const), fill: string(item.fill, `${path}.fill`),
         ...(width === undefined ? {} : { width }),
       };
     }
     case "rectangle":
-      return { ...common, ...shapeStyle(item, index), kind, width: positive(item.width, `layers[${index}].width`), height: positive(item.height, `layers[${index}].height`), cornerRadius: finite(item.cornerRadius, `layers[${index}].cornerRadius`) };
+      return { ...common, ...shapeStyle(item, path), kind, width: positive(item.width, `${path}.width`), height: positive(item.height, `${path}.height`), cornerRadius: finite(item.cornerRadius, `${path}.cornerRadius`) };
     case "ellipse":
-      return { ...common, ...shapeStyle(item, index), kind, radiusX: positive(item.radiusX, `layers[${index}].radiusX`), radiusY: positive(item.radiusY, `layers[${index}].radiusY`) };
+      return { ...common, ...shapeStyle(item, path), kind, radiusX: positive(item.radiusX, `${path}.radiusX`), radiusY: positive(item.radiusY, `${path}.radiusY`) };
     case "line":
-      return { ...common, kind, points: points(item.points, index), stroke: string(item.stroke, `layers[${index}].stroke`), strokeWidth: positive(item.strokeWidth, `layers[${index}].strokeWidth`), tension: finite(item.tension, `layers[${index}].tension`) };
+      return { ...common, kind, points: points(item.points, path), stroke: string(item.stroke, `${path}.stroke`), strokeWidth: positive(item.strokeWidth, `${path}.strokeWidth`), tension: finite(item.tension, `${path}.tension`) };
     case "arrow":
-      return { ...common, kind, points: points(item.points, index), stroke: string(item.stroke, `layers[${index}].stroke`), strokeWidth: positive(item.strokeWidth, `layers[${index}].strokeWidth`), pointerLength: positive(item.pointerLength, `layers[${index}].pointerLength`), pointerWidth: positive(item.pointerWidth, `layers[${index}].pointerWidth`) };
+      return { ...common, kind, points: points(item.points, path), stroke: string(item.stroke, `${path}.stroke`), strokeWidth: positive(item.strokeWidth, `${path}.strokeWidth`), pointerLength: positive(item.pointerLength, `${path}.pointerLength`), pointerWidth: positive(item.pointerWidth, `${path}.pointerWidth`) };
     case "callout":
-      return { ...common, ...shapeStyle(item, index), kind, text: string(item.text, `layers[${index}].text`, true), width: positive(item.width, `layers[${index}].width`), height: positive(item.height, `layers[${index}].height`), fontFamily: string(item.fontFamily, `layers[${index}].fontFamily`), fontSize: positive(item.fontSize, `layers[${index}].fontSize`), textColor: string(item.textColor, `layers[${index}].textColor`) };
+      return { ...common, ...shapeStyle(item, path), kind, text: string(item.text, `${path}.text`, true), width: positive(item.width, `${path}.width`), height: positive(item.height, `${path}.height`), fontFamily: string(item.fontFamily, `${path}.fontFamily`), fontSize: positive(item.fontSize, `${path}.fontSize`), textColor: string(item.textColor, `${path}.textColor`) };
+    case "group":
+      if (!Array.isArray(item.children) || item.children.length === 0) throw new Error(`${path}.children must contain at least one layer`);
+      if (common.transform.scaleX <= 0 || common.transform.scaleY <= 0 || Math.abs(common.transform.scaleX - common.transform.scaleY) > 1e-6) throw new Error(`${path}.transform must use a positive uniform scale`);
+      return { ...common, kind, children: normalizeLayers(item.children, `${path}.children`) };
   }
 }
 
-function parseVersionOne(value: unknown): EditorDocument {
+function allLayerIds(layers: EditorLayer[]): string[] {
+  return layers.flatMap((entry) => [entry.id, ...(entry.kind === "group" ? allLayerIds(entry.children) : [])]);
+}
+
+function parseVersionTwo(value: unknown): EditorDocument {
   const item = record(value, "document");
   if (item.schema !== EDITOR_DOCUMENT_SCHEMA || item.version !== EDITOR_DOCUMENT_VERSION) throw new Error("Unsupported editor document schema or version");
   const canvas = record(item.canvas, "canvas");
   const background = record(item.background, "background");
   if (background.kind !== "image") throw new Error("background.kind must be image");
   if (!Array.isArray(item.layers)) throw new Error("layers must be an array");
-  const parsedLayers = item.layers.map(layer).sort((a, b) => a.order - b.order);
-  const ids = new Set(parsedLayers.map((entry) => entry.id));
-  if (ids.size !== parsedLayers.length) throw new Error("Layer identifiers must be unique");
+  const parsedLayers = normalizeLayers(item.layers, "layers");
+  const layerIds = allLayerIds(parsedLayers);
+  const ids = new Set(layerIds);
+  if (ids.size !== layerIds.length) throw new Error("Layer identifiers must be unique across the document");
   return {
     schema: EDITOR_DOCUMENT_SCHEMA,
     version: EDITOR_DOCUMENT_VERSION,
@@ -261,13 +280,14 @@ function parseVersionOne(value: unknown): EditorDocument {
       width: positive(background.width, "background.width"),
       height: positive(background.height, "background.height"),
     },
-    layers: parsedLayers.map((entry, order) => ({ ...entry, order })),
+    layers: parsedLayers,
   };
 }
 
 function migrate(value: unknown): unknown {
   const item = record(value, "document");
   if (item.schema !== EDITOR_DOCUMENT_SCHEMA) return value;
+  if (item.version === 1) return { ...item, version: EDITOR_DOCUMENT_VERSION };
   if (item.version !== 0) return value;
   const now = typeof item.updatedAt === "string" ? item.updatedAt : new Date().toISOString();
   return {
@@ -317,11 +337,11 @@ export function parseEditorDocument(value: string | unknown): EditorDocument {
   } catch {
     throw new Error("Editor document is not valid JSON");
   }
-  return parseVersionOne(migrate(parsed));
+  return parseVersionTwo(migrate(parsed));
 }
 
 export function serializeEditorDocument(document: EditorDocument): string {
-  return JSON.stringify(parseVersionOne(document));
+  return JSON.stringify(parseVersionTwo(document));
 }
 
 export function cloneEditorDocument(document: EditorDocument): EditorDocument {

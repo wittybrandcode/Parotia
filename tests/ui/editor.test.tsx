@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => {
     replaceLayers: vi.fn().mockResolvedValue(undefined),
     setMode: vi.fn(),
     selectLayer: vi.fn(),
+    selectLayers: vi.fn(),
     setTool: vi.fn(),
     setOptions: vi.fn(),
     setCommitListener: vi.fn(),
@@ -200,8 +201,8 @@ describe("image editor", () => {
     const commit = mocks.annotation.setCommitListener.mock.calls.at(-1)?.[0] as ((value: typeof before) => void);
     act(() => commit(before));
 
-    const transform = mocks.annotation.setTransformListener.mock.calls.at(-1)?.[0] as ((oldLayer: typeof before, nextLayer: typeof before) => void);
-    act(() => transform(before, { ...before, transform: { x: 55, y: 44, scaleX: 1.5, scaleY: 0.75, rotation: 30 } }));
+    const transform = mocks.annotation.setTransformListener.mock.calls.at(-1)?.[0] as ((oldLayers: (typeof before)[], nextLayers: (typeof before)[]) => void);
+    act(() => transform([before], [{ ...before, transform: { x: 55, y: 44, scaleX: 1.5, scaleY: 0.75, rotation: 30 } }]));
     expect(screen.getByLabelText("Layer X")).toHaveValue(55);
     expect(screen.getByLabelText("Layer rotation")).toHaveValue(30);
 
@@ -221,6 +222,42 @@ describe("image editor", () => {
 
     expect(await screen.findByText("Image 1")).toBeInTheDocument();
     expect(mocks.annotation.replaceLayers).toHaveBeenLastCalledWith([expect.objectContaining({ kind: "image", width: 40, height: 30 })]);
-    expect(mocks.annotation.selectLayer).toHaveBeenLastCalledWith(expect.stringMatching(/^editor-layer-/));
+    expect(mocks.annotation.selectLayers).toHaveBeenLastCalledWith([expect.stringMatching(/^editor-layer-/)]);
+  });
+
+  it("completes the multi-layer group, align, copy, paste and keyboard workflow atomically", async () => {
+    render(<EditorApp />);
+    await waitFor(() => expect(mocks.annotation.setCommitListener).toHaveBeenCalled());
+    const commit = mocks.annotation.setCommitListener.mock.calls.at(-1)?.[0] as (layer: Record<string, unknown>) => void;
+    const makeLayer = (id: string, name: string, order: number, x: number) => ({
+      id, name, order, kind: "rectangle" as const, visible: true, locked: false, opacity: 1,
+      transform: { x, y: order * 20, scaleX: 1, scaleY: 1, rotation: 0 }, width: 20, height: 10,
+      cornerRadius: 0, fill: null, stroke: "#fff", strokeWidth: 1,
+    });
+    act(() => {
+      commit(makeLayer("one", "One", 0, 10));
+      commit(makeLayer("two", "Two", 1, 40));
+      commit(makeLayer("three", "Three", 2, 80));
+    });
+    fireEvent.click(screen.getByRole("option", { name: /One/ }), { ctrlKey: true });
+    fireEvent.click(screen.getByRole("option", { name: /Two/ }), { ctrlKey: true });
+    expect(screen.getAllByRole("option").every((row) => row.getAttribute("aria-selected") === "true")).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Group" }));
+    expect(await screen.findByText("Group 3")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Ungroup" }));
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(3));
+    fireEvent.click(screen.getByRole("button", { name: "Align left" }));
+    await waitFor(() => expect(mocks.annotation.replaceLayers).toHaveBeenLastCalledWith(expect.arrayContaining([
+      expect.objectContaining({ transform: expect.objectContaining({ x: 10 }) }),
+    ])));
+
+    fireEvent.keyDown(window, { key: "c", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "v", ctrlKey: true });
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(6));
+    fireEvent.keyDown(window, { key: "ArrowRight", shiftKey: true });
+    await waitFor(() => expect(mocks.annotation.replaceLayers).toHaveBeenCalled());
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(6));
   });
 });

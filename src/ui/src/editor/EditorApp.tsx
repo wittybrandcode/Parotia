@@ -4,11 +4,11 @@ import { createCanvasEngine, type CanvasEngine } from "./CanvasEngine";
 import { createCropTool, type CropRect, type CropTool } from "./CropTool";
 import { createAnnotationLayer, type AnnotationLayer, type AnnotateTool } from "./AnnotationLayer";
 import { createAdjustPanel, type AdjustPanel } from "./AdjustPanel";
-import { createEditorDocument, createLayerBase, type EditorDocument, type EditorLayer } from "./EditorDocument";
-import { addLayerCommand, EditorDocumentHistory, removeLayerCommand, reorderLayersCommand, replaceDocumentCommand, replaceLayerCommand } from "./EditorDocumentHistory";
+import { createEditorDocument, createLayerBase, parseEditorDocument, type EditorDocument, type EditorLayer } from "./EditorDocument";
+import { addLayerCommand, EditorDocumentHistory, reorderLayersCommand, replaceDocumentCommand, replaceLayerCollectionCommand, replaceLayerCommand, replaceLayersCommand } from "./EditorDocumentHistory";
+import { alignLayers, cloneLayers, distributeLayers, groupLayers, translateLayer, ungroupLayers, type LayerAlignment, type LayerDistribution } from "./EditorLayerOperations";
 import { createEditorViewport, type EditorViewport, type ViewportState } from "./EditorViewport";
 import { LayerPanel } from "./LayerPanel";
-import { createId } from "@shared/utils/id";
 import {
   assessEditorImage,
   detectedDeviceMemoryGb,
@@ -19,6 +19,14 @@ import {
 type ActiveTool = "select" | "annotate" | "crop" | "adjust";
 type EditorParams = { imageKey?: string; filename?: string; editorToken?: string; parentOrigin?: string };
 const canShare = typeof navigator !== "undefined" && "share" in navigator;
+const LAYER_CLIPBOARD_MAX_CHARS = 64 * 1024 * 1024;
+
+function selectAnnotationLayers(annotation: AnnotationLayer | null, layerIds: string[]): void {
+  if (!annotation) return;
+  const compatible = annotation as AnnotationLayer & { selectLayers?: (ids: string[]) => void; selectLayer?: (id: string | null) => void };
+  if (typeof compatible.selectLayers === "function") compatible.selectLayers(layerIds);
+  else compatible.selectLayer?.(layerIds[0] ?? null);
+}
 
 function canvasBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("Failed to encode PNG")), "image/png"));
@@ -58,7 +66,8 @@ export function EditorApp() {
   const operationRef = useRef(false);
   const historyRef = useRef<EditorDocumentHistory | null>(null);
   const layerSyncRef = useRef(Promise.resolve());
-  const selectedLayerIdRef = useRef<string | null>(null);
+  const selectedLayerIdsRef = useRef<string[]>([]);
+  const layerClipboardRef = useRef<EditorLayer[]>([]);
 
   const [loaded, setLoaded] = useState(false);
   const [tool, setTool] = useState<ActiveTool>("select");
@@ -75,7 +84,7 @@ export function EditorApp() {
   const [textSize, setTextSize] = useState(24);
   const [shapeKind, setShapeKind] = useState<AnnotateTool>("freehand");
   const [documentState, setDocumentState] = useState<EditorDocument | null>(null);
-  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
+  const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([]);
   const [viewportState, setViewportState] = useState<ViewportState>({ scale: 1, percent: 100, mode: "FIT", offsetX: 0, offsetY: 0 });
 
   const refreshHistory = useCallback(() => {
@@ -83,9 +92,10 @@ export function EditorApp() {
     setCanRedo(historyRef.current?.canRedo ?? false);
   }, []);
 
-  const setSelection = useCallback((layerId: string | null): void => {
-    selectedLayerIdRef.current = layerId;
-    setSelectedLayerId(layerId);
+  const setSelection = useCallback((value: string[] | string | null): void => {
+    const layerIds = [...new Set(Array.isArray(value) ? value : value ? [value] : [])];
+    selectedLayerIdsRef.current = layerIds;
+    setSelectedLayerIds(layerIds);
   }, []);
 
   const initAnnotation = useCallback(async (document: EditorDocument): Promise<void> => {
@@ -119,7 +129,7 @@ export function EditorApp() {
         const nextDocument = history.execute(addLayerCommand(layer));
         setDocumentState(nextDocument);
         setSelection(layer.id);
-        annotation.selectLayer(layer.id);
+        selectAnnotationLayers(annotation, [layer.id]);
         setSaved(false);
         refreshHistory();
       } catch (cause) {
@@ -131,22 +141,22 @@ export function EditorApp() {
       try {
         const history = historyRef.current;
         if (!history) throw new Error("Editor document history is unavailable");
-        const current = history.document.layers.find((layer) => layer.id === before.id);
-        if (!current) throw new Error("The transformed layer no longer exists");
-        const transformed = { ...current, transform: after.transform } as EditorLayer;
-        if (JSON.stringify(current.transform) === JSON.stringify(transformed.transform)) return;
-        const nextDocument = history.execute(replaceLayerCommand(current, transformed, `Transform ${current.name}`));
+        const current = before.map((entry) => history.document.layers.find((layer) => layer.id === entry.id)).filter((entry): entry is EditorLayer => Boolean(entry));
+        if (current.length !== before.length) throw new Error("A transformed layer no longer exists");
+        const transformed = current.map((entry, index) => ({ ...entry, transform: after[index]!.transform } as EditorLayer));
+        if (current.every((entry, index) => JSON.stringify(entry.transform) === JSON.stringify(transformed[index]!.transform))) return;
+        const nextDocument = history.execute(replaceLayersCommand(current, transformed, `Transform ${current.length} layer${current.length === 1 ? "" : "s"}`));
         setDocumentState(nextDocument);
-        setSelection(transformed.id);
+        setSelection(transformed.map((entry) => entry.id));
         setSaved(false);
         refreshHistory();
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : "Failed to transform the layer");
       }
     });
-    const selection = selectedLayerIdRef.current;
-    if (selection && document.layers.some((layer) => layer.id === selection)) annotation.selectLayer(selection);
-    else setSelection(null);
+    const selection = selectedLayerIdsRef.current.filter((id) => document.layers.some((layer) => layer.id === id));
+    selectAnnotationLayers(annotation, selection);
+    setSelection(selection);
     cropRef.current?.stop();
     adjustRef.current?.stop();
     cropRef.current = createCropTool(container, wrapper, document.canvas.width, document.canvas.height);
@@ -180,22 +190,22 @@ export function EditorApp() {
     }
   }, []);
 
-  const syncLayers = useCallback((document: EditorDocument, selection: string | null): void => {
+  const syncLayers = useCallback((document: EditorDocument, selection: string[]): void => {
     layerSyncRef.current = layerSyncRef.current.then(async () => {
       const annotation = annotationRef.current;
       if (!annotation) return;
       await annotation.replaceLayers(document.layers);
-      annotation.selectLayer(selection);
+      selectAnnotationLayers(annotation, selection);
     }).catch((cause: unknown) => {
       setError(cause instanceof Error ? cause.message : "Failed to refresh editor layers");
     });
   }, []);
 
-  const handleSelectLayer = useCallback((layerId: string): void => {
+  const handleSelectLayers = useCallback((layerIds: string[]): void => {
     setTool("select");
-    setSelection(layerId);
+    setSelection(layerIds);
     annotationRef.current?.setMode("select");
-    annotationRef.current?.selectLayer(layerId);
+    selectAnnotationLayers(annotationRef.current, layerIds);
   }, [setSelection]);
 
   const handleUpdateLayer = useCallback((after: EditorLayer, label: string): void => {
@@ -209,45 +219,43 @@ export function EditorApp() {
       setSelection(after.id);
       setSaved(false);
       refreshHistory();
-      syncLayers(nextDocument, after.id);
+      syncLayers(nextDocument, [after.id]);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to update the layer");
     }
   }, [operating, refreshHistory, setSelection, syncLayers]);
 
-  const handleDeleteLayer = useCallback((layerId: string): void => {
+  const handleDeleteLayers = useCallback((layerIds: string[]): void => {
     const history = historyRef.current;
     if (!history || operating) return;
     try {
-      const nextDocument = history.execute(removeLayerCommand(history.document, layerId));
+      const selected = new Set(layerIds);
+      const after = history.document.layers.filter((layer) => !selected.has(layer.id));
+      if (after.length === history.document.layers.length) return;
+      const nextDocument = history.execute(replaceLayerCollectionCommand(history.document.layers, after, `Delete ${layerIds.length} layer${layerIds.length === 1 ? "" : "s"}`));
       setDocumentState(nextDocument);
       setSelection(null);
       setSaved(false);
       refreshHistory();
-      syncLayers(nextDocument, null);
+      syncLayers(nextDocument, []);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to delete the layer");
     }
   }, [operating, refreshHistory, setSelection, syncLayers]);
 
-  const handleDuplicateLayer = useCallback((layerId: string): void => {
+  const handleDuplicateLayers = useCallback((layerIds: string[]): void => {
     const history = historyRef.current;
     if (!history || operating) return;
-    const source = history.document.layers.find((layer) => layer.id === layerId);
-    if (!source) return;
-    const duplicate = {
-      ...source,
-      id: createId("editor-layer"),
-      name: `${source.name} copy`,
-      order: history.document.layers.length,
-      transform: { ...source.transform, x: source.transform.x + 16, y: source.transform.y + 16 },
-    } as EditorLayer;
-    const nextDocument = history.execute(addLayerCommand(duplicate));
+    const selected = new Set(layerIds);
+    const source = history.document.layers.filter((layer) => selected.has(layer.id));
+    if (!source.length) return;
+    const duplicates = cloneLayers(source).map((layer, index) => ({ ...layer, order: history.document.layers.length + index }));
+    const nextDocument = history.execute(replaceLayerCollectionCommand(history.document.layers, [...history.document.layers, ...duplicates], `Duplicate ${source.length} layer${source.length === 1 ? "" : "s"}`));
     setDocumentState(nextDocument);
-    setSelection(duplicate.id);
+    setSelection(duplicates.map((layer) => layer.id));
     setSaved(false);
     refreshHistory();
-    syncLayers(nextDocument, duplicate.id);
+    syncLayers(nextDocument, duplicates.map((layer) => layer.id));
   }, [operating, refreshHistory, setSelection, syncLayers]);
 
   const handleMoveLayer = useCallback((layerId: string, direction: -1 | 1): void => {
@@ -261,10 +269,10 @@ export function EditorApp() {
     [after[index], after[target]] = [after[target]!, after[index]!];
     const nextDocument = history.execute(reorderLayersCommand(before, after));
     setDocumentState(nextDocument);
-    setSelection(layerId);
+    setSelection([layerId]);
     setSaved(false);
     refreshHistory();
-    syncLayers(nextDocument, layerId);
+    syncLayers(nextDocument, [layerId]);
   }, [operating, refreshHistory, setSelection, syncLayers]);
 
   const handleReorderLayers = useCallback((after: string[]): void => {
@@ -274,7 +282,7 @@ export function EditorApp() {
     if (before.length !== after.length || before.every((id, index) => id === after[index])) return;
     try {
       const nextDocument = history.execute(reorderLayersCommand(before, after));
-      const selection = selectedLayerIdRef.current;
+      const selection = selectedLayerIdsRef.current;
       setDocumentState(nextDocument);
       setSaved(false);
       refreshHistory();
@@ -282,6 +290,108 @@ export function EditorApp() {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to reorder the layers");
     }
+  }, [operating, refreshHistory, syncLayers]);
+
+  const handleGroupLayers = useCallback((): void => {
+    const history = historyRef.current;
+    const selection = selectedLayerIdsRef.current;
+    if (!history || operating || selection.length < 2) return;
+    try {
+      const result = groupLayers(history.document.layers, selection);
+      const nextDocument = history.execute(replaceLayerCollectionCommand(history.document.layers, result.layers, "Group layers"));
+      setDocumentState(nextDocument);
+      setSelection([result.group.id]);
+      setSaved(false);
+      refreshHistory();
+      syncLayers(nextDocument, [result.group.id]);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Failed to group layers"); }
+  }, [operating, refreshHistory, setSelection, syncLayers]);
+
+  const handleUngroupLayers = useCallback((): void => {
+    const history = historyRef.current;
+    const selection = selectedLayerIdsRef.current;
+    if (!history || operating || !selection.some((id) => history.document.layers.find((layer) => layer.id === id)?.kind === "group")) return;
+    try {
+      const result = ungroupLayers(history.document.layers, selection);
+      const nextDocument = history.execute(replaceLayerCollectionCommand(history.document.layers, result.layers, "Ungroup layers"));
+      setDocumentState(nextDocument);
+      setSelection(result.selection);
+      setSaved(false);
+      refreshHistory();
+      syncLayers(nextDocument, result.selection);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Failed to ungroup layers"); }
+  }, [operating, refreshHistory, setSelection, syncLayers]);
+
+  const handleAlignLayers = useCallback((alignment: LayerAlignment): void => {
+    const history = historyRef.current;
+    const selection = selectedLayerIdsRef.current;
+    if (!history || operating || selection.length < 2) return;
+    const selected = new Set(selection);
+    const before = history.document.layers.filter((layer) => selected.has(layer.id) && !layer.locked);
+    if (before.length < 2) return;
+    const after = alignLayers(before, alignment);
+    const nextDocument = history.execute(replaceLayersCommand(before, after, `Align layers ${alignment}`));
+    setDocumentState(nextDocument); setSaved(false); refreshHistory(); syncLayers(nextDocument, selection);
+  }, [operating, refreshHistory, syncLayers]);
+
+  const handleDistributeLayers = useCallback((direction: LayerDistribution): void => {
+    const history = historyRef.current;
+    const selection = selectedLayerIdsRef.current;
+    if (!history || operating || selection.length < 3) return;
+    const selected = new Set(selection);
+    const before = history.document.layers.filter((layer) => selected.has(layer.id) && !layer.locked);
+    if (before.length < 3) return;
+    const after = distributeLayers(before, direction);
+    const nextDocument = history.execute(replaceLayersCommand(before, after, `Distribute layers ${direction}`));
+    setDocumentState(nextDocument); setSaved(false); refreshHistory(); syncLayers(nextDocument, selection);
+  }, [operating, refreshHistory, syncLayers]);
+
+  const handleCopyLayers = useCallback(async (): Promise<void> => {
+    const document = historyRef.current?.document;
+    if (!document) return;
+    const selected = new Set(selectedLayerIdsRef.current);
+    const layers = document.layers.filter((layer) => selected.has(layer.id));
+    if (!layers.length) return;
+    layerClipboardRef.current = layers;
+    try {
+      const payload = JSON.stringify({ schema: "parotia.editor-layers", version: 1, layers });
+      if (payload.length <= LAYER_CLIPBOARD_MAX_CHARS) await navigator.clipboard.writeText(payload);
+    } catch {
+      // The in-memory clipboard remains available when the browser denies text clipboard access.
+    }
+  }, []);
+
+  const handlePasteLayers = useCallback(async (): Promise<void> => {
+    const history = historyRef.current;
+    if (!history || operating) return;
+    let source = layerClipboardRef.current;
+    try {
+      const clipboardText = await navigator.clipboard.readText();
+      if (clipboardText.length > LAYER_CLIPBOARD_MAX_CHARS) throw new Error("Layer clipboard payload is too large");
+      const value = JSON.parse(clipboardText) as { schema?: unknown; version?: unknown; layers?: unknown };
+      if (value.schema === "parotia.editor-layers" && value.version === 1 && Array.isArray(value.layers)) {
+        source = parseEditorDocument({ ...history.document, layers: value.layers }).layers;
+      }
+    } catch {
+      // Fall back to the editor's internal clipboard.
+    }
+    if (!source.length) return;
+    const copies = cloneLayers(source).map((layer, index) => ({ ...layer, order: history.document.layers.length + index }));
+    const nextDocument = history.execute(replaceLayerCollectionCommand(history.document.layers, [...history.document.layers, ...copies], `Paste ${copies.length} layer${copies.length === 1 ? "" : "s"}`));
+    const selection = copies.map((layer) => layer.id);
+    setDocumentState(nextDocument); setSelection(selection); setSaved(false); refreshHistory(); syncLayers(nextDocument, selection);
+  }, [operating, refreshHistory, setSelection, syncLayers]);
+
+  const nudgeSelectedLayers = useCallback((x: number, y: number): void => {
+    const history = historyRef.current;
+    const selection = selectedLayerIdsRef.current;
+    if (!history || operating || !selection.length) return;
+    const selected = new Set(selection);
+    const before = history.document.layers.filter((layer) => selected.has(layer.id) && !layer.locked);
+    if (!before.length) return;
+    const after = before.map((layer) => translateLayer(layer, x, y));
+    const nextDocument = history.execute(replaceLayersCommand(before, after, "Nudge layers"));
+    setDocumentState(nextDocument); setSaved(false); refreshHistory(); syncLayers(nextDocument, selection);
   }, [operating, refreshHistory, syncLayers]);
 
   const handleImageFile = useCallback(async (file: File | undefined): Promise<void> => {
@@ -306,7 +416,7 @@ export function EditorApp() {
       refreshHistory();
       await annotationRef.current?.replaceLayers(nextDocument.layers);
       annotationRef.current?.setMode("select");
-      annotationRef.current?.selectLayer(layer.id);
+      selectAnnotationLayers(annotationRef.current, [layer.id]);
     });
   }, [refreshHistory, runExclusive, setSelection]);
 
@@ -443,17 +553,31 @@ export function EditorApp() {
       const modifier = event.ctrlKey || event.metaKey;
       if (modifier && event.key.toLowerCase() === "z" && !event.shiftKey) { event.preventDefault(); void restoreHistory("undo"); }
       else if (modifier && (event.key.toLowerCase() === "y" || (event.key.toLowerCase() === "z" && event.shiftKey))) { event.preventDefault(); void restoreHistory("redo"); }
-      else if (modifier && event.key.toLowerCase() === "d" && selectedLayerIdRef.current) { event.preventDefault(); handleDuplicateLayer(selectedLayerIdRef.current); }
+      else if (modifier && event.key.toLowerCase() === "a") {
+        event.preventDefault();
+        const selection = historyRef.current?.document.layers.map((layer) => layer.id) ?? [];
+        setTool("select"); setSelection(selection); selectAnnotationLayers(annotationRef.current, selection);
+      }
+      else if (modifier && event.key.toLowerCase() === "g" && event.shiftKey) { event.preventDefault(); handleUngroupLayers(); }
+      else if (modifier && event.key.toLowerCase() === "g") { event.preventDefault(); handleGroupLayers(); }
+      else if (modifier && event.key.toLowerCase() === "c" && selectedLayerIdsRef.current.length) { event.preventDefault(); void handleCopyLayers(); }
+      else if (modifier && event.key.toLowerCase() === "v") { event.preventDefault(); void handlePasteLayers(); }
+      else if (modifier && event.key.toLowerCase() === "d" && selectedLayerIdsRef.current.length) { event.preventDefault(); handleDuplicateLayers(selectedLayerIdsRef.current); }
       else if (modifier && (event.key === "+" || event.key === "=")) { event.preventDefault(); viewportRef.current?.zoomBy(1.2); }
       else if (modifier && event.key === "-") { event.preventDefault(); viewportRef.current?.zoomBy(1 / 1.2); }
       else if (event.key === "0") { event.preventDefault(); viewportRef.current?.fit(); }
       else if (event.key === "1") { event.preventDefault(); viewportRef.current?.actualSize(); }
-      else if ((event.key === "Delete" || event.key === "Backspace") && selectedLayerIdRef.current) { event.preventDefault(); handleDeleteLayer(selectedLayerIdRef.current); }
-      else if (event.key === "Escape") { setTool("select"); annotationRef.current?.selectLayer(null); setSelection(null); }
+      else if ((event.key === "Delete" || event.key === "Backspace") && selectedLayerIdsRef.current.length) { event.preventDefault(); handleDeleteLayers(selectedLayerIdsRef.current); }
+      else if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key) && selectedLayerIdsRef.current.length) {
+        event.preventDefault();
+        const distance = event.shiftKey ? 10 : 1;
+        nudgeSelectedLayers(event.key === "ArrowLeft" ? -distance : event.key === "ArrowRight" ? distance : 0, event.key === "ArrowUp" ? -distance : event.key === "ArrowDown" ? distance : 0);
+      }
+      else if (event.key === "Escape") { setTool("select"); selectAnnotationLayers(annotationRef.current, []); setSelection(null); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [handleDeleteLayer, handleDuplicateLayer, restoreHistory, setSelection]);
+  }, [handleCopyLayers, handleDeleteLayers, handleDuplicateLayers, handleGroupLayers, handlePasteLayers, handleUngroupLayers, nudgeSelectedLayers, restoreHistory, setSelection]);
 
   const exportCanvas = useCallback((): HTMLCanvasElement => {
     const engine = engineRef.current;
@@ -548,9 +672,11 @@ export function EditorApp() {
         <div ref={konvaContainerRef} className="nc-editor-konva-container" style={{ display: loaded ? "block" : "none", pointerEvents: operating ? "none" : "auto" }} />
         {error && loaded && <div className="nc-editor-error" role="alert">{error}</div>}
       </div>
-      {loaded && documentState && <LayerPanel document={documentState} selectedLayerId={selectedLayerId} disabled={operating}
-        onSelect={handleSelectLayer} onUpdate={handleUpdateLayer} onDelete={handleDeleteLayer}
-        onDuplicate={handleDuplicateLayer} onMove={handleMoveLayer} onReorder={handleReorderLayers} onAddImage={() => imageInputRef.current?.click()} />}
+      {loaded && documentState && <LayerPanel document={documentState} selectedLayerIds={selectedLayerIds} disabled={operating}
+        onSelect={handleSelectLayers} onUpdate={handleUpdateLayer} onDelete={handleDeleteLayers}
+        onDuplicate={handleDuplicateLayers} onMove={handleMoveLayer} onReorder={handleReorderLayers}
+        onGroup={handleGroupLayers} onUngroup={handleUngroupLayers} onAlign={handleAlignLayers} onDistribute={handleDistributeLayers}
+        onCopy={() => void handleCopyLayers()} onPaste={() => void handlePasteLayers()} onAddImage={() => imageInputRef.current?.click()} />}
     </div>
     <input ref={imageInputRef} className="nc-editor-file-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => {
       const file = event.target.files?.[0];

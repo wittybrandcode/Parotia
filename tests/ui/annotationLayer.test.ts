@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
     name(value?: string) { if (value !== undefined) this.attrs.name = value; return String(this.attrs.name ?? ""); }
     hasName(value: string) { return this.name().split(" ").includes(value); }
     draggable(value?: boolean) { if (value !== undefined) this.attrs.draggable = value; return Boolean(this.attrs.draggable); }
+    position(value?: { x: number; y: number }) { if (value) Object.assign(this.attrs, value); return { x: Number(this.attrs.x ?? 0), y: Number(this.attrs.y ?? 0) }; }
     x() { return Number(this.attrs.x ?? 0); }
     y() { return Number(this.attrs.y ?? 0); }
     scaleX() { return Number(this.attrs.scaleX ?? 1); }
@@ -42,7 +43,7 @@ const mocks = vi.hoisted(() => {
     radius(value: number) { this.attrs.radius = value; }
     stroke(value: string) { this.attrs.stroke = value; }
     strokeWidth(value: number) { this.attrs.strokeWidth = value; }
-    position(value: { x: number; y: number }) { Object.assign(this.attrs, value); }
+    position(value?: { x: number; y: number }) { if (value) Object.assign(this.attrs, value); return { x: Number(this.attrs.x ?? 0), y: Number(this.attrs.y ?? 0) }; }
   }
   class Layer {
     children: Shape[] = [];
@@ -58,11 +59,13 @@ const mocks = vi.hoisted(() => {
   }
   class Transformer extends Group {
     selected: Shape[] = [];
+    preserveRatio = false;
     nodes(value?: Shape[]) { if (value) this.selected = value; return this.selected; }
+    keepRatio(value?: boolean) { if (value !== undefined) this.preserveRatio = value; return this.preserveRatio; }
   }
   class Stage {
     content = document.createElement("div");
-    handlers = new Map<string, (event: { target: unknown }) => void>();
+    handlers = new Map<string, (event: { target: unknown; type: string; evt?: Record<string, boolean> }) => void>();
     layers: Layer[] = [];
     pointer = { x: 10, y: 10 };
     destroyed = false;
@@ -70,11 +73,11 @@ const mocks = vi.hoisted(() => {
       state.stage = this;
     }
     add(...layers: Layer[]) { for (const layer of layers) layer.parent = this; this.layers.push(...layers); }
-    on(events: string, handler: (event: { target: unknown }) => void) {
+    on(events: string, handler: (event: { target: unknown; type: string; evt?: Record<string, boolean> }) => void) {
       for (const event of events.split(" ")) this.handlers.set(event, handler);
     }
-    emit(event: string) { this.handlers.get(event)?.({ target: this }); }
-    emitFrom(event: string, target: unknown) { this.handlers.get(event)?.({ target }); }
+    emit(event: string) { this.handlers.get(event)?.({ target: this, type: event }); }
+    emitFrom(event: string, target: unknown, evt?: Record<string, boolean>) { this.handlers.get(event)?.({ target, type: event, ...(evt ? { evt } : {}) }); }
     getPointerPosition() { return this.pointer; }
     container() { return this.config.container; }
     getParent() { return null; }
@@ -287,13 +290,14 @@ describe("AnnotationLayer", () => {
     const transformer = stage.layers[2]!.children[1] as InstanceType<typeof mocks.Transformer>;
     expect(node.draggable()).toBe(true);
     expect(transformer.selected).toEqual([node]);
+    stage.emitFrom("dragstart", node);
     node.attrs.x = 44;
     node.attrs.y = 55;
     stage.emitFrom("dragend", node);
-    expect(transform).toHaveBeenCalledWith(layer, expect.objectContaining({ transform: expect.objectContaining({ x: 44, y: 55 }) }));
+    expect(transform).toHaveBeenCalledWith([layer], [expect.objectContaining({ transform: expect.objectContaining({ x: 44, y: 55 }) })]);
 
     stage.emitFrom("pointerdown", node);
-    expect(selection).toHaveBeenCalledWith(layer.id);
+    expect(selection).toHaveBeenCalledWith([layer.id]);
   });
 
   it("does not attach the transformer to hidden or locked layers", async () => {
@@ -315,5 +319,56 @@ describe("AnnotationLayer", () => {
     await editor.replaceLayers([{ ...layer, locked: false, visible: false }]);
     editor.selectLayer(layer.id);
     expect(transformer.selected).toEqual([]);
+  });
+
+  it("selects and drags multiple layers as one undoable transform", async () => {
+    const editor = createAnnotationLayer();
+    const transform = vi.fn();
+    editor.init(document.querySelector("#stage")!, 200, 100, new Image());
+    const first: EditorLayer = { id: "first", name: "First", order: 0, kind: "rectangle", visible: true, locked: false, opacity: 1, transform: identityTransform(10, 20), width: 20, height: 10, cornerRadius: 0, fill: null, stroke: "#fff", strokeWidth: 1 };
+    const second: EditorLayer = { ...first, id: "second", name: "Second", order: 1, transform: identityTransform(40, 50) };
+    await editor.loadLayers([first, second]);
+    editor.setTransformListener(transform);
+    editor.setMode("select");
+    editor.selectLayers([first.id, second.id]);
+    const stage = mocks.state.stage!;
+    const firstNode = stage.layers[1]!.children[0]!;
+    const secondNode = stage.layers[1]!.children[1]!;
+    expect((stage.layers[2]!.children[1] as InstanceType<typeof mocks.Transformer>).selected).toEqual([firstNode, secondNode]);
+    stage.emitFrom("dragstart", firstNode);
+    firstNode.attrs.x = 15;
+    firstNode.attrs.y = 27;
+    stage.emitFrom("dragmove", firstNode);
+    expect(secondNode.attrs).toMatchObject({ x: 45, y: 57 });
+    stage.emitFrom("dragend", firstNode);
+    expect(transform).toHaveBeenCalledWith([first, second], [expect.objectContaining({ transform: expect.objectContaining({ x: 15, y: 27 }) }), expect.objectContaining({ transform: expect.objectContaining({ x: 45, y: 57 }) })]);
+  });
+
+  it("toggles additive canvas selection and renders a group as one transformable layer", async () => {
+    const editor = createAnnotationLayer();
+    const selection = vi.fn();
+    editor.init(document.querySelector("#stage")!, 200, 100, new Image());
+    const first: EditorLayer = { id: "first", name: "First", order: 0, kind: "rectangle", visible: true, locked: false, opacity: 1, transform: identityTransform(10, 20), width: 20, height: 10, cornerRadius: 0, fill: null, stroke: "#fff", strokeWidth: 1 };
+    const second: EditorLayer = { ...first, id: "second", name: "Second", order: 1, transform: identityTransform(40, 50) };
+    await editor.loadLayers([first, second]);
+    editor.setSelectionListener(selection);
+    editor.setMode("select");
+    editor.selectLayer(first.id);
+    const stage = mocks.state.stage!;
+    stage.emitFrom("pointerdown", stage.layers[1]!.children[1]!, { ctrlKey: true });
+    expect(selection).toHaveBeenLastCalledWith(["first", "second"]);
+    stage.emitFrom("pointerdown", stage.layers[1]!.children[0]!, { metaKey: true });
+    expect(selection).toHaveBeenLastCalledWith(["second"]);
+    stage.emit("pointerdown");
+    expect(selection).toHaveBeenLastCalledWith([]);
+
+    const group: EditorLayer = { id: "group", name: "Group", order: 0, kind: "group", visible: true, locked: false, opacity: 1, transform: identityTransform(), children: [first, second] };
+    await editor.replaceLayers([group]);
+    editor.selectLayer(group.id);
+    const groupNode = stage.layers[1]!.children[0] as InstanceType<typeof mocks.Group>;
+    const transformer = stage.layers[2]!.children[1] as InstanceType<typeof mocks.Transformer>;
+    expect(groupNode.children).toHaveLength(2);
+    expect(transformer.selected).toEqual([groupNode]);
+    expect(transformer.preserveRatio).toBe(true);
   });
 });

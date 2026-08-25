@@ -34,7 +34,7 @@ describe("EditorDocument", () => {
     const restored = parseEditorDocument(serializeEditorDocument(document));
     expect(restored).toEqual(document);
     expect(restored.schema).toBe("parotia.editor-document");
-    expect(restored.version).toBe(1);
+    expect(restored.version).toBe(2);
     expect(restored.layers.map((layer) => layer.kind)).toEqual(["image", "text", "rectangle", "ellipse", "line", "arrow", "callout"]);
   });
 
@@ -53,9 +53,33 @@ describe("EditorDocument", () => {
       backgroundDataUrl: "data:image/png;base64,legacy", createdAt: "2026-01-01", updatedAt: "2026-01-02", layers: [],
     });
     expect(migrated).toMatchObject({
-      version: 1, id: "legacy", canvas: { width: 320, height: 200 },
+      version: 2, id: "legacy", canvas: { width: 320, height: 200 },
       background: { source: "data:image/png;base64,legacy", width: 320, height: 200 },
     });
+  });
+
+  it("migrates version one and round-trips recursively grouped layers", () => {
+    const legacy = { ...documentWithLayers(), version: 1 };
+    const migrated = parseEditorDocument(legacy);
+    const grouped: EditorLayer = {
+      ...createLayerBase("group", 0), kind: "group", name: "Two shapes", children: migrated.layers.slice(0, 2).map((layer, order) => ({ ...layer, order })),
+    };
+    const restored = parseEditorDocument({ ...migrated, layers: [grouped] });
+    expect(restored.version).toBe(2);
+    expect(restored.layers[0]).toMatchObject({ kind: "group", name: "Two shapes" });
+    expect(restored.layers[0]?.kind === "group" && restored.layers[0].children.map((layer) => layer.id)).toEqual(["image", "text"]);
+  });
+
+  it("rejects duplicate identifiers nested inside groups", () => {
+    const child = layers()[0]!;
+    const group: EditorLayer = { ...createLayerBase("group", 0), kind: "group", children: [{ ...child, order: 0 }, { ...child, order: 1 }] };
+    expect(() => parseEditorDocument({ ...createEditorDocument({ source: "data:image/png;base64,a", width: 10, height: 10 }), layers: [group] })).toThrow(/unique/);
+  });
+
+  it("rejects group transforms that cannot be losslessly ungrouped", () => {
+    const child = { ...layers()[0]!, order: 0 };
+    const group: EditorLayer = { ...createLayerBase("group", 0), kind: "group", transform: { x: 0, y: 0, scaleX: 2, scaleY: 1, rotation: 0 }, children: [child] };
+    expect(() => parseEditorDocument({ ...createEditorDocument({ source: "data:image/png;base64,a", width: 10, height: 10 }), layers: [group] })).toThrow(/uniform scale/);
   });
 
   it.each([

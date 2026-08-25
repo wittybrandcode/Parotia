@@ -205,6 +205,22 @@ test("4.5 staged capture opens in the real editor, draws, and consumes its save 
     await page.getByRole("button", { name: "Redo" }).click();
     await expect(layerList.getByRole("option").first()).toContainText("Rectangle 1");
 
+    await rectangleLayer.click();
+    await textLayer.click({ modifiers: ["Control"] });
+    await expect(page.getByRole("button", { name: "Group", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Group", exact: true }).click();
+    await expect(layerList.getByRole("option")).toHaveCount(1);
+    await expect(layerList.getByRole("option")).toContainText("Group");
+    await expect(page.getByRole("button", { name: "Ungroup" })).toBeEnabled();
+    await page.getByRole("button", { name: "Ungroup" }).click();
+    await expect(layerList.getByRole("option")).toHaveCount(2);
+    await expect(page.getByRole("button", { name: "Align left" })).toBeVisible();
+    await page.getByRole("button", { name: "Align left" }).click();
+    await page.keyboard.press("Control+D");
+    await expect(layerList.getByRole("option")).toHaveCount(4);
+    await page.getByRole("button", { name: "Undo" }).click();
+    await expect(layerList.getByRole("option")).toHaveCount(2);
+
     await page.getByRole("button", { name: /save/i }).click();
     await expect(page.getByRole("button", { name: /saved/i })).toBeDisabled();
     const leftovers = await page.evaluate(async (key) => chrome.storage.local.get(key), ticketKey);

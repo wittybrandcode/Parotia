@@ -7,7 +7,9 @@ import {
   removeLayerCommand,
   reorderLayersCommand,
   replaceDocumentCommand,
+  replaceLayerCollectionCommand,
   replaceLayerCommand,
+  replaceLayersCommand,
 } from "@ui/src/editor/EditorDocumentHistory";
 
 function rectangle(id: string, order: number, width = 20): EditorLayer {
@@ -49,6 +51,20 @@ describe("EditorDocumentHistory", () => {
     expect(history.document.canvas.width).toBe(50);
     expect(history.undo()?.canvas.width).toBe(100);
     expect(history.redo()?.background.source).toContain("cropped");
+  });
+
+  it("reverses batch geometry and structural layer commands atomically", () => {
+    const initial = { ...base(), layers: [rectangle("one", 0), rectangle("two", 1)] };
+    const history = new EditorDocumentHistory(initial);
+    const before = initial.layers;
+    const after = before.map((layer) => ({ ...layer, transform: identityTransform(10, 20) } as EditorLayer));
+    history.execute(replaceLayersCommand(before, after, "Move selection"));
+    expect(history.document.layers.every((layer) => layer.transform.x === 10)).toBe(true);
+    const third = rectangle("three", 2);
+    history.execute(replaceLayerCollectionCommand(history.document.layers, [...history.document.layers, third], "Paste layers"));
+    expect(history.document.layers).toHaveLength(3);
+    expect(history.undo()?.layers).toHaveLength(2);
+    expect(history.undo()?.layers.every((layer) => layer.transform.x === 0)).toBe(true);
   });
 
   it("bounds entries and retained command memory", () => {

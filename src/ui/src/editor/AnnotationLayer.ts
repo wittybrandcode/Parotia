@@ -25,9 +25,10 @@ export interface AnnotationLayer {
   loadLayers(layers: EditorLayer[]): Promise<void>;
   replaceLayers(layers: EditorLayer[]): Promise<void>;
   selectLayer(layerId: string | null): void;
+  selectLayers(layerIds: string[]): void;
   setCommitListener(listener: ((layer: EditorLayer) => void) | null): void;
-  setSelectionListener(listener: ((layerId: string | null) => void) | null): void;
-  setTransformListener(listener: ((before: EditorLayer, after: EditorLayer) => void) | null): void;
+  setSelectionListener(listener: ((layerIds: string[]) => void) | null): void;
+  setTransformListener(listener: ((before: EditorLayer[], after: EditorLayer[]) => void) | null): void;
   renderTo(canvas: HTMLCanvasElement): void;
   destroy(): void;
 }
@@ -46,7 +47,7 @@ export function createAnnotationLayer(): AnnotationLayer {
   let startY = 0;
   let currentTool: AnnotateTool = "freehand";
   let currentMode: AnnotationMode = "idle";
-  let selectedLayerId: string | null = null;
+  let selectedLayerIds: string[] = [];
   let pendingInput: HTMLInputElement | null = null;
   let stageWidth = 0;
   let stageHeight = 0;
@@ -55,8 +56,10 @@ export function createAnnotationLayer(): AnnotationLayer {
   const layerModels = new Map<string, EditorLayer>();
 
   let onCommit: ((layer: EditorLayer) => void) | null = null;
-  let onSelection: ((layerId: string | null) => void) | null = null;
-  let onTransform: ((before: EditorLayer, after: EditorLayer) => void) | null = null;
+  let onSelection: ((layerIds: string[]) => void) | null = null;
+  let onTransform: ((before: EditorLayer[], after: EditorLayer[]) => void) | null = null;
+  let gestureBefore: Map<string, EditorLayer> | null = null;
+  let activeDragId: string | null = null;
 
   function pointer(): { x: number; y: number } {
     return stage?.getPointerPosition() ?? { x: 0, y: 0 };
@@ -140,34 +143,68 @@ export function createAnnotationLayer(): AnnotationLayer {
   }
 
   function updateSelectionPresentation(): void {
+    const selected = new Set(selectedLayerIds);
     for (const [id, model] of layerModels) {
       const node = layerNode(id);
-      node?.draggable(currentMode === "select" && id === selectedLayerId && !model.locked && model.visible);
+      node?.draggable(currentMode === "select" && selected.has(id) && !model.locked && model.visible);
     }
-    const selectedModel = selectedLayerId ? layerModels.get(selectedLayerId) : null;
-    const selectedNode = selectedLayerId ? layerNode(selectedLayerId) : null;
-    transformer?.nodes(currentMode === "select" && selectedNode && selectedModel?.visible && !selectedModel.locked ? [selectedNode] : []);
+    const nodes = currentMode === "select" ? selectedLayerIds.flatMap((id) => {
+      const model = layerModels.get(id);
+      const node = layerNode(id);
+      return node && model?.visible && !model.locked ? [node] : [];
+    }) : [];
+    transformer?.nodes(nodes);
+    if (transformer && typeof transformer.keepRatio === "function") transformer.keepRatio(nodes.some((node) => layerModels.get(node.id())?.kind === "group"));
     transformer?.getLayer()?.batchDraw();
   }
 
   function selectLayer(layerId: string | null): void {
-    selectedLayerId = layerId && layerModels.has(layerId) ? layerId : null;
-    updateSelectionPresentation();
-    onSelection?.(selectedLayerId);
+    selectLayers(layerId ? [layerId] : []);
   }
 
-  function onTransformEnd(event: Konva.KonvaEventObject<Event>): void {
+  function selectLayers(layerIds: string[]): void {
+    selectedLayerIds = [...new Set(layerIds)].filter((id) => layerModels.has(id));
+    updateSelectionPresentation();
+    onSelection?.([...selectedLayerIds]);
+  }
+
+  function onGestureStart(event: Konva.KonvaEventObject<Event>): void {
     const id = nodeLayerId(event.target);
-    if (!id) return;
-    const before = layerModels.get(id);
-    const node = layerNode(id);
-    if (!before || !node || before.locked) return;
-    const after: EditorLayer = {
-      ...before,
-      transform: { x: node.x(), y: node.y(), scaleX: node.scaleX(), scaleY: node.scaleY(), rotation: node.rotation() },
-    };
-    layerModels.set(id, after);
-    onTransform?.(before, after);
+    if (!id || !selectedLayerIds.includes(id)) return;
+    gestureBefore = new Map(selectedLayerIds.flatMap((selectedId) => {
+      const model = layerModels.get(selectedId);
+      return model && !model.locked && model.visible && layerNode(selectedId) ? [[selectedId, model] as const] : [];
+    }));
+    activeDragId = event.type === "dragstart" ? id : null;
+  }
+
+  function onDragMove(event: Konva.KonvaEventObject<Event>): void {
+    const id = activeDragId && nodeLayerId(event.target);
+    const origin = id ? gestureBefore?.get(id) : null;
+    const node = id ? layerNode(id) : null;
+    if (!id || !origin || !node) return;
+    const deltaX = node.x() - origin.transform.x;
+    const deltaY = node.y() - origin.transform.y;
+    for (const [otherId, before] of gestureBefore ?? []) {
+      if (otherId === id) continue;
+      layerNode(otherId)?.position({ x: before.transform.x + deltaX, y: before.transform.y + deltaY });
+    }
+    annotationLayer?.batchDraw();
+  }
+
+  function onGestureEnd(): void {
+    if (!gestureBefore) return;
+    const before = [...gestureBefore.values()];
+    gestureBefore = null;
+    activeDragId = null;
+    const after = before.map((model) => {
+      const node = layerNode(model.id);
+      if (!node) return model;
+      const transformed: EditorLayer = { ...model, transform: { x: node.x(), y: node.y(), scaleX: node.scaleX(), scaleY: node.scaleY(), rotation: node.rotation() } };
+      layerModels.set(model.id, transformed);
+      return transformed;
+    });
+    if (before.some((entry, index) => JSON.stringify(entry.transform) !== JSON.stringify(after[index]?.transform))) onTransform?.(before, after);
   }
 
   function onPointerDown(event: Konva.KonvaEventObject<PointerEvent>): void {
@@ -176,7 +213,12 @@ export function createAnnotationLayer(): AnnotationLayer {
     if (currentMode === "select") {
       const parent = event.target.getParent();
       if (parent === transformer || parent?.getParent?.() === transformer) return;
-      selectLayer(event.target === stage ? null : nodeLayerId(event.target));
+      const id = event.target === stage ? null : nodeLayerId(event.target);
+      const sourceEvent = event.evt as PointerEvent | undefined;
+      const modifier = Boolean(sourceEvent?.shiftKey || sourceEvent?.ctrlKey || sourceEvent?.metaKey);
+      if (!id) { if (!modifier) selectLayers([]); }
+      else if (modifier) selectLayers(selectedLayerIds.includes(id) ? selectedLayerIds.filter((entry) => entry !== id) : [...selectedLayerIds, id]);
+      else selectLayers([id]);
       return;
     }
     // Draw mode is explicit: a new layer may be placed over an existing one.
@@ -334,7 +376,9 @@ export function createAnnotationLayer(): AnnotationLayer {
     stage.on("pointermove", onPointerMove);
     stage.on("pointerup pointercancel", onPointerUp);
     stage.on("click tap", onTextActivate);
-    stage.on("dragend transformend", onTransformEnd);
+    stage.on("dragstart transformstart", onGestureStart);
+    stage.on("dragmove", onDragMove);
+    stage.on("dragend transformend", onGestureEnd);
     setTool("freehand");
     setMode("idle");
     updateCursor();
@@ -389,6 +433,11 @@ export function createAnnotationLayer(): AnnotationLayer {
         );
         return group;
       }
+      case "group": {
+        const group = new Konva.Group(common);
+        for (const child of [...layer.children].sort((a, b) => a.order - b.order)) group.add(await nodeFromLayer(child));
+        return group;
+      }
     }
   }
 
@@ -409,7 +458,7 @@ export function createAnnotationLayer(): AnnotationLayer {
     annotationLayer.destroyChildren();
     layerModels.clear();
     await loadLayers(layers);
-    if (selectedLayerId && !layerModels.has(selectedLayerId)) selectedLayerId = null;
+    selectedLayerIds = selectedLayerIds.filter((id) => layerModels.has(id));
     updateSelectionPresentation();
   }
 
@@ -453,11 +502,11 @@ export function createAnnotationLayer(): AnnotationLayer {
     onCommit = listener;
   }
 
-  function setSelectionListener(listener: ((layerId: string | null) => void) | null): void {
+  function setSelectionListener(listener: ((layerIds: string[]) => void) | null): void {
     onSelection = listener;
   }
 
-  function setTransformListener(listener: ((before: EditorLayer, after: EditorLayer) => void) | null): void {
+  function setTransformListener(listener: ((before: EditorLayer[], after: EditorLayer[]) => void) | null): void {
     onTransform = listener;
   }
 
@@ -479,14 +528,16 @@ export function createAnnotationLayer(): AnnotationLayer {
     stageHeight = 0;
     layerCount = 0;
     layerModels.clear();
-    selectedLayerId = null;
+    selectedLayerIds = [];
+    gestureBefore = null;
+    activeDragId = null;
     currentMode = "idle";
   }
 
   return {
     get width() { return stageWidth; },
     get height() { return stageHeight; },
-    init, setMode, setTool, setOptions, loadLayers, replaceLayers, selectLayer,
+    init, setMode, setTool, setOptions, loadLayers, replaceLayers, selectLayer, selectLayers,
     setCommitListener, setSelectionListener, setTransformListener, renderTo, destroy,
   };
 }

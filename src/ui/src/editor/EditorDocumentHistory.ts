@@ -8,6 +8,8 @@ export type EditorDocumentPatch =
   | { operation: "add-layer"; layer: EditorLayer }
   | { operation: "remove-layer"; layer: EditorLayer }
   | { operation: "replace-layer"; before: EditorLayer; after: EditorLayer }
+  | { operation: "replace-layers"; before: EditorLayer[]; after: EditorLayer[] }
+  | { operation: "replace-layer-collection"; before: EditorLayer[]; after: EditorLayer[] }
   | { operation: "reorder-layers"; before: string[]; after: string[] }
   | { operation: "replace-document"; before: EditorDocument; after: EditorDocument };
 
@@ -58,6 +60,18 @@ export function applyEditorDocumentPatch(document: EditorDocument, patch: Editor
       layers[index] = patch.after;
       return updated(document, layers);
     }
+    case "replace-layers": {
+      if (patch.before.length !== patch.after.length) throw new Error("Layer replacement counts must match");
+      const replacements = new Map(patch.after.map((entry, index) => {
+        const previous = patch.before[index];
+        if (!previous || previous.id !== entry.id || previous.kind !== entry.kind) throw new Error("Layer replacements must preserve ids and kinds");
+        return [entry.id, entry] as const;
+      }));
+      if ([...replacements.keys()].some((id) => !document.layers.some((entry) => entry.id === id))) throw new Error("Every replaced layer must exist");
+      return updated(document, document.layers.map((entry) => replacements.get(entry.id) ?? entry));
+    }
+    case "replace-layer-collection":
+      return updated(document, patch.after);
     case "reorder-layers":
       return applyOrder(document, patch.after);
     case "replace-document":
@@ -81,6 +95,14 @@ export function removeLayerCommand(document: EditorDocument, layerId: string): E
 
 export function replaceLayerCommand(before: EditorLayer, after: EditorLayer, label = `Edit ${before.name}`): EditorDocumentCommand {
   return command(label, { operation: "replace-layer", before, after }, { operation: "replace-layer", before: after, after: before });
+}
+
+export function replaceLayersCommand(before: EditorLayer[], after: EditorLayer[], label = "Edit layers"): EditorDocumentCommand {
+  return command(label, { operation: "replace-layers", before, after }, { operation: "replace-layers", before: after, after: before });
+}
+
+export function replaceLayerCollectionCommand(before: EditorLayer[], after: EditorLayer[], label: string): EditorDocumentCommand {
+  return command(label, { operation: "replace-layer-collection", before, after }, { operation: "replace-layer-collection", before: after, after: before });
 }
 
 export function reorderLayersCommand(before: string[], after: string[]): EditorDocumentCommand {
