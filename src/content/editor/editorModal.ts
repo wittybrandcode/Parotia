@@ -27,6 +27,10 @@ export function createEditorModal(shadow: ShadowRoot): EditorModal {
 
   const frame = document.createElement("iframe");
   frame.setAttribute("data-parotia-editor-frame", "true");
+  // The editor is cross-origin to the host page. Local Font Access is governed
+  // by Permissions Policy, so Chrome will reject queryLocalFonts() unless the
+  // embedding frame explicitly delegates the feature to the extension page.
+  frame.setAttribute("allow", "local-fonts");
   frame.style.width = "100%";
   frame.style.height = "100%";
   frame.style.border = "none";
