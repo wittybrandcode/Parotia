@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { finishCapture } from "@background/editorGateway";
+import { finishCapture, handleEditorResult } from "@background/editorGateway";
 
 function pngHeader(width: number, height: number): string {
   const bytes = new Uint8Array(24);
@@ -74,5 +74,57 @@ describe("editor gateway preflight", () => {
     expect(result.error).toContain("too large for safe editing");
     expect(chrome.storage.local.set).not.toHaveBeenCalled();
     expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("reports an explicit download fallback when the editor cannot be opened", async () => {
+    (chrome.tabs.sendMessage as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("tab closed"));
+    const dataUrl = pngHeader(800, 600);
+
+    const result = await finishCapture(4, "session-fallback", dataUrl, "fallback.png");
+
+    expect(result).toEqual({
+      success: true,
+      filename: "fallback.png",
+      editor: false,
+      editorFallback: true,
+      warning: "The editor could not be opened, so the original capture was downloaded instead.",
+    });
+    expect(chrome.storage.local.remove).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.stringMatching(/^editor-image:/),
+      expect.stringMatching(/^editor-ticket:/),
+    ]));
+    expect(chrome.downloads.download).toHaveBeenCalled();
+  });
+
+  it("reports a total failure when neither the editor nor fallback download works", async () => {
+    (chrome.tabs.sendMessage as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("tab closed"));
+    (chrome.downloads.download as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("disk full"));
+
+    await expect(finishCapture(4, "session-failure", pngHeader(800, 600), "failure.png")).resolves.toEqual({
+      success: false,
+      error: "Failed to save the file. Check your downloads folder and try again.",
+    });
+  });
+
+  it("delegates trusted editor results to the one-time ticket manager", async () => {
+    const editorToken = "a".repeat(48);
+    const ticketKey = `editor-ticket:${editorToken}`;
+    (chrome.storage.local.get as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (key: unknown) => (
+      key === null
+        ? {}
+        : {
+            [ticketKey]: {
+              imageKey: `editor-image:${editorToken}`,
+              tabId: 4,
+              sessionId: "session-editor",
+              expiresAt: Date.now() + 60_000,
+            },
+          }
+    ));
+
+    await expect(handleEditorResult(
+      { type: "DISCARD_EDITOR_RESULT", payload: { editorToken } },
+      { url: "about:blank", tab: { id: 4 } } as chrome.runtime.MessageSender,
+    )).resolves.toEqual({ success: true });
   });
 });

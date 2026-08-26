@@ -23,6 +23,22 @@ describe("KeyboardShortcuts", () => {
 
   afterEach(() => {
     shortcuts.stop();
+    document.body.replaceChildren();
+  });
+
+  it("has an idempotent lifecycle and exposes whether it is active", () => {
+    expect(shortcuts.active).toBe(true);
+    shortcuts.start();
+    expect(shortcuts.active).toBe(true);
+
+    shortcuts.stop();
+    expect(shortcuts.active).toBe(false);
+    shortcuts.stop();
+    window.dispatchEvent(keyEvent({ code: "KeyF", shiftKey: true, altKey: true }));
+    expect(dispatch).not.toHaveBeenCalled();
+
+    shortcuts.start();
+    expect(shortcuts.active).toBe(true);
   });
 
   it("Shift+Alt+F freezes when unfrozen and unfreezes when frozen", () => {
@@ -97,5 +113,32 @@ describe("KeyboardShortcuts", () => {
     document.body.appendChild(editable);
     editable.dispatchEvent(keyEvent({ code: "KeyP", shiftKey: true, altKey: true }));
     expect(dispatch).not.toHaveBeenCalled();
+
+    const textarea = document.createElement("textarea");
+    document.body.appendChild(textarea);
+    textarea.focus();
+    window.dispatchEvent(keyEvent({ code: "KeyF", shiftKey: true, altKey: true }));
+
+    const select = document.createElement("select");
+    select.dispatchEvent(keyEvent({ code: "KeyF", shiftKey: true, altKey: true }));
+
+    const nestedEditable = document.createElement("div");
+    nestedEditable.setAttribute("contenteditable", "true");
+    const nested = document.createElement("span");
+    nestedEditable.appendChild(nested);
+    document.body.appendChild(nestedEditable);
+    nested.dispatchEvent(keyEvent({ code: "KeyF", shiftKey: true, altKey: true }));
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("allows shortcuts inside an explicitly non-editable contenteditable region", () => {
+    const region = document.createElement("div");
+    region.setAttribute("contenteditable", "false");
+    const child = document.createElement("span");
+    region.appendChild(child);
+    document.body.appendChild(region);
+
+    child.dispatchEvent(keyEvent({ code: "KeyF", shiftKey: true, altKey: true }));
+    expect(dispatch).toHaveBeenCalledWith({ type: "FREEZE_PAGE", payload: { sessionId: "" } });
   });
 });

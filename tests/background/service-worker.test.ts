@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { MessageResponse } from "@shared/types";
+import type { BackgroundCommand, MessageResponse } from "@shared/types";
 import type * as ServiceWorkerModule from "@background/service-worker";
 
 type OnMessageListener = (
@@ -8,6 +8,7 @@ type OnMessageListener = (
   sendResponse: (response: unknown) => void,
 ) => boolean | undefined;
 type TabRemovedListener = (tabId: number) => void;
+type TabUpdatedListener = (tabId: number, changeInfo: { url?: string; status?: string }) => void;
 type ActionListener = (tab: { id?: number }) => Promise<void> | void;
 
 /** Rich chrome.* stub that captures every listener the worker registers. */
@@ -28,7 +29,7 @@ interface ChromeStub {
     getZoom: ReturnType<typeof vi.fn>;
     setZoom: ReturnType<typeof vi.fn>;
     onRemoved: { addListener: (fn: TabRemovedListener) => void };
-    onUpdated: { addListener: (...args: unknown[]) => void };
+    onUpdated: { addListener: (fn: TabUpdatedListener) => void };
   };
   action: { onClicked: { addListener: (fn: ActionListener) => void } };
   scripting: { executeScript: ReturnType<typeof vi.fn> };
@@ -52,6 +53,7 @@ interface ChromeStub {
   captured: {
     onMessage?: OnMessageListener;
     onTabRemoved?: TabRemovedListener;
+    onTabUpdated?: TabUpdatedListener;
     onActionClicked?: ActionListener;
   };
 }
@@ -81,7 +83,11 @@ function makeChromeStub(sessionSeed: Record<string, { sessionId: string; created
           captured.onTabRemoved = fn;
         },
       },
-      onUpdated: { addListener: () => undefined },
+      onUpdated: {
+        addListener: (fn) => {
+          captured.onTabUpdated = fn;
+        },
+      },
     },
     action: {
       onClicked: {
@@ -367,6 +373,110 @@ describe("service-worker", () => {
 
     expect(chromeStub.tabs.sendMessage).toHaveBeenCalledWith(9, expect.objectContaining({ type: "FREEZE_PAGE" }));
     expect(res.success).toBe(true);
+  });
+
+  it("rejects a command sent by a tab that does not own the session", async () => {
+    sw.tabSessions.set(9, "sess-owner");
+    const res = await invokeOnMessage(
+      { type: "UNDO", payload: { sessionId: "sess-owner" } },
+      { tab: { id: 10 } },
+    );
+
+    expect(res).toEqual(expect.objectContaining({
+      success: false,
+      error: expect.objectContaining({ code: "SESSION_NOT_FOUND", message: expect.stringMatching(/sender tab/) }),
+    }));
+    expect(chromeStub.tabs.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("routes every non-capture content command through the verified owner", async () => {
+    sw.tabSessions.set(6, "sess-routes");
+    chromeStub.tabs.sendMessage.mockResolvedValue(okResponse({ routed: true }));
+    const rect = { x: 1, y: 2, width: 30, height: 40 };
+    const elementRect = { left: 1, top: 2, width: 30, height: 40 };
+    const png = "data:image/png;base64,AAAA";
+    const commands: BackgroundCommand[] = [
+      { type: "FREEZE_PAGE", payload: { sessionId: "sess-routes" } },
+      { type: "UNFREEZE_PAGE", payload: { sessionId: "sess-routes" } },
+      { type: "INSPECT_START", payload: { sessionId: "sess-routes" } },
+      { type: "INSPECT_STOP", payload: { sessionId: "sess-routes" } },
+      { type: "DELETE_ELEMENT", payload: { sessionId: "sess-routes", elementId: "element" } },
+      { type: "HIDE_ELEMENT", payload: { sessionId: "sess-routes", elementId: "element" } },
+      { type: "SHOW_ELEMENT", payload: { sessionId: "sess-routes", elementId: "element" } },
+      { type: "DELETE_MATCHING", payload: { sessionId: "sess-routes", elementId: "element" } },
+      { type: "UNDO", payload: { sessionId: "sess-routes" } },
+      { type: "REDO", payload: { sessionId: "sess-routes" } },
+      { type: "UNDO_TO", payload: { sessionId: "sess-routes", entryId: "entry" } },
+      { type: "RESET", payload: { sessionId: "sess-routes" } },
+      { type: "GET_STATE", payload: { sessionId: "sess-routes" } },
+      { type: "CLOSE_TOOLBAR", payload: { sessionId: "sess-routes" } },
+      { type: "PREPARE_CAPTURE", payload: { sessionId: "sess-routes" } },
+      { type: "RESTORE_CAPTURE", payload: { sessionId: "sess-routes" } },
+      { type: "PREPARE_ELEMENT_CAPTURE", payload: { sessionId: "sess-routes", elementId: "element" } },
+      { type: "CAPTURE_ELEMENT_CROP", payload: { sessionId: "sess-routes", dataUrl: png, dpr: 1, rect: elementRect } },
+      { type: "CAPTURE_ELEMENT_SCROLL", payload: { sessionId: "sess-routes", scrollYCss: 10 } },
+      { type: "CAPTURE_ELEMENT_SLICE", payload: { sessionId: "sess-routes", dataUrl: png, scrollYCss: 10 } },
+      { type: "CAPTURE_ELEMENT_FINALIZE", payload: { sessionId: "sess-routes", dpr: 1, rect: elementRect } },
+      { type: "CAPTURE_ELEMENT_RESTORE", payload: { sessionId: "sess-routes" } },
+      { type: "CAPTURE_STITCH_START", payload: { sessionId: "sess-routes" } },
+      { type: "CAPTURE_SCROLL", payload: { sessionId: "sess-routes", scrollYCss: 10 } },
+      { type: "CAPTURE_SLICE", payload: { sessionId: "sess-routes", dataUrl: png, scrollYCss: 10 } },
+      { type: "CAPTURE_FINALIZE", payload: { sessionId: "sess-routes" } },
+      { type: "FREE_SELECT", payload: { sessionId: "sess-routes" } },
+      { type: "SELECT_REGION", payload: { sessionId: "sess-routes", rect, scrollY: 0, dpr: 1 } },
+      { type: "CAPTURE_REGION_CROP", payload: { sessionId: "sess-routes", dataUrl: png, rect, dpr: 1 } },
+      { type: "PREPARE_REGION_CAPTURE", payload: { sessionId: "sess-routes" } },
+      { type: "RESTORE_REGION_CAPTURE", payload: { sessionId: "sess-routes" } },
+      { type: "OPEN_EDITOR", payload: { sessionId: "sess-routes", imageKey: "image", filename: "capture.png", editorToken: "a".repeat(48) } },
+    ];
+
+    for (const command of commands) {
+      const response = await invokeOnMessage(command);
+      expect(response.success, command.type).toBe(true);
+    }
+    expect(chromeStub.tabs.sendMessage).toHaveBeenCalledTimes(commands.length);
+  });
+
+  it("preserves content error codes and handles absent or thrown tab responses", async () => {
+    sw.tabSessions.set(6, "sess-errors");
+    chromeStub.tabs.sendMessage.mockResolvedValueOnce({
+      id: "",
+      success: false,
+      error: { code: "TARGET_GONE", message: "target disappeared" },
+    });
+    const rejected = await invokeOnMessage({ type: "UNDO", payload: { sessionId: "sess-errors" } });
+    expect(rejected.error).toEqual({ code: "TARGET_GONE", message: "target disappeared" });
+
+    chromeStub.tabs.sendMessage.mockResolvedValueOnce(undefined);
+    const absent = await invokeOnMessage({ type: "UNDO", payload: { sessionId: "sess-errors" } });
+    expect(absent.error).toEqual({ code: "INTERNAL", message: "Content runtime did not return a successful response" });
+
+    chromeStub.tabs.sendMessage.mockRejectedValueOnce("tab vanished");
+    const thrown = await invokeOnMessage({ type: "UNDO", payload: { sessionId: "sess-errors" } });
+    expect(thrown.error).toEqual({ code: "INTERNAL", message: "tab vanished" });
+  });
+
+  it("converts a message-boundary rejection into an INTERNAL response", async () => {
+    const message = {
+      type: "GET_STATE",
+      get payload(): never {
+        throw new Error("hostile payload getter");
+      },
+    };
+
+    const response = await invokeOnMessage(message);
+    expect(response.error).toEqual({ code: "INTERNAL", message: "hostile payload getter" });
+  });
+
+  it("normalizes a non-Error editor-boundary failure", async () => {
+    const token = "f".repeat(48);
+    const sender = {
+      get url(): never {
+        throw "hostile sender URL";
+      },
+    };
+    const response = await invokeOnMessage({ type: "DISCARD_EDITOR_RESULT", payload: { editorToken: token } }, sender);
+    expect(response.error).toEqual({ code: "INVALID_PAYLOAD", message: "hostile sender URL" });
   });
 
   it("captures the visible area, hides the toolbar, and opens the editor", async () => {
@@ -714,6 +824,65 @@ describe("service-worker", () => {
       15,
       expect.objectContaining({ type: "START_SESSION" }),
     );
+  });
+
+  it("ignores action clicks without a tab id and restricted-page failures", async () => {
+    await chromeStub.captured.onActionClicked?.({});
+    expect(chromeStub.tabs.sendMessage).not.toHaveBeenCalled();
+
+    chromeStub.tabs.sendMessage.mockRejectedValue(new Error("restricted page"));
+    chromeStub.scripting.executeScript.mockRejectedValue(new Error("cannot inject"));
+    await expect(chromeStub.captured.onActionClicked?.({ id: 22 })).resolves.toBeUndefined();
+    expect(sw.tabSessions.has(22)).toBe(false);
+  });
+
+  it("reuses an already injected content script and ignores an empty action session", async () => {
+    chromeStub.tabs.sendMessage.mockImplementation(async (_tabId: number, message: { type: string }) => (
+      message.type === "PING" ? okResponse({ pong: true }) : okResponse({})
+    ));
+
+    await chromeStub.captured.onActionClicked?.({ id: 23 });
+    expect(chromeStub.scripting.executeScript).not.toHaveBeenCalled();
+    expect(sw.tabSessions.has(23)).toBe(false);
+  });
+
+  it("starts a session through a previously hydrated owner and propagates a content rejection", async () => {
+    sw.tabSessions.set(24, "sess-old");
+    chromeStub.tabs.sendMessage.mockImplementation(async (_tabId: number, message: { type: string }) => {
+      if (message.type === "PING") return okResponse({ pong: true });
+      return {
+        id: "",
+        success: false,
+        error: { code: "SESSION_START_FAILED", message: "page refused startup" },
+        data: { sessionId: "sess-new" },
+      };
+    });
+
+    const response = await invokeOnMessage({ type: "START_SESSION", payload: { sessionId: "sess-old" } });
+    expect(response.error).toEqual({ code: "SESSION_START_FAILED", message: "page refused startup" });
+    expect(sw.tabSessions.get(24)).toBe("sess-new");
+  });
+
+  it("uses stable defaults when content rejects session start without an error envelope", async () => {
+    chromeStub.tabs.sendMessage.mockImplementation(async (_tabId: number, message: { type: string }) => (
+      message.type === "PING" ? okResponse({ pong: true }) : { id: "", success: false }
+    ));
+
+    const response = await invokeOnMessage({ type: "START_SESSION", payload: {} }, { tab: { id: 25 } });
+    expect(response.error).toEqual({ code: "INTERNAL", message: "Content runtime rejected session start" });
+  });
+
+  it("clears session and capture state when a tab navigates or starts loading", async () => {
+    sw.tabSessions.set(30, "keep-until-navigation");
+    chromeStub.captured.onTabUpdated?.(30, { status: "complete" });
+    expect(sw.tabSessions.get(30)).toBe("keep-until-navigation");
+
+    chromeStub.captured.onTabUpdated?.(30, { url: "https://example.test/next" });
+    expect(sw.tabSessions.has(30)).toBe(false);
+
+    sw.tabSessions.set(31, "loading-session");
+    chromeStub.captured.onTabUpdated?.(31, { status: "loading" });
+    expect(sw.tabSessions.has(31)).toBe(false);
   });
 
   it("captures a region by sending FREE_SELECT then cropping", async () => {

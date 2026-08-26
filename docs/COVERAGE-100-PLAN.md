@@ -7,8 +7,8 @@
 | تاريخ خط الأساس | 2026-08-26 |
 | النطاق | `src/**/*.ts` و`src/**/*.tsx` بعد تدقيق الملفات غير التنفيذية |
 | أداة القياس | Vitest + V8 Coverage |
-| الاختبارات الحالية | 441 اختباراً في 48 ملفاً + 5 اختبارات Playwright |
-| حالة الخطة | قيد التنفيذ — C0 مكتملة وC1 مكتملة عدا فروع `shortcuts.ts` |
+| الاختبارات الحالية | 517 اختباراً في 52 ملفاً + 5 اختبارات Playwright |
+| حالة الخطة | قيد التنفيذ — المراحل C0 وC1 وC2 مكتملة |
 | الهدف النهائي | 100% Lines / Statements / Functions / Branches |
 
 ---
@@ -126,7 +126,7 @@
 | `COV-002` | `[x]` | تدقيق `coverage.include/exclude` | لا يبقى مستبعداً إلا ملفات Mount والأنواع الموثقة أعلاه |
 | `COV-003` | `[x]` | إضافة تقرير آلي يرتب الملفات حسب العجز | ينتج Lines/Branches/Functions المفقودة لكل ملف عبر `npm run coverage:gaps` |
 | `COV-004` | `[x]` | تحديث `docs/TESTING.md` بالنطاق النهائي | تتطابق الوثيقة مع `vitest.config.ts` وCI |
-| `COV-005` | `[x]` | منع انخفاض التغطية عن خط الأساس | Thresholds عالمية: 90.8% Lines/Statements، 84.1% Functions، 77.1% Branches |
+| `COV-005` | `[x]` | منع انخفاض التغطية عن خط الأساس | Thresholds عالمية متحركة: 92.2% Lines/Statements، 85.1% Functions، 83.0% Branches |
 
 **بوابة الخروج C0:** خط أساس واحد قابل لإعادة الإنتاج محلياً وفي GitHub Actions.
 
@@ -139,7 +139,7 @@
 | `COV-101` | `[x]` | `imageCodec.ts` و`png.ts` | 13 اختباراً؛ الملفان 100% في المقاييس الأربعة |
 | `COV-102` | `[x]` | `selector.ts` و`domPatchLedger.ts` | تغطية الأخطاء العدائية والاستعادة المتكررة؛ الملفان 100% |
 | `COV-103` | `[x]` | `media.ts` و`editorPreflight.ts` | تغطية decode failure والميزانية والـPNG التالف؛ ملفات Shared كلها 100% |
-| `COV-104` | `[-]` | `logger.ts` و`shortcuts.ts` | `logger.ts` مكتمل 100%؛ بقي سطران وفرعان ودالة في `shortcuts.ts` |
+| `COV-104` | `[x]` | `logger.ts` و`shortcuts.ts` | السياق الغائب، الحقول القابلة للكتابة ودورة start/stop؛ الملفان 100% |
 | `COV-105` | `[x]` | `EditorTypography.ts` و`EditorDocumentHistory.ts` | الفروع الحدّية وno-op وclamp وRedo invalidation؛ الملفان 100% |
 
 **بوابة الخروج C1:** كل ملف Shared خاضع للقياس يحقق 100% في المؤشرات الأربعة.
@@ -150,11 +150,11 @@
 
 | ID | الحالة | النطاق | الحالات المطلوبة |
 |---|---|---|---|
-| `COV-201` | `[ ]` | `service-worker.ts` | sender غير صالح، أمر مجهول، تبويب مغلق، جلسة منتهية، hydration، replay وفشل الحقن |
-| `COV-202` | `[ ]` | `captureSupport.ts` | صلاحية مفقودة، URL محظور، tab/window ناقص وفشل `captureVisibleTab` |
-| `COV-203` | `[ ]` | `editorGateway.ts` و`editorTickets.ts` | token مفقود/منتهي/مكرر، origin/tab mismatch وفشل فتح المحرر |
-| `COV-204` | `[ ]` | `sessionRegistry.ts` | تبويب أُغلق أثناء العملية، استعادة متزامنة، تنظيف جلسة مجهولة |
-| `COV-205` | `[ ]` | Capture modes | visible/region/element/full-page: النجاح، الإلغاء، المهلة، السقف والتحذير |
+| `COV-201` | `[x]` | `service-worker.ts` | جميع الأوامر وحدود sender/session/hydration/replay والتنقل؛ 100% في المقاييس الأربعة |
+| `COV-202` | `[x]` | `captureSupport.ts` | retry، بيانات غير صالحة، الرسائل best-effort والتنظيف؛ 100% |
+| `COV-203` | `[x]` | `editorGateway.ts` و`editorTickets.ts` | token منتهي/مكرر، protocol/host/path/tab mismatch وفشل الفتح/التنزيل؛ 100% |
+| `COV-204` | `[x]` | `sessionRegistry.ts` | hydrate متزامن، سجلات تالفة، تبويب مغلق وفشل التخزين؛ 100% |
+| `COV-205` | `[x]` | Capture modes | Visible/Region/Element/Full-page: النجاح والفشل والإلغاء والسقف والاستعادة؛ جميع الملفات 100% |
 
 **قاعدة:** لا يكفي إثبات استدعاء Chrome API؛ يجب التحقق من الرسالة الناتجة، حالة التخزين والتنظيف بعد الفشل.
 
@@ -298,6 +298,7 @@
 |---|---|---:|---:|---:|---:|---:|---|
 | 2026-08-26 | Baseline | 412 | 90.78% | 90.78% | 84.12% | 77.10% | نجحت البوابات الحرجة الست و5 اختبارات E2E |
 | 2026-08-26 | C0 + معظم C1 | 441 | 91.23% | 91.23% | 84.79% | 79.24% | +29 اختباراً؛ Shared وTypography وDocumentHistory عند 100%، والمتبقي 693 سطراً و106 دوال و597 فرعاً |
+| 2026-08-26 | إغلاق C1 + C2 | 517 | 92.25% | 92.25% | 85.12% | 83.06% | Background وCapture modes عند 100%؛ المتبقي 612 سطراً و104 دوال و510 فروع |
 | — | C2 | — | — | — | — | — | — |
 | — | C3 | — | — | — | — | — | — |
 | — | C4 | — | — | — | — | — | — |

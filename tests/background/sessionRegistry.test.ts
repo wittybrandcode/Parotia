@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionRegistry } from "@background/sessionRegistry";
 
 const sessionStorage = chrome.storage.session as unknown as {
@@ -10,6 +10,7 @@ const sessionStorage = chrome.storage.session as unknown as {
   set: {
     mockReset(): void;
     mockResolvedValue(value: undefined): void;
+    mockRejectedValue(error: unknown): void;
   };
 };
 const tabsGet = chrome.tabs.get as unknown as {
@@ -60,5 +61,50 @@ describe("SessionRegistry", () => {
     const registry = new SessionRegistry("sessions:test");
     await registry.hydrate();
     expect(registry.findTab("stale")).toBeUndefined();
+  });
+
+  it("shares one hydration operation and ignores malformed or mismatched records", async () => {
+    sessionStorage.get.mockResolvedValue({
+      "sessions:test": {
+        "0": { sessionId: "zero", createdAt: 1 },
+        "-2": { sessionId: "negative", createdAt: 1 },
+        "2.5": { sessionId: "fraction", createdAt: 1 },
+        "3": { sessionId: "", createdAt: 1 },
+        "4": { sessionId: 44, createdAt: 1 },
+        "5": { sessionId: "mismatch", createdAt: 1 },
+        "6": { sessionId: "valid", createdAt: 1 },
+      },
+    });
+    tabsGet.mockImplementation(async (tabId) => ({ id: tabId === 5 ? 50 : tabId }));
+    const registry = new SessionRegistry("sessions:test");
+
+    const first = registry.hydrate();
+    const second = registry.hydrate();
+    expect(second).toBe(first);
+    await first;
+
+    expect(registry.sessions).toEqual(new Map([[6, "valid"]]));
+    expect(registry.hydrate()).toBe(first);
+  });
+
+  it.each([undefined, null, "invalid"])("ignores a non-record persisted value %#", async (value) => {
+    sessionStorage.get.mockResolvedValue({ "sessions:test": value });
+    const registry = new SessionRegistry("sessions:test");
+
+    await expect(registry.hydrate()).resolves.toBeUndefined();
+    expect(registry.sessions.size).toBe(0);
+    expect(chrome.tabs.get).not.toHaveBeenCalled();
+  });
+
+  it("keeps in-memory ownership when persistence fails", async () => {
+    sessionStorage.set.mockRejectedValue(new Error("storage unavailable"));
+    const registry = new SessionRegistry("sessions:test");
+
+    await expect(registry.register(12, "session-12")).resolves.toBeUndefined();
+    expect(registry.findTab("session-12")).toBe(12);
+
+    registry.remove(12);
+    await vi.waitFor(() => expect(sessionStorage.set).toHaveBeenCalledTimes(2));
+    expect(registry.findTab("session-12")).toBeUndefined();
   });
 });
