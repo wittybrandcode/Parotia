@@ -8,7 +8,7 @@
 | النطاق | `src/**/*.ts` و`src/**/*.tsx` بعد تدقيق الملفات غير التنفيذية |
 | أداة القياس | Vitest + V8 Coverage |
 | الاختبارات الحالية | 441 اختباراً في 48 ملفاً + 5 اختبارات Playwright |
-| حالة الخطة | قيد التنفيذ — C0 مكتملة محلياً وC1 مكتملة عدا فروع `shortcuts.ts` |
+| حالة الخطة | قيد التنفيذ — C0 مكتملة وC1 مكتملة عدا فروع `shortcuts.ts` |
 | الهدف النهائي | 100% Lines / Statements / Functions / Branches |
 
 ---
@@ -123,10 +123,10 @@
 | ID | الحالة | المهمة | معيار القبول |
 |---|---|---|---|
 | `COV-001` | `[x]` | تسجيل خط الأساس الحالي | 412/412 اختباراً، 90.78% Lines، 77.10% Branches، 84.12% Functions |
-| `COV-002` | `[~]` | تدقيق `coverage.include/exclude` | لا يبقى مستبعداً إلا ملفات Mount والأنواع الموثقة أعلاه |
-| `COV-003` | `[~]` | إضافة تقرير آلي يرتب الملفات حسب العجز | ينتج Lines/Branches/Functions المفقودة لكل ملف عبر `npm run coverage:gaps` |
-| `COV-004` | `[~]` | تحديث `docs/TESTING.md` بالنطاق النهائي | تتطابق الوثيقة مع `vitest.config.ts` وCI |
-| `COV-005` | `[~]` | منع انخفاض التغطية عن خط الأساس | Thresholds عالمية: 90.8% Lines/Statements، 84.1% Functions، 77.1% Branches |
+| `COV-002` | `[x]` | تدقيق `coverage.include/exclude` | لا يبقى مستبعداً إلا ملفات Mount والأنواع الموثقة أعلاه |
+| `COV-003` | `[x]` | إضافة تقرير آلي يرتب الملفات حسب العجز | ينتج Lines/Branches/Functions المفقودة لكل ملف عبر `npm run coverage:gaps` |
+| `COV-004` | `[x]` | تحديث `docs/TESTING.md` بالنطاق النهائي | تتطابق الوثيقة مع `vitest.config.ts` وCI |
+| `COV-005` | `[x]` | منع انخفاض التغطية عن خط الأساس | Thresholds عالمية: 90.8% Lines/Statements، 84.1% Functions، 77.1% Branches |
 
 **بوابة الخروج C0:** خط أساس واحد قابل لإعادة الإنتاج محلياً وفي GitHub Actions.
 
@@ -136,11 +136,11 @@
 
 | ID | الحالة | النطاق | الحالات المطلوبة |
 |---|---|---|---|
-| `COV-101` | `[~]` | `imageCodec.ts` و`png.ts` | 13 اختباراً؛ الملفان 100% في المقاييس الأربعة |
-| `COV-102` | `[~]` | `selector.ts` و`domPatchLedger.ts` | تغطية الأخطاء العدائية والاستعادة المتكررة؛ الملفان 100% |
-| `COV-103` | `[~]` | `media.ts` و`editorPreflight.ts` | تغطية decode failure والميزانية والـPNG التالف؛ ملفات Shared كلها 100% |
+| `COV-101` | `[x]` | `imageCodec.ts` و`png.ts` | 13 اختباراً؛ الملفان 100% في المقاييس الأربعة |
+| `COV-102` | `[x]` | `selector.ts` و`domPatchLedger.ts` | تغطية الأخطاء العدائية والاستعادة المتكررة؛ الملفان 100% |
+| `COV-103` | `[x]` | `media.ts` و`editorPreflight.ts` | تغطية decode failure والميزانية والـPNG التالف؛ ملفات Shared كلها 100% |
 | `COV-104` | `[-]` | `logger.ts` و`shortcuts.ts` | `logger.ts` مكتمل 100%؛ بقي سطران وفرعان ودالة في `shortcuts.ts` |
-| `COV-105` | `[~]` | `EditorTypography.ts` و`EditorDocumentHistory.ts` | الفروع الحدّية وno-op وclamp وRedo invalidation؛ الملفان 100% |
+| `COV-105` | `[x]` | `EditorTypography.ts` و`EditorDocumentHistory.ts` | الفروع الحدّية وno-op وclamp وRedo invalidation؛ الملفان 100% |
 
 **بوابة الخروج C1:** كل ملف Shared خاضع للقياس يحقق 100% في المؤشرات الأربعة.
 
