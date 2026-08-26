@@ -186,6 +186,7 @@ Complete technical documentation is in the [`docs/`](./docs/) folder:
 | [Security](./docs/SECURITY.md) | Security model, validation, CSP, threat mitigation |
 | [Permissions](./docs/PERMISSIONS.md) | Why each Chrome permission is needed |
 | [Testing](./docs/TESTING.md) | Test strategy, coverage, writing new tests |
+| [100% Coverage Plan](./docs/COVERAGE-100-PLAN.md) | Phased execution plan and progress tracker for complete coverage |
 | [Build System](./docs/BUILD.md) | Build pipeline, scripts, configuration |
 | [Keyboard Shortcuts](./docs/KEYBOARD-SHORTCUTS.md) | Complete shortcut reference |
 | [Contributing](./docs/CONTRIBUTING.md) | How to contribute, code conventions |

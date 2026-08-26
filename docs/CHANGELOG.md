@@ -6,14 +6,22 @@ All notable changes to Parotia are documented here.
 
 ## [Unreleased]
 
+### Coverage hardening foundation
+
+- Audited the executable coverage scope, limited exclusions to documented type-only, barrel and declarative mount entries, and added an automated per-file coverage-debt report through `npm run coverage:gaps`.
+- Raised the global regression floor to the measured baseline and chained the critical-file and coverage-gap checks into `npm run test:coverage`.
+- Added hostile-input and boundary coverage for PNG/image decoding, selectors, reversible DOM patches, editor preflight, media readiness, logging, document history and typography.
+- The suite now contains 441 passing Vitest tests across 48 files. Global coverage is 91.23% Lines/Statements, 84.79% Functions and 79.24% Branches; all measured Shared utilities, `EditorTypography` and `EditorDocumentHistory` are at 100% in all four metrics.
+- Added `docs/COVERAGE-100-PLAN.md` with immutable baseline figures, phased task IDs, acceptance gates, risk controls and a progress ledger for the remaining 693 lines, 106 functions and 597 branches.
+
 ### Professional layers, typography and shapes
 
 - Added a non-destructive layer workspace with multi-selection, grouping, alignment, distribution, drag ordering, locking, visibility, clipboard workflows, keyboard controls and smart snapping guides.
 - Added professional editable typography: multiline RTL/LTR text, explicit font fallback, local-font discovery after user permission, text boxes, spacing, backgrounds, borders, shadows and reusable presets.
-- Split typography into click-created Point Text and drag-created Paragraph Text, added justified paragraph alignment and direct numeric font sizing. Point Text resizes proportionally through corner handles; Paragraph Text handles resize only its reflow container while font size remains controlled exclusively by the size field.
+- Split typography into click-created Point Text and drag-created Paragraph Text, added direct numeric font sizing and professional Justify Last Left/Center/Right modes without changing the normal alignment controls. Point Text resizes proportionally through corner handles; Paragraph Text updates its reflow box live while every glyph remains at a `1:1` scale and font size stays controlled exclusively by the size field.
 - Delegated the `local-fonts` Permissions Policy feature to the embedded editor and added a policy-aware fallback that avoids calling `queryLocalFonts()` when the host page blocks access.
 - Added editable shape geometry and solid/dashed/dotted strokes, configurable arrow heads and direction reversal, automatically continued numbered step markers, type-safe style copy/paste and four editorial shape presets.
-- Advanced the editor document to schema v5 with strict text-mode invariants and recursive migration from v0/v1/v2/v3/v4; copied legacy layers are migrated before insertion.
+- Advanced the editor document to schema v6 with strict text-mode and last-line justification invariants plus recursive migration from v0/v1/v2/v3/v4/v5; copied legacy layers are migrated before insertion.
 - Expanded the real Chromium workflow to cover Arabic text, text presets, numbered steps, style transfer, advanced arrows and final native-resolution save.
 
 ### Non-destructive editor document foundation

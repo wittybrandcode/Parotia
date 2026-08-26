@@ -287,6 +287,19 @@ export function LayerPanel({ document, selectedLayerIds, disabled, onSelect, onU
             ...(selected.textMode === "paragraph" ? [["justify", "Justify text", <AlignJustify key="justify-icon" size={14} />] as const] : []),
           ] as const).map(([align, label, icon]) => <button key={align} aria-label={label} title={label} aria-pressed={selected.align === align} className={selected.align === align ? "active" : ""} onClick={() => update({ ...selected, align: align as EditorTextLayer["align"] }, `Align ${selected.name}`)}>{icon}</button>)}
         </div>
+        {selected.textMode === "paragraph" && <>
+          <div className="nc-layer-section-title">Justify last line</div>
+          <div className="nc-layer-segmented" role="group" aria-label="Justified text last-line alignment">
+            {([
+              ["left", "Justify with last line left", <AlignLeft key="justify-left-icon" size={14} />],
+              ["center", "Justify with last line centered", <AlignCenter key="justify-center-icon" size={14} />],
+              ["right", "Justify with last line right", <AlignRight key="justify-right-icon" size={14} />],
+            ] as const).map(([lastLine, label, icon]) => <button key={lastLine} aria-label={label} title={label}
+              aria-pressed={selected.align === "justify" && selected.justifyLastLine === lastLine}
+              className={selected.align === "justify" && selected.justifyLastLine === lastLine ? "active" : ""}
+              onClick={() => update({ ...selected, align: "justify", justifyLastLine: lastLine }, `Justify ${selected.name} with last line ${lastLine}`)}>{icon}</button>)}
+          </div>
+        </>}
         <div className="nc-layer-property-grid">
           <label>Direction<select aria-label="Text direction" value={selected.direction} onChange={(event) => update({ ...selected, direction: event.target.value as typeof selected.direction }, `Change ${selected.name} direction`)}><option value="auto">Auto</option><option value="ltr">LTR</option><option value="rtl">RTL</option></select></label>
           {selected.textMode === "paragraph" && <label>Vertical<select aria-label="Text vertical alignment" value={selected.verticalAlign} onChange={(event) => update({ ...selected, verticalAlign: event.target.value as typeof selected.verticalAlign }, `Change ${selected.name} vertical alignment`)}><option value="top">Top</option><option value="middle">Middle</option><option value="bottom">Bottom</option></select></label>}

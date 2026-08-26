@@ -25,6 +25,7 @@ export interface EditorLayerStyle {
   fontStyle?: EditorTextLayer["fontStyle"];
   direction?: EditorTextLayer["direction"];
   align?: EditorTextLayer["align"];
+  justifyLastLine?: EditorTextLayer["justifyLastLine"];
   verticalAlign?: EditorTextLayer["verticalAlign"];
   textColor?: string;
   lineHeight?: number;
@@ -75,7 +76,7 @@ export function copyEditorLayerStyle(layer: EditorLayer): EditorLayerStyle | nul
   if (layer.kind === "text") return {
     version: 1, category: "text", opacity: layer.opacity, fontFamily: layer.fontFamily, fontFallback: layer.fontFallback,
     fontSize: layer.fontSize, fontWeight: layer.fontWeight, fontStyle: layer.fontStyle, direction: layer.direction,
-    align: layer.align, verticalAlign: layer.verticalAlign, textColor: layer.fill, lineHeight: layer.lineHeight,
+    align: layer.align, justifyLastLine: layer.justifyLastLine, verticalAlign: layer.verticalAlign, textColor: layer.fill, lineHeight: layer.lineHeight,
     letterSpacing: layer.letterSpacing, padding: layer.padding, backgroundColor: layer.backgroundColor,
     borderColor: layer.borderColor, borderWidth: layer.borderWidth, cornerRadius: layer.cornerRadius,
     shadowColor: layer.shadowColor, shadowBlur: layer.shadowBlur, shadowOffsetX: layer.shadowOffsetX, shadowOffsetY: layer.shadowOffsetY,
@@ -108,6 +109,7 @@ export function applyEditorLayerStyle(layer: EditorLayer, style: EditorLayerStyl
     fontWeight: style.fontWeight ?? layer.fontWeight, fontStyle: style.fontStyle ?? layer.fontStyle,
     direction: style.direction ?? layer.direction,
     align: layer.textMode === "point" && style.align === "justify" ? layer.align : style.align ?? layer.align,
+    justifyLastLine: style.justifyLastLine ?? layer.justifyLastLine,
     verticalAlign: layer.textMode === "point" ? "top" : style.verticalAlign ?? layer.verticalAlign, fill: style.textColor ?? layer.fill,
     lineHeight: style.lineHeight ?? layer.lineHeight, letterSpacing: style.letterSpacing ?? layer.letterSpacing,
     padding: style.padding ?? layer.padding, backgroundColor: style.backgroundColor === undefined ? layer.backgroundColor : style.backgroundColor,

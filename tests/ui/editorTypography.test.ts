@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_EDITOR_TEXT_STYLE, identityTransform, type EditorTextLayer } from "@ui/src/editor/EditorDocument";
-import { bakeTextTransform, convertTextMode, editorFontStack, estimateTextBox, resolveTextDirection } from "@ui/src/editor/EditorTypography";
+import { bakeTextTransform, convertTextMode, editorFontStack, estimateTextBox, justifiedLinePlacement, resolveTextDirection } from "@ui/src/editor/EditorTypography";
 import { applyTextPreset } from "@ui/src/editor/EditorTextPresets";
 
 function textLayer(overrides: Partial<EditorTextLayer> = {}): EditorTextLayer {
@@ -11,6 +11,14 @@ function textLayer(overrides: Partial<EditorTextLayer> = {}): EditorTextLayer {
 }
 
 describe("EditorTypography", () => {
+  it("justifies full lines and positions the final line left, center or right", () => {
+    expect(justifiedLinePlacement(300, 240, 3, false, "right")).toEqual({ offsetX: 0, wordSpacing: 20 });
+    expect(justifiedLinePlacement(300, 180, 2, true, "left")).toEqual({ offsetX: 0, wordSpacing: 0 });
+    expect(justifiedLinePlacement(300, 180, 2, true, "center")).toEqual({ offsetX: 60, wordSpacing: 0 });
+    expect(justifiedLinePlacement(300, 180, 2, true, "right")).toEqual({ offsetX: 120, wordSpacing: 0 });
+    expect(justifiedLinePlacement(100, 120, 0, false, "left")).toEqual({ offsetX: 0, wordSpacing: 0 });
+  });
+
   it("resolves automatic direction from the first strong character", () => {
     expect(resolveTextDirection("123 — مرحبا بالعالم", "auto")).toBe("rtl");
     expect(resolveTextDirection("123 — Hello world", "auto")).toBe("ltr");
@@ -40,10 +48,12 @@ describe("EditorTypography", () => {
 
   it("converts point and paragraph text without leaving invalid box geometry", () => {
     const point = textLayer();
+    expect(convertTextMode(point, "point")).toBe(point);
     const paragraph = convertTextMode(point, "paragraph");
     expect(paragraph).toMatchObject({ textMode: "paragraph", width: expect.any(Number), height: expect.any(Number) });
     expect(convertTextMode({ ...paragraph, align: "justify" }, "point")).toMatchObject({ textMode: "point", align: "left" });
     expect(convertTextMode({ ...paragraph, align: "justify" }, "point")).not.toHaveProperty("width");
+    expect(convertTextMode({ ...paragraph, align: "right" }, "point")).toMatchObject({ textMode: "point", align: "right" });
   });
 
   it("bakes point-text scaling into real typographic metrics", () => {
@@ -63,5 +73,8 @@ describe("EditorTypography", () => {
       fontSize: 20, padding: 5, letterSpacing: 2, shadowBlur: 3,
       transform: { x: 12, y: 18, scaleX: 1, scaleY: 1, rotation: 15 },
     });
+    const clamped = bakeTextTransform(paragraph, { x: 0, y: 0, scaleX: 0, scaleY: 0, rotation: 0 });
+    expect(clamped.width).toBeGreaterThan(0);
+    expect(clamped.height).toBeGreaterThan(0);
   });
 });

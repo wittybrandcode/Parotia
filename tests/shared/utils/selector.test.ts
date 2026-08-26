@@ -53,6 +53,11 @@ describe("validateSelector", () => {
     makeQuerySelectorThrow("ad[");
     expect(validateSelector(document, "ad[")).toEqual({ ok: false, reason: "INVALID_SELECTOR" });
   });
+
+  it("contains a hostile ParentNode that throws after syntax validation", () => {
+    const root = { querySelectorAll: () => { throw new DOMException("blocked", "SecurityError"); } } as unknown as ParentNode;
+    expect(validateSelector(root, ".valid")).toEqual({ ok: false, reason: "INVALID_SELECTOR" });
+  });
 });
 
 describe("stableSelector", () => {
@@ -96,5 +101,26 @@ describe("stableSelector", () => {
     document.body.innerHTML = `<main><h2>only</h2></main>`;
     const el = document.querySelector("h2") as HTMLElement;
     expect(stableSelector(el)).toBe("body > main:nth-of-type(1) > h2:nth-of-type(1)");
+  });
+
+  it("falls back safely when a candidate query throws or an element is detached", () => {
+    document.body.innerHTML = `<div id="hostile"><span>child</span></div>`;
+    const hostile = document.getElementById("hostile")!;
+    const query = vi.spyOn(document, "querySelectorAll").mockImplementation((selector: string) => {
+      if (selector.startsWith("#")) throw new DOMException("blocked", "SecurityError");
+      return Document.prototype.querySelectorAll.call(document, selector);
+    });
+    expect(stableSelector(hostile)).toBe("body > div:nth-of-type(1)");
+    query.mockRestore();
+
+    const detached = document.createElement("article");
+    expect(stableSelector(detached)).toBe("body");
+  });
+
+  it("handles a transiently missing data-testid value", () => {
+    document.body.innerHTML = `<div data-testid="temporary"></div>`;
+    const element = document.querySelector("div")!;
+    vi.spyOn(element, "getAttribute").mockReturnValue(null);
+    expect(stableSelector(element)).toBe("body > div:nth-of-type(1)");
   });
 });

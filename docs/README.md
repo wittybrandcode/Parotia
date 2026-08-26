@@ -14,6 +14,7 @@ Complete technical documentation for the Parotia Chrome extension.
 | [Security](./SECURITY.md) | Security model, validation, CSP, threat mitigation |
 | [Permissions](./PERMISSIONS.md) | Why each Chrome permission is needed |
 | [Testing](./TESTING.md) | Test strategy, coverage, writing new tests |
+| [100% Coverage Plan](./COVERAGE-100-PLAN.md) | Phased execution plan, coverage debt inventory and progress tracker |
 | [Build System](./BUILD.md) | Build pipeline, scripts, configuration |
 | [Keyboard Shortcuts](./KEYBOARD-SHORTCUTS.md) | Complete shortcut reference |
 | [Contributing](./CONTRIBUTING.md) | How to contribute, code conventions |

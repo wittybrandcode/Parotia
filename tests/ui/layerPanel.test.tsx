@@ -121,6 +121,7 @@ describe("LayerPanel", () => {
     fireEvent.change(screen.getByLabelText("Text box width"), { target: { value: "280" } });
     fireEvent.blur(screen.getByLabelText("Text box width"));
     fireEvent.click(screen.getByRole("button", { name: "Justify text" }));
+    fireEvent.click(screen.getByRole("button", { name: "Justify with last line centered" }));
     fireEvent.click(screen.getByLabelText("Text background enabled"));
     fireEvent.change(screen.getByRole("combobox", { name: "Text preset" }), { target: { value: "quote" } });
 
@@ -129,6 +130,7 @@ describe("LayerPanel", () => {
     expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ lineHeight: 1.6 }), "Change Text 2 lineHeight");
     expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ width: 280 }), "Change Text 2 width");
     expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ align: "justify" }), "Align Text 2");
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ align: "justify", justifyLastLine: "center" }), "Justify Text 2 with last line center");
     expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ backgroundColor: "#000000" }), "Change Text 2 background");
     expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ fontFamily: "Georgia", fontStyle: "italic" }), "Apply quote text preset");
   });

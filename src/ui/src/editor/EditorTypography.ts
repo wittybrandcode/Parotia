@@ -1,5 +1,25 @@
 import type { EditorTextLayer, EditorTransform } from "./EditorDocument";
 
+export interface JustifiedLinePlacement {
+  offsetX: number;
+  wordSpacing: number;
+}
+
+export function justifiedLinePlacement(
+  availableWidth: number,
+  lineWidth: number,
+  spaces: number,
+  isLastLine: boolean,
+  lastLineAlign: EditorTextLayer["justifyLastLine"],
+): JustifiedLinePlacement {
+  const remaining = Math.max(0, availableWidth - lineWidth);
+  if (!isLastLine) return { offsetX: 0, wordSpacing: spaces > 0 ? remaining / spaces : 0 };
+  return {
+    offsetX: lastLineAlign === "right" ? remaining : lastLineAlign === "center" ? remaining / 2 : 0,
+    wordSpacing: 0,
+  };
+}
+
 const RTL_CHARACTER = /[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufefc]/u;
 const LTR_CHARACTER = /[A-Za-z\u00c0-\u02af\u0370-\u058f]/u;
 

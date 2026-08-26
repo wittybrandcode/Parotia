@@ -4,9 +4,9 @@
  * transform is explicitly committed.
  */
 import Konva from "konva";
-import { createLayerBase, DEFAULT_EDITOR_TEXT_STYLE, type EditorLayer } from "./EditorDocument";
+import { createLayerBase, DEFAULT_EDITOR_TEXT_STYLE, type EditorLayer, type EditorTextLayer } from "./EditorDocument";
 import { snapLayerSelection, type SnapGuide } from "./EditorSnap";
-import { bakeTextTransform, editorFontStack, resolveTextDirection } from "./EditorTypography";
+import { bakeTextTransform, editorFontStack, justifiedLinePlacement, resolveTextDirection } from "./EditorTypography";
 import { nextStepNumber, strokeDash } from "./EditorShapeStyles";
 
 export type AnnotateTool = "freehand" | "line" | "rect" | "ellipse" | "arrow" | "text" | "paragraph" | "callout" | "step";
@@ -38,6 +38,60 @@ export interface AnnotationLayer {
 }
 
 const DEFAULT_OPTIONS: AnnotationOptions = { color: "#c1e899", strokeWidth: 3, fontSize: 24 };
+const TEXT_BOX_NAME = "editor-text-box";
+const TEXT_CONTENT_NAME = "editor-text-content";
+
+interface KonvaTextLine {
+  text: string;
+  width: number;
+  lastInParagraph?: boolean;
+}
+
+interface KonvaTextRenderInternals {
+  textArr: KonvaTextLine[];
+  _partialText: string;
+  _partialTextX: number;
+  _partialTextY: number;
+  _getContextFont(): string;
+}
+
+/** Renders Adobe-style justified paragraphs while keeping Align independent. */
+function justifiedParagraphScene(lastLineAlign: EditorTextLayer["justifyLastLine"]) {
+  return (context: Konva.Context, shape: Konva.Shape): void => {
+    const text = shape as Konva.Text & KonvaTextRenderInternals;
+    if (!text.text()) return;
+    const lines = text.textArr;
+    const padding = text.padding();
+    const fontSize = text.fontSize();
+    const lineHeight = fontSize * text.lineHeight();
+    const availableWidth = Math.max(0, text.width() - padding * 2);
+    const contentHeight = lines.length * lineHeight;
+    const verticalOffset = text.verticalAlign() === "middle"
+      ? (text.height() - contentHeight - padding * 2) / 2
+      : text.verticalAlign() === "bottom" ? text.height() - contentHeight - padding * 2 : 0;
+
+    context.save();
+    context.setAttr("font", text._getContextFont());
+    context.setAttr("textBaseline", "middle");
+    context.setAttr("textAlign", "left");
+    context.setAttr("direction", text.direction());
+    context.translate(padding, verticalOffset + padding);
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index]!;
+      const isLastLine = Boolean(line.lastInParagraph);
+      const spaces = line.text.split(" ").length - 1;
+      const placement = justifiedLinePlacement(availableWidth, line.width, spaces, isLastLine, lastLineAlign);
+      context.setAttr("letterSpacing", `${text.letterSpacing()}px`);
+      context.setAttr("wordSpacing", `${placement.wordSpacing}px`);
+      text._partialText = line.text;
+      text._partialTextX = placement.offsetX;
+      text._partialTextY = lineHeight * index + lineHeight / 2;
+      context.fillStrokeShape(text);
+    }
+    context.setAttr("wordSpacing", "0px");
+    context.restore();
+  };
+}
 
 export function createAnnotationLayer(): AnnotationLayer {
   let stage: Konva.Stage | null = null;
@@ -218,18 +272,49 @@ export function createAnnotationLayer(): AnnotationLayer {
     annotationLayer?.batchDraw();
   }
 
-  function onGestureEnd(): void {
+  function resizeParagraphContainer(event: Konva.KonvaEventObject<Event>): void {
+    const id = nodeLayerId(event.target);
+    const model = id ? layerModels.get(id) : null;
+    const node = id ? layerNode(id) : null;
+    if (!id || model?.kind !== "text" || model.textMode !== "paragraph" || !node) return;
+    const width = Math.max(model.padding * 2 + 1, model.width! * Math.abs(node.scaleX()));
+    const height = Math.max(model.padding * 2 + 1, model.height! * Math.abs(node.scaleY()));
+    const group = node as Konva.Group;
+    node.scaleX(1);
+    node.scaleY(1);
+    group.width(width);
+    group.height(height);
+    for (const child of group.getChildren()) {
+      if (child.hasName(TEXT_CONTENT_NAME)) {
+        child.width(Math.max(1, width - model.padding * 2));
+        child.height(Math.max(1, height - model.padding * 2));
+      } else if (child.hasName(TEXT_BOX_NAME)) {
+        child.width(width);
+        child.height(height);
+      }
+    }
+    layerModels.set(id, {
+      ...model, width, height,
+      transform: { x: node.x(), y: node.y(), scaleX: 1, scaleY: 1, rotation: node.rotation() },
+    });
+    transformer?.forceUpdate();
+    annotationLayer?.batchDraw();
+  }
+
+  function onGestureEnd(event: Konva.KonvaEventObject<Event>): void {
     clearSnapGuides();
     if (!gestureBefore) return;
+    if (event.type === "transformend") resizeParagraphContainer(event);
     const before = [...gestureBefore.values()];
     gestureBefore = null;
     activeDragId = null;
-    const after = before.map((model) => {
-      const node = layerNode(model.id);
-      if (!node) return model;
+    const after = before.map((beforeModel) => {
+      const model = layerModels.get(beforeModel.id) ?? beforeModel;
+      const node = layerNode(beforeModel.id);
+      if (!node) return beforeModel;
       const transform = { x: node.x(), y: node.y(), scaleX: node.scaleX(), scaleY: node.scaleY(), rotation: node.rotation() };
       const transformed: EditorLayer = model.kind === "text" ? bakeTextTransform(model, transform) : { ...model, transform };
-      layerModels.set(model.id, transformed);
+      layerModels.set(beforeModel.id, transformed);
       return transformed;
     });
     if (before.some((entry, index) => JSON.stringify(entry) !== JSON.stringify(after[index]))) onTransform?.(before, after);
@@ -442,6 +527,7 @@ export function createAnnotationLayer(): AnnotationLayer {
     stage.on("pointerup pointercancel", onPointerUp);
     stage.on("click tap", onTextActivate);
     stage.on("dragstart transformstart", onGestureStart);
+    stage.on("transform", resizeParagraphContainer);
     stage.on("dragmove", onDragMove);
     stage.on("dragend transformend", onGestureEnd);
     setTool("freehand");
@@ -497,10 +583,11 @@ export function createAnnotationLayer(): AnnotationLayer {
           const contentWidth = layer.width === undefined ? undefined : Math.max(1, layer.width - layer.padding * 2);
           const contentHeight = layer.height === undefined ? undefined : Math.max(1, layer.height - layer.padding * 2);
           const text = new Konva.Text({
-            x: layer.padding, y: layer.padding, text: layer.text, fontFamily: editorFontStack(layer.fontFamily, layer.fontFallback),
+            name: TEXT_CONTENT_NAME, x: layer.padding, y: layer.padding, text: layer.text, fontFamily: editorFontStack(layer.fontFamily, layer.fontFallback),
             fontSize: layer.fontSize, fontStyle, direction: resolveTextDirection(layer.text, layer.direction), align: layer.align,
             verticalAlign: layer.verticalAlign, fill: layer.fill, lineHeight: layer.lineHeight, letterSpacing: layer.letterSpacing,
             wrap: layer.textMode === "paragraph" ? "word" : "none", ...(contentWidth === undefined ? {} : { width: contentWidth }), ...(contentHeight === undefined ? {} : { height: contentHeight }),
+            ...(layer.textMode === "paragraph" && layer.align === "justify" ? { sceneFunc: justifiedParagraphScene(layer.justifyLastLine) } : {}),
             ...(layer.shadowColor === null ? {} : {
               shadowColor: layer.shadowColor, shadowBlur: layer.shadowBlur,
               shadowOffset: { x: layer.shadowOffsetX, y: layer.shadowOffsetY }, shadowEnabled: true,
@@ -508,9 +595,9 @@ export function createAnnotationLayer(): AnnotationLayer {
           });
           const width = layer.width ?? text.width() + layer.padding * 2;
           const height = layer.height ?? text.height() + layer.padding * 2;
-          const group = new Konva.Group(common);
+          const group = new Konva.Group({ ...common, width, height });
           if (layer.backgroundColor !== null || layer.borderColor !== null) group.add(new Konva.Rect({
-            width, height, ...(layer.backgroundColor === null ? {} : { fill: layer.backgroundColor }),
+            name: TEXT_BOX_NAME, width, height, ...(layer.backgroundColor === null ? {} : { fill: layer.backgroundColor }),
             ...(layer.borderColor === null ? {} : { stroke: layer.borderColor, strokeWidth: layer.borderWidth }), cornerRadius: layer.cornerRadius,
           }));
           group.add(text);

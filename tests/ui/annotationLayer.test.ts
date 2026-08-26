@@ -56,6 +56,7 @@ const mocks = vi.hoisted(() => {
   class Group extends Shape {
     children: Shape[] = [];
     add(...shapes: Shape[]) { for (const shape of shapes) shape.parent = this; this.children.push(...shapes); }
+    getChildren() { return this.children; }
   }
   class Transformer extends Group {
     selected: Shape[] = [];
@@ -64,6 +65,7 @@ const mocks = vi.hoisted(() => {
     nodes(value?: Shape[]) { if (value) this.selected = value; return this.selected; }
     keepRatio(value?: boolean) { if (value !== undefined) this.preserveRatio = value; return this.preserveRatio; }
     enabledAnchors(value?: string[]) { if (value) this.anchors = value; return this.anchors; }
+    forceUpdate = vi.fn();
   }
   class Stage {
     content = document.createElement("div");
@@ -366,6 +368,11 @@ describe("AnnotationLayer", () => {
     stage.emitFrom("transformstart", node);
     node.scaleX(1.5);
     node.scaleY(2);
+    stage.emitFrom("transform", node);
+    expect(node.scaleX()).toBe(1);
+    expect(node.scaleY()).toBe(1);
+    const paragraphGroup = node as InstanceType<typeof mocks.Group>;
+    expect(paragraphGroup.children.find((child) => child.hasName("editor-text-content"))?.attrs).toMatchObject({ width: 284, height: 184 });
     stage.emitFrom("transformend", node);
     expect(transform).toHaveBeenCalledWith([layer], [expect.objectContaining({
       width: 300, height: 200, fontSize: 20, padding: 8, letterSpacing: 1,
@@ -391,6 +398,19 @@ describe("AnnotationLayer", () => {
       text: "مرحبا\nبالعالم", direction: "rtl", align: "right", verticalAlign: "middle", width: 200, height: 80,
       lineHeight: 1.4, letterSpacing: 0.5, shadowColor: "#000000", shadowBlur: 4, shadowOffset: { x: 2, y: 3 },
     });
+  });
+
+  it("installs the professional paragraph renderer only for justified text", async () => {
+    const editor = createAnnotationLayer();
+    editor.init(document.querySelector("#stage")!, 400, 300, new Image());
+    const layer: EditorLayer = {
+      id: "justified-text", name: "Justified text", order: 0, kind: "text", visible: true, locked: false, opacity: 1,
+      transform: identityTransform(), ...DEFAULT_EDITOR_TEXT_STYLE, textMode: "paragraph", text: "A paragraph with a final line",
+      width: 240, height: 120, align: "justify", justifyLastLine: "right",
+    };
+    await editor.loadLayers([layer]);
+    const group = mocks.state.stage!.layers[1]?.children[0] as InstanceType<typeof mocks.Group>;
+    expect(group.children.find((child) => child.hasName("editor-text-content"))?.attrs.sceneFunc).toEqual(expect.any(Function));
   });
 
   it("selects an unlocked layer and commits drag or transform geometry", async () => {

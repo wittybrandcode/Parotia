@@ -101,11 +101,48 @@ describe("EditorDocumentHistory", () => {
 
   it("rejects invalid patches without changing the document", () => {
     const document = base();
+    expect(() => removeLayerCommand(document, "missing")).toThrow(/does not exist/);
     const entry = rectangle("same", 0);
     const withLayer = applyEditorDocumentPatch(document, { operation: "add-layer", layer: entry });
     expect(() => applyEditorDocumentPatch(withLayer, { operation: "add-layer", layer: entry })).toThrow(/already exists/);
     expect(() => applyEditorDocumentPatch(document, { operation: "remove-layer", layer: entry })).toThrow(/does not exist/);
     expect(() => applyEditorDocumentPatch(withLayer, { operation: "reorder-layers", before: ["same"], after: ["missing"] })).toThrow(/Unknown layer/);
+    expect(() => applyEditorDocumentPatch(withLayer, { operation: "reorder-layers", before: ["same"], after: [] })).toThrow(/every layer/);
+    expect(() => applyEditorDocumentPatch({ ...withLayer, layers: [entry, rectangle("other", 1)] }, { operation: "reorder-layers", before: [], after: ["same", "same"] })).toThrow(/exactly once/);
+    expect(() => applyEditorDocumentPatch(withLayer, {
+      operation: "replace-layer", before: entry, after: rectangle("renamed", 0),
+    })).toThrow(/preserve/);
+    expect(() => applyEditorDocumentPatch(withLayer, {
+      operation: "replace-layer", before: rectangle("missing", 0), after: rectangle("missing", 0, 40),
+    })).toThrow(/preserve/);
+    expect(() => applyEditorDocumentPatch(withLayer, {
+      operation: "replace-layers", before: [entry], after: [],
+    })).toThrow(/counts/);
+    expect(() => applyEditorDocumentPatch(withLayer, {
+      operation: "replace-layers", before: [entry], after: [rectangle("other", 0)],
+    })).toThrow(/preserve/);
+    expect(() => applyEditorDocumentPatch(withLayer, {
+      operation: "replace-layers", before: [rectangle("missing", 0)], after: [rectangle("missing", 0, 30)],
+    })).toThrow(/must exist/);
     expect(document.layers).toHaveLength(0);
   });
+
+  it("clamps insertion order and exposes empty history labels", () => {
+    const history = new EditorDocumentHistory({ ...base(), layers: [rectangle("middle", 0)] });
+    expect(history.undoLabel).toBeNull();
+    expect(history.redoLabel).toBeNull();
+    expect(history.redo()).toBeNull();
+    history.execute(addLayerCommand({ ...rectangle("first", -10), order: -10 }));
+    history.execute(addLayerCommand({ ...rectangle("last", 99), order: 99 }));
+    expect(history.document.layers.map((layer) => layer.id)).toEqual(["first", "middle", "last"]);
+  });
+
+  it("treats a zero-entry history as an explicit irreversible boundary", () => {
+    const history = new EditorDocumentHistory(base(), 0, 10_000);
+    history.execute(addLayerCommand(rectangle("one", 0)));
+    expect(history.document.layers).toHaveLength(1);
+    expect(history.canUndo).toBe(false);
+    expect(history.memoryBytes).toBe(0);
+  });
+
 });
