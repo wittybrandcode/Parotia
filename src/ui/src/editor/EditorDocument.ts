@@ -1,7 +1,7 @@
 import { createId } from "@shared/utils/id";
 
 export const EDITOR_DOCUMENT_SCHEMA = "parotia.editor-document" as const;
-export const EDITOR_DOCUMENT_VERSION = 5 as const;
+export const EDITOR_DOCUMENT_VERSION = 6 as const;
 
 export type EditorStrokeStyle = "solid" | "dashed" | "dotted";
 
@@ -41,6 +41,7 @@ export interface EditorTextLayer extends EditorLayerBase {
   fontStyle: "normal" | "italic";
   direction: "auto" | "ltr" | "rtl";
   align: "left" | "center" | "right" | "justify";
+  justifyLastLine: "left" | "center" | "right";
   verticalAlign: "top" | "middle" | "bottom";
   fill: string;
   width?: number;
@@ -60,7 +61,7 @@ export interface EditorTextLayer extends EditorLayerBase {
 
 export const DEFAULT_EDITOR_TEXT_STYLE = {
   textMode: "point", fontFamily: "sans-serif", fontFallback: "sans-serif", fontSize: 24, fontWeight: 400, fontStyle: "normal",
-  direction: "auto", align: "left", verticalAlign: "top", fill: "#c1e899", lineHeight: 1.2, letterSpacing: 0,
+  direction: "auto", align: "left", justifyLastLine: "left", verticalAlign: "top", fill: "#c1e899", lineHeight: 1.2, letterSpacing: 0,
   padding: 0, backgroundColor: null, borderColor: null, borderWidth: 0, cornerRadius: 0,
   shadowColor: null, shadowBlur: 0, shadowOffsetX: 0, shadowOffsetY: 0,
 } as const satisfies Omit<EditorTextLayer, keyof EditorLayerBase | "kind" | "text" | "width" | "height">;
@@ -291,6 +292,7 @@ function layer(value: unknown, path: string): EditorLayer {
         fontStyle: enumValue(item.fontStyle, `${path}.fontStyle`, ["normal", "italic"] as const),
         direction: enumValue(item.direction, `${path}.direction`, ["auto", "ltr", "rtl"] as const),
         align,
+        justifyLastLine: enumValue(item.justifyLastLine, `${path}.justifyLastLine`, ["left", "center", "right"] as const),
         verticalAlign: enumValue(item.verticalAlign, `${path}.verticalAlign`, ["top", "middle", "bottom"] as const),
         fill: string(item.fill, `${path}.fill`), lineHeight: positive(item.lineHeight, `${path}.lineHeight`),
         letterSpacing: finite(item.letterSpacing, `${path}.letterSpacing`), padding: nonNegative(item.padding, `${path}.padding`),
@@ -365,7 +367,7 @@ function parseCurrentVersion(value: unknown): EditorDocument {
 function migrate(value: unknown): unknown {
   const item = record(value, "document");
   if (item.schema !== EDITOR_DOCUMENT_SCHEMA) return value;
-  if (item.version === 1 || item.version === 2 || item.version === 3 || item.version === 4) return {
+  if (item.version === 1 || item.version === 2 || item.version === 3 || item.version === 4 || item.version === 5) return {
     ...item, version: EDITOR_DOCUMENT_VERSION,
     layers: Array.isArray(item.layers) ? item.layers.map(migrateLayer) : item.layers,
   };

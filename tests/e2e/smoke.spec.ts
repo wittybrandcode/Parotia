@@ -116,6 +116,8 @@ test("4.5 staged capture opens in the real editor, draws, and consumes its save 
     const sw = await waitForSW(context);
     const extensionId = new URL(sw.url()).host;
     const page = context.pages()[0] ?? (await context.newPage());
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
     const editorUrl = `chrome-extension://${extensionId}/ui/editor.html`;
     // Stage from a different extension page so the editor's first document
     // load already contains the capability hash (a hash-only navigation would
@@ -203,6 +205,11 @@ test("4.5 staged capture opens in the real editor, draws, and consumes its save 
     await page.getByRole("combobox", { name: "Text direction" }).selectOption("rtl");
     await page.getByRole("combobox", { name: "Text type" }).selectOption("paragraph");
     await page.getByRole("button", { name: "Justify text" }).click();
+    const justifyRight = page.getByRole("button", { name: "Justify with last line right" });
+    await expect(page.getByRole("button", { name: "Justify with last line left" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Justify with last line centered" })).toBeVisible();
+    await justifyRight.click();
+    await expect(justifyRight).toHaveAttribute("aria-pressed", "true");
     await page.getByLabel("Text line height").fill("1.5");
     await page.getByLabel("Text line height").press("Enter");
     await page.getByLabel("Text box width").fill("240");
@@ -285,6 +292,7 @@ test("4.5 staged capture opens in the real editor, draws, and consumes its save 
     await expect(page.getByRole("button", { name: /saved/i })).toBeDisabled();
     const leftovers = await page.evaluate(async (key) => chrome.storage.local.get(key), ticketKey);
     expect(leftovers[ticketKey]).toBeUndefined();
+    expect(pageErrors).toEqual([]);
   } finally {
     await context.close();
   }

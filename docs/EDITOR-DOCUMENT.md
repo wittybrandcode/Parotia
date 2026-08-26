@@ -7,7 +7,7 @@
 Every document declares:
 
 - `schema: "parotia.editor-document"`
-- a numeric `version`, currently `5`
+- a numeric `version`, currently `6`
 - stable document identity and creation/update timestamps
 - native canvas dimensions and optional background colour
 - one raster background source
@@ -21,7 +21,7 @@ Supported layer kinds are `image`, `text`, `rectangle`, `ellipse`, `line`, `arro
 - Layer IDs are non-empty and unique inside one document.
 - Opacity stays between `0` and `1`; geometric scale cannot be zero.
 - Persisted text scale is positive and uniform. Point Text resizing is baked into typographic metrics; Paragraph Text resizing is baked only into its width/height. Both return the layer transform to `1:1`, preventing horizontal or vertical glyph distortion.
-- Point text cannot carry box dimensions or justified alignment; paragraph text requires both dimensions and supports horizontal plus vertical alignment.
+- Point text cannot carry box dimensions or justified alignment; paragraph text requires both dimensions and supports horizontal plus vertical alignment and explicit left/center/right alignment for the final line of justified paragraphs.
 - Point arrays contain complete finite coordinate pairs.
 - Deserialization validates the complete structure and normalizes layer order to contiguous indices.
 - Unknown schema versions fail closed. The parser migrates versions `0–4` to version `5`, including recursive groups and normalization of legacy non-uniform text transforms.
@@ -45,4 +45,4 @@ Crop and adjustment still flatten the current document into a replacement raster
 
 ## Text transformation boundary
 
-Point Text is created with one click and follows its natural content bounds. It exposes corner anchors only; resizing is proportional and updates its real font/effect metrics. Paragraph Text is created by dragging a box and uses word wrapping, horizontal `left/center/right/justify` alignment and vertical `top/middle/bottom` alignment. Its eight handles resize the paragraph container independently in width and height, causing text reflow without changing font size, spacing or effects. Font size remains controlled exclusively by the typography size field.
+Point Text is created with one click and follows its natural content bounds. It exposes corner anchors only; resizing is proportional and updates its real font/effect metrics. Paragraph Text is created by dragging a box and uses word wrapping, unchanged horizontal `left/center/right/justify` alignment, `justifyLastLine` (`left/center/right`) and vertical `top/middle/bottom` alignment. Its eight handles update the actual paragraph width and height during every transform frame, causing live text reflow while the text node stays at a `1:1` scale. Font size, spacing and effects never change through those handles; font size remains controlled exclusively by the typography size field.

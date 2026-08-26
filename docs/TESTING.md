@@ -13,11 +13,13 @@ npm run test:e2e
 
 `test:coverage` is the canonical unit/integration gate. It runs Vitest once, writes text/HTML/JSON reports, enforces the global thresholds, then runs `scripts/check-critical-coverage.mjs`.
 
+`npm run coverage:gaps` reads the latest JSON summary and prints the remaining Lines/Statements/Functions/Branches debt, ordered by the files with the largest uncovered executable surface. The audited execution plan is tracked in [`COVERAGE-100-PLAN.md`](./COVERAGE-100-PLAN.md).
+
 ## Enforced thresholds
 
 | Scope | Lines | Statements | Functions | Branches |
 |---|---:|---:|---:|---:|
-| Global | 80% | 80% | 80% | 75% |
+| Global baseline guard | 90.8% | 90.8% | 84.1% | 77.1% |
 | `captureHandler.ts` | 85% | — | 85% | 75% |
 | `AnnotationLayer.ts` | 85% | — | 85% | 75% |
 | `editorModal.ts` | 85% | — | 85% | 75% |
@@ -26,6 +28,8 @@ npm run test:e2e
 | `captureCoordinator.ts` | 90% | — | 90% | 80% |
 
 Thresholds are release constraints and must not be lowered to pass a change.
+
+The unit-coverage scope excludes only type-only modules, barrel exports and declarative React mount entries. The real built editor mount remains covered by Playwright. Executable Chrome, DOM, Canvas and React modules stay inside the measured scope even when they require contract mocks or browser tests.
 
 ## What the suites prove
 

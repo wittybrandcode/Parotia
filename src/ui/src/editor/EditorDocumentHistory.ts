@@ -188,8 +188,7 @@ export class EditorDocumentHistory {
 
   private trim(): void {
     while (this.undoStack.length > this.maxEntries || this.retainedBytes > this.maxBytes) {
-      const removed = this.undoStack.shift();
-      if (!removed) break;
+      const removed = this.undoStack.shift()!;
       this.retainedBytes -= commandBytes(removed);
     }
   }

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { forceEagerImages, preRollForCapture, waitForImagesReady, waitForVisualAssets } from "@content/capture/preload";
-import { collectImages } from "@shared/utils/media";
+import { collectImages, kickImages, waitForFonts } from "@shared/utils/media";
 
 function makeImg(): HTMLImageElement {
   const img = document.createElement("img");
@@ -97,6 +97,17 @@ describe("waitForImagesReady", () => {
     img.remove();
     vi.useRealTimers();
   });
+
+  it("contains image decode and font readiness failures", async () => {
+    const image = makeImg();
+    image.decode = vi.fn(async () => { throw new Error("decode failed"); });
+    kickImages([image]);
+    await Promise.resolve();
+    expect(image.decode).toHaveBeenCalledOnce();
+
+    Object.defineProperty(document, "fonts", { value: { ready: Promise.reject(new Error("font failed")) }, configurable: true });
+    await expect(waitForFonts(10)).resolves.toBeUndefined();
+  });
 });
 
 describe("preRollForCapture", () => {
@@ -143,6 +154,7 @@ describe("visual media matrix", () => {
     const image = makeImg();
     shadow.append(image);
     expect(collectImages(host)).toEqual([image]);
+    expect(collectImages(image)).toEqual([image]);
   });
 
   it("preloads video posters, SVG images, CSS backgrounds and shadow assets", async () => {
@@ -201,6 +213,81 @@ describe("visual media matrix", () => {
     const result = await pending;
     expect(result.timedOut).toBe(true);
     expect(result.pendingImages).toBe(1);
+    vi.useRealTimers();
+  });
+
+  it("handles hostile styles, xlink assets and preload errors as best effort", async () => {
+    const requested: string[] = [];
+    class FailedPreloadImage {
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      set src(value: string) { requested.push(value); queueMicrotask(() => this.onerror?.()); }
+    }
+    vi.stubGlobal("Image", FailedPreloadImage);
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { callback(0); return 1; });
+    Object.defineProperty(document, "fonts", { value: { ready: Promise.resolve() }, configurable: true });
+
+    const host = document.createElement("section");
+    const shadow = host.attachShadow({ mode: "open" });
+    const shadowAsset = document.createElement("div");
+    shadowAsset.style.backgroundImage = "url(https://assets.test/shadow-error.png)";
+    shadow.append(shadowAsset);
+    const hostile = document.createElement("div");
+    hostile.className = "hostile-style";
+    host.append(hostile);
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const image = document.createElementNS("http://www.w3.org/2000/svg", "image");
+    image.setAttribute("xlink:href", "https://assets.test/xlink.png");
+    svg.append(image);
+    host.append(svg);
+    document.body.append(host);
+
+    const computed = getComputedStyle;
+    vi.stubGlobal("getComputedStyle", (element: Element) => {
+      if (element === host || element === hostile) throw new Error("style unavailable");
+      return computed(element);
+    });
+
+    const result = await waitForVisualAssets(host, 500);
+    expect(result).toEqual({ timedOut: false, pendingImages: 0, pendingExternalAssets: [] });
+    expect(requested).toEqual(expect.arrayContaining([
+      "https://assets.test/shadow-error.png",
+      "https://assets.test/xlink.png",
+    ]));
+  });
+
+  it("distinguishes a decoded zero-width image and a pending external asset", async () => {
+    vi.useFakeTimers();
+    class NeverLoadedImage {
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      set src(_value: string) { /* deliberately pending */ }
+    }
+    vi.stubGlobal("Image", NeverLoadedImage);
+    Object.defineProperty(document, "fonts", { value: { ready: Promise.resolve() }, configurable: true });
+    const decodedButEmpty = makeImg();
+    Object.defineProperty(decodedButEmpty, "complete", { value: true, configurable: true });
+    Object.defineProperty(decodedButEmpty, "naturalWidth", { value: 0, configurable: true });
+    decodedButEmpty.decode = vi.fn(async () => undefined);
+    const asset = document.createElement("div");
+    asset.style.backgroundImage = "url(https://assets.test/pending.png)";
+    document.body.append(decodedButEmpty, asset);
+
+    const pending = waitForVisualAssets(document, 100);
+    await vi.advanceTimersByTimeAsync(500);
+    const result = await pending;
+    expect(result).toEqual({
+      timedOut: true,
+      pendingImages: 1,
+      pendingExternalAssets: ["https://assets.test/pending.png"],
+    });
+
+    decodedButEmpty.remove();
+    const externalOnly = waitForVisualAssets(document, 0);
+    await vi.runAllTimersAsync();
+    await expect(externalOnly).resolves.toMatchObject({ timedOut: true, pendingImages: 0 });
+    asset.remove();
+    await expect(waitForVisualAssets(document, 0)).resolves.toEqual({ timedOut: false, pendingImages: 0, pendingExternalAssets: [] });
     vi.useRealTimers();
   });
 });

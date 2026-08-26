@@ -79,10 +79,10 @@ export function readPngMetadata(dataUrl: unknown): PngMetadata | null {
 
 /** Uses a bounded fraction of reported RAM; deviceMemory is coarse by design. */
 export function editorMemoryBudget(deviceMemoryGb?: number): number {
-  if (!Number.isFinite(deviceMemoryGb) || (deviceMemoryGb ?? 0) <= 0) {
+  if (deviceMemoryGb === undefined || !Number.isFinite(deviceMemoryGb) || deviceMemoryGb <= 0) {
     return DEFAULT_EDITOR_MEMORY_BUDGET_BYTES;
   }
-  const proportional = Math.floor((deviceMemoryGb as number) * GIB * 0.1);
+  const proportional = Math.floor(deviceMemoryGb * GIB * 0.1);
   return Math.min(MAX_EDITOR_MEMORY_BUDGET_BYTES, Math.max(MIN_EDITOR_MEMORY_BUDGET_BYTES, proportional));
 }
 
