@@ -22,6 +22,9 @@ const tabSessions = sessionRegistry.sessions;
 const sessionHydration = sessionRegistry.hydrate();
 
 const CONTENT_SCRIPT = "content/index.js";
+type RoutedCommand = Exclude<BackgroundCommand, {
+  type: "DOWNLOAD_EDITOR_RESULT" | "DISCARD_EDITOR_RESULT";
+}>;
 
 class CommandBoundaryError extends Error {
   constructor(
@@ -129,9 +132,6 @@ async function dispatch(
       return { id, success: false, error: { code: "SESSION_NOT_FOUND", message: "Session does not belong to the sender tab" } };
     }
     if (typeof sessionId !== "string" || sessionId === "" || tabId === undefined) {
-      if (typeof sessionId !== "string" || sessionId === "") {
-        return { id, success: false, error: { code: "INVALID_PAYLOAD", message: "Missing or invalid sessionId" } };
-      }
       return { id, success: false, error: { code: "SESSION_NOT_FOUND", message: "Session not found" } };
     }
   }
@@ -151,14 +151,10 @@ async function dispatch(
   }
 }
 
-async function handleCommand(command: BackgroundCommand, tabId: number | undefined) {
+async function handleCommand(command: RoutedCommand, tabId: number | undefined) {
   switch (command.type) {
     case "START_SESSION": {
-      let targetTabId = tabId;
-      if (targetTabId === undefined) {
-        const requested = command.payload.sessionId;
-        targetTabId = requested ? findTabForSession(requested) : undefined;
-      }
+      const targetTabId = tabId;
       if (targetTabId === undefined) throw new Error("No verified tab for session start");
       await ensureContentScriptInjected(targetTabId);
       const response = (await chrome.tabs.sendMessage(targetTabId, command)) as MessageResponse | undefined;
@@ -188,11 +184,10 @@ async function handleCommand(command: BackgroundCommand, tabId: number | undefin
     case "RESET":
     case "GET_STATE":
     case "CLOSE_TOOLBAR":
-      return routeToTab(tabId, command);
+      return routeToTab(tabId!, command);
     case "CAPTURE": {
       const capture = command as Extract<BackgroundCommand, { type: "CAPTURE" }>;
-      if (tabId === undefined) throw new Error("No tab context for capture");
-      return captureByMode(tabId, capture);
+      return captureByMode(tabId!, capture);
     }
     case "PREPARE_CAPTURE":
     case "RESTORE_CAPTURE":
@@ -211,21 +206,13 @@ async function handleCommand(command: BackgroundCommand, tabId: number | undefin
     case "CAPTURE_REGION_CROP":
     case "PREPARE_REGION_CAPTURE":
     case "RESTORE_REGION_CAPTURE":
-      return routeToTab(tabId, command);
+      return routeToTab(tabId!, command);
     case "OPEN_EDITOR":
-      return routeToTab(tabId, command);
-    case "DOWNLOAD_EDITOR_RESULT":
-    case "DISCARD_EDITOR_RESULT":
-      throw new Error("Editor results must be handled at the message boundary");
-    default: {
-      const exhaustive: never = command;
-      throw new Error(`Unhandled command: ${exhaustive}`);
-    }
+      return routeToTab(tabId!, command);
   }
 }
 
-async function routeToTab(tabId: number | undefined, command: BackgroundCommand) {
-  if (tabId === undefined) throw new Error("No tab context for command");
+async function routeToTab(tabId: number, command: BackgroundCommand) {
   const response = (await chrome.tabs.sendMessage(tabId, command)) as MessageResponse | undefined;
   if (!response?.success) {
     throw new CommandBoundaryError(

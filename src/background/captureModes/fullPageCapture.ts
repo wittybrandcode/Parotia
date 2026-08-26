@@ -4,7 +4,7 @@ import { timestampPart } from "@shared/utils/filename";
 import { MAX_CANVAS_DIMENSION, exceedsCanvasLimit, planSlices } from "@content/capture/sliceMath";
 import { finishCapture } from "../editorGateway";
 import {
-  PAINT_SETTLE_MS, captureSliceLoop, hideToolbar, pushProgress, scrollTab, showToolbar, titleSlug,
+  PAINT_SETTLE_MS, captureSliceLoop, hideToolbar, pushProgress, scrollTab, showToolbar, titleSlug, withCaptureCleanup,
   type CaptureCommand,
 } from "../captureSupport";
 
@@ -29,7 +29,7 @@ export async function captureFullPage(tabId: number | undefined, command: Captur
   const steps: string[] = [];
 
   await hideToolbar(tabId, sessionId);
-  try {
+  return withCaptureCleanup(async () => {
     const sendStart = async (): Promise<
       MessageResponse<{
         success?: boolean;
@@ -177,21 +177,19 @@ export async function captureFullPage(tabId: number | undefined, command: Captur
     const filename = `parotia-fullpage-${partial ? "partial-" : ""}${titleSlug(tab)}-${timestampPart()}.png`;
     pushProgress(tabId, sessionId, { current: scrollYs.length, total: scrollYs.length, phase: "ENCODING" });
     const result2 = await finishCapture(tabId, sessionId, dataUrl, filename);
-    if (typeof result2 === "object" && result2 !== null && "success" in result2 && !(result2 as { success: boolean }).success) {
+    if (!result2.success) {
       return { ...result2, steps };
     }
     steps.push("downloaded");
     return {
+      ...result2,
       success: true,
       filename,
-      ...(typeof result2 === "object" && result2 !== null ? result2 : {}),
       partial,
       ...(warning ? { warning } : {}),
       steps,
     };
-  } catch (error) {
-    throw new Error(`Capture failed [${steps.join(" > ") || "start"}]: ${error instanceof Error ? error.message : String(error)}`);
-  } finally {
+  }, async () => {
     await scrollTab(tabId, originalScrollY, sessionId);
     if (zoomChangedForLimit) {
       try {
@@ -201,5 +199,7 @@ export async function captureFullPage(tabId: number | undefined, command: Captur
       }
     }
     await showToolbar(tabId, sessionId);
-  }
+  }).catch((error: unknown) => {
+    throw new Error(`Capture failed [${steps.join(" > ") || "start"}]: ${error instanceof Error ? error.message : String(error)}`);
+  });
 }

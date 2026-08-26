@@ -9,6 +9,7 @@ import {
   pushProgress,
   showToolbar,
   titleSlug,
+  withCaptureCleanup,
   type CaptureCommand,
 } from "../captureSupport";
 
@@ -49,7 +50,7 @@ export async function captureElement(tabId: number | undefined, command: Capture
   const steps: string[] = [];
 
   await hideToolbar(tabId, sessionId);
-  try {
+  return withCaptureCleanup(async () => {
     const response = (await chrome.tabs.sendMessage(tabId, {
       type: "PREPARE_ELEMENT_CAPTURE",
       payload: { sessionId, elementId },
@@ -131,16 +132,12 @@ export async function captureElement(tabId: number | undefined, command: Capture
     const filename = `parotia-element-${titleSlug(tab)}-${timestampPart()}.png`;
     pushProgress(tabId, sessionId, { current: 1, total: 1, phase: "ENCODING" });
     const result = await finishCapture(tabId, sessionId, image, filename);
-    if (typeof result === "object" && result !== null && "success" in result && !(result as { success: boolean }).success) {
+    if (!result.success) {
       return { ...result, steps };
     }
     steps.push("downloaded");
-    return { success: true, filename, ...(typeof result === "object" && result !== null ? result : {}), steps };
-  } catch (error) {
-    throw new Error(
-      `Element capture failed [${steps.join(" > ") || "start"}]: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  } finally {
+    return { ...result, success: true, filename, steps };
+  }, async () => {
     try {
       await chrome.tabs.sendMessage(tabId, {
         type: "CAPTURE_ELEMENT_RESTORE",
@@ -150,5 +147,9 @@ export async function captureElement(tabId: number | undefined, command: Capture
       // Content script may be gone; toolbar restore remains best effort.
     }
     await showToolbar(tabId, sessionId);
-  }
+  }).catch((error: unknown) => {
+    throw new Error(
+      `Element capture failed [${steps.join(" > ") || "start"}]: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  });
 }

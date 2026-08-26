@@ -88,7 +88,9 @@ export class EditorTicketManager {
     try {
       const actual = new URL(actualUrl ?? "");
       const expected = new URL(expectedUrl);
-      return actual.origin === expected.origin && actual.pathname === expected.pathname;
+      return actual.protocol === expected.protocol
+        && actual.host === expected.host
+        && actual.pathname === expected.pathname;
     } catch {
       return false;
     }

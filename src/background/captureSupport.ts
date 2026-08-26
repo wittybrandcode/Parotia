@@ -9,6 +9,22 @@ export const PAINT_SETTLE_MS = 450;
 
 export type CaptureCommand = Extract<BackgroundCommand, { type: "CAPTURE" }>;
 
+/** Runs cleanup after either success or failure while preserving the operation outcome. */
+export async function withCaptureCleanup<T>(operation: () => Promise<T>, cleanup: () => Promise<void>): Promise<T> {
+  let completed = false;
+  let value: T | undefined;
+  let failure: unknown;
+  try {
+    value = await operation();
+    completed = true;
+  } catch (error) {
+    failure = error;
+  }
+  await cleanup();
+  if (!completed) throw failure;
+  return value as T;
+}
+
 /** Pushes live capture progress to the toolbar (SW → content → UI). Best effort. */
 export function pushProgress(tabId: number, sessionId: string, progress: CaptureProgress): void {
   void chrome.tabs.sendMessage(tabId, {

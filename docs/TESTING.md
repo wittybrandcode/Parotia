@@ -19,7 +19,7 @@ npm run test:e2e
 
 | Scope | Lines | Statements | Functions | Branches |
 |---|---:|---:|---:|---:|
-| Global baseline guard | 90.8% | 90.8% | 84.1% | 77.1% |
+| Global baseline guard | 92.2% | 92.2% | 85.1% | 83.0% |
 | `captureHandler.ts` | 85% | — | 85% | 75% |
 | `AnnotationLayer.ts` | 85% | — | 85% | 75% |
 | `editorModal.ts` | 85% | — | 85% | 75% |

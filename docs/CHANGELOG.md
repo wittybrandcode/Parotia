@@ -11,8 +11,11 @@ All notable changes to Parotia are documented here.
 - Audited the executable coverage scope, limited exclusions to documented type-only, barrel and declarative mount entries, and added an automated per-file coverage-debt report through `npm run coverage:gaps`.
 - Raised the global regression floor to the measured baseline and chained the critical-file and coverage-gap checks into `npm run test:coverage`.
 - Added hostile-input and boundary coverage for PNG/image decoding, selectors, reversible DOM patches, editor preflight, media readiness, logging, document history and typography.
-- The suite now contains 441 passing Vitest tests across 48 files. Global coverage is 91.23% Lines/Statements, 84.79% Functions and 79.24% Branches; all measured Shared utilities, `EditorTypography` and `EditorDocumentHistory` are at 100% in all four metrics.
-- Added `docs/COVERAGE-100-PLAN.md` with immutable baseline figures, phased task IDs, acceptance gates, risk controls and a progress ledger for the remaining 693 lines, 106 functions and 597 branches.
+- Completed coverage phases C1 and C2: all measured Shared utilities, keyboard shortcuts, Background services and Visible/Region/Element/Full-page capture modes now reach 100% in all four metrics.
+- The suite now contains 517 passing Vitest tests across 52 files. Global coverage is 92.25% Lines/Statements, 85.12% Functions and 83.06% Branches, with a raised regression floor and 612 lines, 104 functions and 510 branches remaining.
+- Hardened editor capability trust by comparing `chrome-extension:` protocol, host and path explicitly; non-standard URL origins serialize as `null` and could otherwise fail to distinguish extension IDs.
+- Editor-open fallback responses now accurately report `editor: false` and `editorFallback: true` when the original capture is downloaded instead of claiming the editor opened successfully.
+- Added `docs/COVERAGE-100-PLAN.md` with immutable baseline figures, phased task IDs, acceptance gates, risk controls and a continuously updated progress ledger.
 
 ### Professional layers, typography and shapes
 
