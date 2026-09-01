@@ -32,7 +32,6 @@ export interface FreeSelectResult {
 export function startFreeSelect(): Promise<FreeSelectResult | null> {
   return new Promise((resolve) => {
     const disposables: HTMLElement[] = [];
-    let cleaned = false;
 
     /* ── dimmed backdrop ─────────────────────────────────────────────── */
     const dim = el("div", {
@@ -56,9 +55,10 @@ export function startFreeSelect(): Promise<FreeSelectResult | null> {
     disposables.push(label);
 
     /* ── resize handles ──────────────────────────────────────────────── */
-    const handles = [
+    const handlePositions = [
       "nw", "n", "ne", "e", "se", "s", "sw", "w",
-    ].map((pos) => {
+    ] as const;
+    const handles = handlePositions.map((pos) => {
       const h = el("div", {
         "data-newsclean-freeselect-handle": pos,
         style: `position:fixed;width:8px;height:8px;background:#2196F3;border:1px solid white;border-radius:2px;display:none;pointer-events:auto;z-index:${HANDLE_Z};cursor:${handleCursor(pos)};`,
@@ -117,13 +117,12 @@ export function startFreeSelect(): Promise<FreeSelectResult | null> {
 
     /* ── cleanup ─────────────────────────────────────────────────────── */
     function cleanup(): void {
-      if (cleaned) return;
-      cleaned = true;
       for (const d of disposables) d.remove();
       window.removeEventListener("keydown", onKey, true);
       dim.removeEventListener("mousedown", onDimDown);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("pointercancel", onPointerCancel);
       sel.removeEventListener("mousedown", onSelDown);
       for (const h of handles) h.removeEventListener("mousedown", onHandleDown);
       captureBtn.removeEventListener("click", onCapture);
@@ -138,6 +137,13 @@ export function startFreeSelect(): Promise<FreeSelectResult | null> {
         cleanup();
         resolve(null);
       }
+    }
+
+    /** Cancels an in-progress gesture when the browser loses its pointer. */
+    function onPointerCancel(): void {
+      if (!dragging && !moving && !resizing) return;
+      cleanup();
+      resolve(null);
     }
 
     /* ── phase 1: drawing ────────────────────────────────────────────── */
@@ -288,9 +294,8 @@ export function startFreeSelect(): Promise<FreeSelectResult | null> {
         [r.x, r.y + r.height / 2],        // w
       ];
       for (let i = 0; i < handles.length; i++) {
-        const coord = coords[i];
-        const handle = handles[i];
-        if (!coord || !handle) continue;
+        const coord = coords[i]!;
+        const handle = handles[i]!;
         const [hx, hy] = coord;
         Object.assign(handle.style, {
           display: "block",
@@ -354,6 +359,7 @@ export function startFreeSelect(): Promise<FreeSelectResult | null> {
     dim.addEventListener("mousedown", onDimDown);
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+    window.addEventListener("pointercancel", onPointerCancel);
     sel.addEventListener("mousedown", onSelDown);
     for (const h of handles) h.addEventListener("mousedown", onHandleDown);
     captureBtn.addEventListener("click", onCapture);
@@ -392,11 +398,11 @@ function el(tag: string, attrs: Record<string, string>): HTMLElement {
   return e;
 }
 
-function handleCursor(pos: string): string {
-  const map: Record<string, string> = {
+function handleCursor(pos: "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w"): string {
+  const map: Record<typeof pos, string> = {
     nw: "nwse-resize", n: "ns-resize", ne: "nesw-resize",
     e: "ew-resize", se: "nwse-resize", s: "ns-resize",
     sw: "nesw-resize", w: "ew-resize",
   };
-  return map[pos] ?? "default";
+  return map[pos];
 }

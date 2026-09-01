@@ -6,6 +6,14 @@ All notable changes to Parotia are documented here.
 
 ## [Unreleased]
 
+### C3 content-runtime coverage
+
+- Added contract-level content-runtime tests for session lifecycle, toolbar teardown, freeze/unfreeze, inspector action callbacks, shortcut session binding, error envelopes and capture-handler dispatch.
+- Added complete direct coverage for cleanup commands, including invalid selection, preview token expiry, confirm/delete-similar, undo/redo/reset and runtime-safe no-op paths.
+- Hardened Free Select against `pointercancel` during a live gesture so a lost pointer cannot leave a capture overlay stranded; added coverage for move/resize/clamp, crossed handles, tiny regions and DPR fallback.
+- Expanded toolbar-origin coverage for legacy resize handshakes, malformed resize data and `postMessage` failures.
+- The suite now contains 550 passing Vitest tests across 54 files and measures 94.71% Lines/Statements, 86.85% Functions and 84.64% Branches.
+
 ### Coverage hardening foundation
 
 - Audited the executable coverage scope, limited exclusions to documented type-only, barrel and declarative mount entries, and added an automated per-file coverage-debt report through `npm run coverage:gaps`.
