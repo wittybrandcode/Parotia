@@ -7,8 +7,8 @@
 | تاريخ خط الأساس | 2026-08-26 |
 | النطاق | `src/**/*.ts` و`src/**/*.tsx` بعد تدقيق الملفات غير التنفيذية |
 | أداة القياس | Vitest + V8 Coverage |
-| الاختبارات الحالية | 517 اختباراً في 52 ملفاً + 5 اختبارات Playwright |
-| حالة الخطة | قيد التنفيذ — المراحل C0 وC1 وC2 مكتملة |
+| الاختبارات الحالية | 550 اختباراً في 54 ملفاً + 5 اختبارات Playwright |
+| حالة الخطة | قيد التنفيذ — C0/C1/C2 مكتملة، وC3 قيد الإغلاق |
 | الهدف النهائي | 100% Lines / Statements / Functions / Branches |
 
 ---
@@ -166,10 +166,10 @@
 
 | ID | الحالة | النطاق | الحالات المطلوبة |
 |---|---|---|---|
-| `COV-301` | `[ ]` | `content/index.ts` | كل أمر dispatch، callbacks الخاصة بالفحص، الحذف، الإخفاء، الإظهار والتصوير |
-| `COV-302` | `[ ]` | `cleanupHandler.ts` | جميع أنواع التنظيف، جلسة غائبة، هدف غائب، undo، failure propagation |
-| `COV-303` | `[ ]` | `freeSelect.ts` | مقابض الزوايا والجوانب، السحب المعكوس، الحد الأدنى، clamp، Escape وpointer cancel |
-| `COV-304` | `[ ]` | `overlay.ts` و`inspector.ts` | إنشاء/إزالة الواجهة، keyboard paths، عناصر منفصلة وShadow DOM |
+| `COV-301` | `[~]` | `content/index.ts` | أُثبتت دورة الرسائل والجلسة والاختصارات وكل callbacks الفحص/التنظيف/التصوير؛ 100% Lines/Statements/Functions و87.36% Branches، في انتظار دمج الدفعة واستكمال الفروع الدفاعية المتعذرة من API العام |
+| `COV-302` | `[~]` | `cleanupHandler.ts` | 14 اختباراً مباشراً لمسارات الفحص والتنظيف والمعاينة والتأكيد/انتهاء token وundo/redo/reset؛ 100% في المقاييس الأربعة |
+| `COV-303` | `[~]` | `freeSelect.ts` | 18 اختباراً تشمل المقابض المتعاكسة، التحريك وclamp والحجم الأدنى وEscape و`pointercancel`؛ 100% في المقاييس الأربعة |
+| `COV-304` | `[-]` | `overlay.ts` و`inspector.ts` | أضيفت حدود iframe origin/legacy resize/فشل postMessage؛ ما زال استكمال دورة splash وinspector مطلوباً |
 | `COV-305` | `[ ]` | `freezeEngine.ts` و`mutationEngine.ts` | deadline، re-entry، observer cleanup، عقد متجددة واستعادة priority |
 | `COV-306` | `[ ]` | `captureStitcher.ts` و`elementCapture.ts` | فجوات، تداخل، شرائح ناقصة، DPR، scrolling، crop وحدود Canvas |
 
@@ -299,6 +299,7 @@
 | 2026-08-26 | Baseline | 412 | 90.78% | 90.78% | 84.12% | 77.10% | نجحت البوابات الحرجة الست و5 اختبارات E2E |
 | 2026-08-26 | C0 + معظم C1 | 441 | 91.23% | 91.23% | 84.79% | 79.24% | +29 اختباراً؛ Shared وTypography وDocumentHistory عند 100%، والمتبقي 693 سطراً و106 دوال و597 فرعاً |
 | 2026-08-26 | إغلاق C1 + C2 | 517 | 92.25% | 92.25% | 85.12% | 83.06% | Background وCapture modes عند 100%؛ المتبقي 612 سطراً و104 دوال و510 فروع |
+| 2026-09-01 | C3 — runtime/cleanup/free select | 550 | 94.71% | 94.71% | 86.85% | 84.64% | +33 اختباراً؛ `cleanupHandler.ts` و`freeSelect.ts` عند 100%، و`content/index.ts` عند 100% للأسطر/التعليمات/الدوال |
 | — | C2 | — | — | — | — | — | — |
 | — | C3 | — | — | — | — | — | — |
 | — | C4 | — | — | — | — | — | — |

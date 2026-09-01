@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createOverlay } from "@content/overlay/overlay";
+import { createOverlay, isParotiaUi } from "@content/overlay/overlay";
 
 describe("createOverlay", () => {
   let overlay: ReturnType<typeof createOverlay>;
@@ -85,4 +85,40 @@ describe("createOverlay", () => {
       new URL(chrome.runtime.getURL("")).origin,
     );
   });
+
+  it("accepts the legacy resize source, rejects malformed data and resets an invalid height", () => {
+    const frame = overlay.shadow.querySelector("iframe[data-newsclean-frame]") as HTMLIFrameElement;
+    const origin = new URL(chrome.runtime.getURL("")).origin;
+    const fire = (data: unknown): void => {
+      window.dispatchEvent(new MessageEvent("message", { data, source: frame.contentWindow, origin }));
+    };
+
+    fire({ source: "newsclean-ui", type: "RESIZE", height: 0 });
+    expect(frame.style.height).toBe("");
+    fire({ source: "newsclean-ui", type: "OTHER", height: 61 });
+    expect(frame.style.height).toBe("");
+    fire({ source: "untrusted-ui", type: "RESIZE", height: 61 });
+    expect(frame.style.height).toBe("");
+    fire({ source: "newsclean-ui", type: "RESIZE", height: 61 });
+    expect(frame.style.height).toBe("61px");
+  });
+
+  it("contains postMessage failures and recognizes only marked Parotia UI", () => {
+    const frame = overlay.shadow.querySelector("iframe[data-newsclean-frame]") as HTMLIFrameElement;
+    const origin = new URL(chrome.runtime.getURL("")).origin;
+    window.dispatchEvent(new MessageEvent("message", {
+      data: { source: "parotia-ui", type: "RESIZE", height: 52 },
+      source: frame.contentWindow,
+      origin,
+    }));
+    vi.spyOn(frame.contentWindow!, "postMessage").mockImplementationOnce(() => {
+      throw new Error("recipient closed");
+    });
+    expect(overlay.postToToolbar({ type: "STATE" })).toBe(false);
+
+    expect(isParotiaUi(null)).toBe(false);
+    expect(isParotiaUi(document.body)).toBe(false);
+    expect(isParotiaUi(overlay.root)).toBe(true);
+  });
+
 });
